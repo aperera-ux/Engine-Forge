@@ -154,6 +154,10 @@ export interface DynoPoint {
   meanPistonSpeedMs: number;
   /** Peak cylinder pressure, bar. */
   peakCylinderPressureBar: number;
+  /** Exhaust-side pressure seen by the cylinder (turbine inlet for turbos), bar abs. Optional (physics agent). */
+  exhaustPressureBar?: number;
+  /** Pumping MEP (part of fmepBar), bar. Optional (physics agent). */
+  pmepBar?: number;
 }
 
 export type WarningSeverity = 'info' | 'warn' | 'critical';
