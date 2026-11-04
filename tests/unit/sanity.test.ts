@@ -37,6 +37,21 @@ afterAll(() => R.flush());
 const sim = (c: EngineConfig) => simulate(c);
 const maxRetard = (r: SimResult, fromRpm = 1500) =>
   Math.max(0, ...r.curve.filter((p) => p.rpm >= fromRpm).map((p) => p.knockRetardDeg));
+/**
+ * Dyno-style isolation of a hardware effect (v3, lead ruling): with the knock-aware ECU boost
+ * trim, a pump-gas comparison measures the ECU, not the part. E85 with CR ≤ 8.5 keeps knock
+ * retard ~0 on every turbo variant tested, so the comparison isolates airflow/thermodynamics.
+ * Each isolated test asserts that precondition (retard ≤ 2°) so it cannot silently drift.
+ */
+const isolateKnock = (c: EngineConfig) => mutate(c, (x) => ((x.fuel = 'e85'), (x.compressionRatio = Math.min(x.compressionRatio, 8.5))));
+const expectNoKnock = (...rs: SimResult[]) => {
+  for (const r of rs) expect(maxRetard(r), `precondition: ${r.config.name} must not be knock-limited`).toBeLessThanOrEqual(2);
+};
+/** Common full-boost threshold for two runs: 95% of the lower of (target, each run's max boost). */
+const commonSpool = (a: SimResult, b: SimResult, target: number) => {
+  const thr = Math.min(target, max(a, 'boostBar'), max(b, 'boostBar'));
+  return [spoolRpm(a, thr), spoolRpm(b, thr), thr] as const;
+};
 const warnCodes = (r: SimResult, sev: string[] = ['warn', 'critical']) =>
   r.warnings.filter((w) => sev.includes(w.severity)).map((w) => w.code);
 const hasCode = (r: SimResult, code: string, sev: string[] = ['warn', 'critical']) => warnCodes(r, sev).includes(code);
@@ -150,15 +165,29 @@ describe('Rule 1: more boost → more power (until knock/choke/EGT)', () => {
         if (!limited) expect(rows[i].hp, `hp at ${rows[i].bar} bar`).toBeGreaterThanOrEqual(rows[i - 1].hp * 0.995);
       }
     });
-    it(`${k}: 0.5 → 1.0 bar adds 25–40% peak power`, () => {
-      const b = base(k);
-      const h = (bar: number) => sim(mutate(b, (c) => (c.turbo.targetBoostBar = bar))).peakHp;
-      const gain = pct(h(1.0), h(0.5));
+    // The doc rule holds "until … compressor choke": the stock EA888 IS20-class wheel is choke-limited
+    // at 1 bar near redline even on E85, so give both runs a wheel that holds 1 bar (as Rule 1's 2.0 L tests do).
+    it(`${k} (knock isolated: E85, CR ≤ 8.5; compressor holds target): 0.5 → 1.0 bar adds 25–40% peak power`, () => {
+      const b = isolateKnock(mutate(base(k), (c) => (c.turbo.compressorInducerMm = Math.max(c.turbo.compressorInducerMm, 48))));
+      const lo = sim(mutate(b, (c) => (c.turbo.targetBoostBar = 0.5)));
+      const hi = sim(mutate(b, (c) => (c.turbo.targetBoostBar = 1.0)));
+      expectNoKnock(lo, hi);
+      expect(atPeakPower(hi, 'boostBar'), 'precondition: 1.0 bar held at peak power').toBeGreaterThanOrEqual(0.95);
+      const gain = pct(hi.peakHp, lo.peakHp);
       R.rec(`r1:${k}:gain0.5to1.0`, r3(gain));
       expect(gain).toBeGreaterThanOrEqual(25);
       expect(gain).toBeLessThanOrEqual(40);
     });
   }
+  it('pump gas: when holding target would need heavy retard, the ECU trims boost and says so (boost-target message citing knock)', () => {
+    // EA888 on 91, no intercooler, 1.5 bar: heavily knock-limited.
+    const r = sim(mutate(base('turboI4'), (c) => ((c.turbo.targetBoostBar = 1.5), (c.turbo.intercoolerEffectiveness = 0))));
+    const bt = r.warnings.filter((w) => w.code === 'boost-target');
+    R.rec('r1:ecuTrim', { maxBoost: r3(max(r, 'boostBar')), msgs: bt.map((w) => `${w.severity}: ${w.message}`) });
+    expect(max(r, 'boostBar')).toBeLessThan(1.5 * 0.95);
+    expect(bt.length).toBeGreaterThan(0);
+    expect(bt.some((w) => /knock/i.test(w.message))).toBe(true);
+  });
   it('SC V8: peak hp rises 0.4 → 0.8 → 1.2 bar', () => {
     const b = base('scV8');
     const hp = [0.4, 0.8, 1.2].map((x) => sim(mutate(b, (c) => (c.supercharger.targetBoostBar = x))).peakHp);
@@ -194,12 +223,14 @@ describe('Rule 1: more boost → more power (until knock/choke/EGT)', () => {
 describe('Rule 2: compressor inducer / turbine A/R trade-off', () => {
   for (const k of ['turboI4', 'turboI6'] as const) {
     const hi = (c: EngineConfig) => (c.turbo.targetBoostBar = 1.5);
-    it(`${k}: bigger inducer → later spool, more peak power at 1.5 bar; smaller → more low-rpm torque`, () => {
-      const b = base(k);
+    it(`${k} (knock isolated): bigger inducer → later spool, more peak power at 1.5 bar; smaller → more low-rpm torque`, () => {
+      const b = isolateKnock(base(k));
       const small = sim(mutate(b, (c) => (hi(c), (c.turbo.compressorInducerMm = b.turbo.compressorInducerMm * 0.85))));
       const big = sim(mutate(b, (c) => (hi(c), (c.turbo.compressorInducerMm = b.turbo.compressorInducerMm * 1.3))));
+      expectNoKnock(small, big);
+      const [sS, sB, thr] = commonSpool(small, big, 1.5);
       const row = {
-        spoolSmall: spoolRpm(small, 1.5), spoolBig: spoolRpm(big, 1.5),
+        thr: r3(thr), spoolSmall: sS, spoolBig: sB,
         hpSmall: r3(small.peakHp), hpBig: r3(big.peakHp),
         tq2000Small: r3(at(small, 2000)), tq2000Big: r3(at(big, 2000)),
       };
@@ -208,34 +239,38 @@ describe('Rule 2: compressor inducer / turbine A/R trade-off', () => {
       expect(big.peakHp).toBeGreaterThan(small.peakHp);
       expect(at(small, 2000)).toBeGreaterThanOrEqual(at(big, 2000) * 0.99);
     });
-    it(`${k}: bigger turbine A/R → later spool, more top-end, lower back pressure at redline`, () => {
-      const b = base(k);
+    it(`${k} (knock isolated): bigger turbine A/R → later spool, more top-end, lower back pressure at redline`, () => {
+      const b = isolateKnock(base(k));
       const small = sim(mutate(b, (c) => (hi(c), (c.turbo.turbineAR = 0.45))));
       const big = sim(mutate(b, (c) => (hi(c), (c.turbo.turbineAR = 1.0))));
+      expectNoKnock(small, big);
       const last = (r: SimResult) => r.curve[r.curve.length - 1];
+      const [sS, sB, thr] = commonSpool(small, big, 1.5);
       const row = {
-        spoolSmall: spoolRpm(small, 1.5), spoolBig: spoolRpm(big, 1.5),
+        thr: r3(thr), spoolSmall: sS, spoolBig: sB,
         hpSmall: r3(small.peakHp), hpBig: r3(big.peakHp),
         pExhRedSmall: r3(last(small).exhaustPressureBar ?? NaN), pExhRedBig: r3(last(big).exhaustPressureBar ?? NaN),
-        tq2500Small: r3(at(small, 2500)), tq2500Big: r3(at(big, 2500)),
+        // "low-rpm torque" compared between the two spool points, where only the small housing is on boost
+        rpmLow: Math.round((sS + sB) / 2), tqLowSmall: r3(at(small, (sS + sB) / 2)), tqLowBig: r3(at(big, (sS + sB) / 2)),
       };
       R.rec(`r2:${k}:AR`, row);
       expect(row.spoolBig).toBeGreaterThan(row.spoolSmall);
       expect(big.peakHp).toBeGreaterThanOrEqual(small.peakHp);
       expect(row.pExhRedBig).toBeLessThan(row.pExhRedSmall);
-      expect(at(small, 2500)).toBeGreaterThan(at(big, 2500));
+      expect(row.tqLowSmall).toBeGreaterThan(row.tqLowBig);
     });
   }
 });
 
 describe('Rule 3: twin-scroll spools earlier, same peak', () => {
   for (const k of ['turboI4', 'turboI6'] as const) {
-    it(`${k}: full-boost rpm 5–20% lower (doc: 10–15%), peak hp within ±4%`, () => {
-      const b = mutate(base(k), (c) => (c.turbo.compressorInducerMm *= 1.2)); // make spool visible
+    it(`${k} (knock isolated): full-boost rpm 5–20% lower (doc: 10–15%), peak hp within ±4%`, () => {
+      const b = isolateKnock(mutate(base(k), (c) => (c.turbo.compressorInducerMm *= 1.2))); // make spool visible
       const off = sim(mutate(b, (c) => (c.turbo.twinScroll = false)));
       const on = sim(mutate(b, (c) => (c.turbo.twinScroll = true)));
-      const t = b.turbo.targetBoostBar;
-      const row = { spoolOff: spoolRpm(off, t), spoolOn: spoolRpm(on, t), hpOff: r3(off.peakHp), hpOn: r3(on.peakHp) };
+      expectNoKnock(off, on);
+      const [sOff, sOn] = commonSpool(off, on, b.turbo.targetBoostBar);
+      const row = { spoolOff: sOff, spoolOn: sOn, hpOff: r3(off.peakHp), hpOn: r3(on.peakHp) };
       R.rec(`r3:${k}`, row);
       const drop = -pct(row.spoolOn, row.spoolOff);
       expect(drop).toBeGreaterThanOrEqual(5);
@@ -247,13 +282,18 @@ describe('Rule 3: twin-scroll spools earlier, same peak', () => {
 
 describe('Rule 4: intercooler', () => {
   for (const k of ['turboI4', 'turboI6'] as const) {
-    const pair = () => {
-      const b = mutate(base(k), (c) => (c.turbo.targetBoostBar = 1.0));
+    const pairOn = (prep: (c: EngineConfig) => EngineConfig) => {
+      const b = prep(mutate(base(k), (c) => (c.turbo.targetBoostBar = 1.0)));
       const no = sim(mutate(b, (c) => (c.turbo.intercoolerEffectiveness = 0)));
       const yes = sim(mutate(b, (c) => (c.turbo.intercoolerEffectiveness = 0.75)));
       return { no, yes, dT: atPeakPower(yes, 'chargeTempC') - atPeakPower(no, 'chargeTempC') };
     };
-    it(`${k} @1 bar: IC 0 → 0.75 = +8–15% power, knock retard not higher`, () => {
+    const pair = () => {
+      const p = pairOn(isolateKnock);
+      expectNoKnock(p.no, p.yes);
+      return p;
+    };
+    it(`${k} @1 bar (knock isolated): IC 0 → 0.75 = +8–15% power, knock retard not higher`, () => {
       const { no, yes, dT } = pair();
       const row = { gainPct: r3(pct(yes.peakHp, no.peakHp)), dTchargeC: r3(dT), t2C: r3(atPeakPower(no, 'chargeTempC')), retNo: r3(maxRetard(no)), retYes: r3(maxRetard(yes)) };
       R.rec(`r4:${k}`, row);
@@ -262,19 +302,29 @@ describe('Rule 4: intercooler', () => {
       expect(maxRetard(yes)).toBeLessThanOrEqual(maxRetard(no) + 0.1);
     });
     // Doc band revised after audit (was −30…−50 °C, inconsistent with ε = 0.75 at 1 bar).
-    it(`${k} @1 bar: charge temp −60…−90 °C (doc band, revised after audit)`, () => {
+    it(`${k} @1 bar (knock isolated): charge temp −60…−90 °C (doc band, revised after audit)`, () => {
       const { dT } = pair();
       expect(dT).toBeLessThanOrEqual(-60);
       expect(dT).toBeGreaterThanOrEqual(-90);
     });
-    it(`${k} @1 bar: charge-temp drop = ε·(T_comp − T_amb) (physics-consistent, ±15%)`, () => {
-      const { no, dT } = pair();
+    it(`${k} @1 bar (knock isolated): charge-temp drop = ε·(T_comp − T_amb) at the same rpm (physics-consistent, ±15%)`, () => {
+      const { no, yes } = pair();
+      const rpm = no.peakPowerRpm;
+      const dT = at(yes, rpm, 'chargeTempC') - at(no, rpm, 'chargeTempC');
       const expected = -0.75 * (atPeakPower(no, 'chargeTempC') - 25);
       R.rec(`r4:${k}:dTexpected`, r3(expected));
       expect(Math.abs(dT - expected)).toBeLessThanOrEqual(0.15 * Math.abs(expected));
       // compressor outlet at ~PR 2 should be 80–145 °C at 25 °C ambient (η_c ≈ 0.58–0.78; small wheels near choke run hot)
       expect(atPeakPower(no, 'chargeTempC')).toBeGreaterThanOrEqual(80);
       expect(atPeakPower(no, 'chargeTempC')).toBeLessThanOrEqual(145);
+    });
+    it(`${k} @1 bar: IC gain on pump gas (91) ≥ gain on race fuel (100), since a cooler charge also relieves knock`, () => {
+      const pump = pairOn((c) => mutate(c, (x) => (x.fuel = 'gas91')));
+      const race = pairOn((c) => mutate(c, (x) => (x.fuel = 'race100')));
+      const gPump = pct(pump.yes.peakHp, pump.no.peakHp);
+      const gRace = pct(race.yes.peakHp, race.no.peakHp);
+      R.rec(`r4:${k}:pumpVsRace`, { gPump: r3(gPump), gRace: r3(gRace), retPumpNo: r3(maxRetard(pump.no)), retRaceNo: r3(maxRetard(race.no)) });
+      expect(gPump).toBeGreaterThanOrEqual(gRace - 0.5);
     });
   }
 });
@@ -727,17 +777,27 @@ describe('Rule 19: bigger bore (fixed CR & fuel) → more knock', () => {
 
 describe('Rule 20: charge temperature', () => {
   for (const k of ['turboI4', 'turboI6'] as const) {
-    it(`${k} (knock-limited): ≈ −1% power per +3 °C charge (accept −0.15…−0.6 %/°C), more retard when hotter`, () => {
-      const b = mutate(base(k), (c) => ((c.turbo.targetBoostBar = 1.4), (c.turbo.compressorInducerMm *= 1.25)));
+    const slopeOf = (prep: (c: EngineConfig) => EngineConfig) => {
+      const b = prep(mutate(base(k), (c) => ((c.turbo.targetBoostBar = 1.4), (c.turbo.compressorInducerMm *= 1.25))));
       const cool = sim(mutate(b, (c) => (c.turbo.intercoolerEffectiveness = 0.8)));
       const hot = sim(mutate(b, (c) => (c.turbo.intercoolerEffectiveness = 0.5)));
       const dT = atPeakPower(hot, 'chargeTempC') - atPeakPower(cool, 'chargeTempC');
-      const slope = pct(hot.peakHp, cool.peakHp) / dT;
-      R.rec(`r20:${k}`, { dT: r3(dT), slopePctPerC: r3(slope), retCool: r3(maxRetard(cool)), retHot: r3(maxRetard(hot)) });
+      return { cool, hot, dT, slope: pct(hot.peakHp, cool.peakHp) / dT };
+    };
+    it(`${k} (knock isolated): ≈ −1% power per +3 °C charge (accept −0.15…−0.6 %/°C)`, () => {
+      const { cool, hot, dT, slope } = slopeOf(isolateKnock);
+      expectNoKnock(cool, hot);
+      R.rec(`r20:${k}`, { dT: r3(dT), slopePctPerC: r3(slope) });
       expect(dT).toBeGreaterThan(5);
       expect(slope).toBeLessThanOrEqual(-0.15);
       expect(slope).toBeGreaterThanOrEqual(-0.6);
-      expect(maxRetard(hot)).toBeGreaterThanOrEqual(maxRetard(cool));
+    });
+    it(`${k} on pump gas (91): hotter charge costs at least as much as on the knock-free setup, with more retard`, () => {
+      const iso = slopeOf(isolateKnock);
+      const pump = slopeOf((c) => c);
+      R.rec(`r20:${k}:pump`, { slopePctPerC: r3(pump.slope), isoSlope: r3(iso.slope), retCool: r3(maxRetard(pump.cool)), retHot: r3(maxRetard(pump.hot)) });
+      expect(pump.slope).toBeLessThanOrEqual(iso.slope + 0.02);
+      expect(maxRetard(pump.hot)).toBeGreaterThanOrEqual(maxRetard(pump.cool));
     });
   }
 });

@@ -36,6 +36,8 @@ export interface EngineModel {
   coreBounds: THREE.Box3;
   /** Whole assembly except exhaust primaries/tailpipes: used for camera framing. */
   fitBounds: THREE.Box3;
+  /** Sub-sampled world-space vertices of the same parts (xyz triples) for silhouette-accurate framing. */
+  fitPoints: Float32Array;
   hitMeshes: THREE.Mesh[];
   update(a: AnimInput): void;
   setViewMode(m: ViewMode): void;
@@ -1345,6 +1347,19 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
   const fitBounds = new THREE.Box3();
   for (const m of staticMeshes) fitBounds.expandByObject(m);
   if (turbineMesh) fitBounds.expandByObject(turbineMesh);
+  const fp: number[] = [];
+  {
+    const v = new THREE.Vector3();
+    for (const m of turbineMesh ? [...staticMeshes, turbineMesh] : staticMeshes) {
+      const pos = m.geometry.attributes.position;
+      const step = Math.max(1, Math.floor(pos.count / 3000));
+      for (let i = 0; i < pos.count; i += step) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld);
+        fp.push(v.x, v.y, v.z);
+      }
+    }
+  }
+  const fitPoints = new Float32Array(fp);
   const bounds = new THREE.Box3();
   for (const m of staticMeshes) bounds.expandByObject(m);
   if (headerMesh) bounds.expandByObject(headerMesh);
@@ -1489,6 +1504,7 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
     bounds,
     coreBounds,
     fitBounds,
+    fitPoints,
     hitMeshes,
     update,
     setViewMode,

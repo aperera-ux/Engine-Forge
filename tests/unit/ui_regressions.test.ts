@@ -5,8 +5,9 @@
 import { describe, expect, it } from 'vitest';
 import { mutate, ref, REFERENCE_ENGINES, simulate, type EngineConfig } from './helpers';
 
-const ttLs3 = (bar: number, red: number): EngineConfig =>
+const ttLs3 = (bar: number, red: number, fuel: EngineConfig['fuel'] = 'gas91'): EngineConfig =>
   mutate(ref('gm-ls3'), (c) => {
+    c.fuel = fuel;
     c.induction = 'turbo';
     c.redlineRpm = red;
     c.lambda = 0.8;
@@ -31,13 +32,16 @@ describe('UI-reported issues', () => {
       for (const p of r.curve) expect(p.bsfcGkWh, `${c.name} ${p.rpm}`).toBeLessThan(2999);
     }
   });
-  it('twin 51 mm compressors on a 6.2 L at 0.72 bar: no choke and target boost held to 6600 rpm (0.018·D² ≈ 94 lb/min vs ~72 needed)', () => {
-    const r = simulate(ttLs3(0.72, 6600));
+  // Choke-capacity tests run on E85 so the knock-aware ECU boost trim (v3) cannot mask the compressor.
+  it('twin 51 mm compressors on a 6.2 L at 0.72 bar (E85): no choke and target boost held to 6600 rpm (0.018·D² ≈ 94 lb/min vs ~72 needed)', () => {
+    const r = simulate(ttLs3(0.72, 6600, 'e85'));
+    expect(Math.max(...r.curve.map((p) => p.knockRetardDeg)), 'precondition: not knock-limited').toBeLessThanOrEqual(2);
     expect(r.warnings.map((w) => w.code)).not.toContain('compressor-choke');
     for (const p of r.curve.filter((d) => d.rpm >= 4500)) expect(p.boostBar, `${p.rpm}`).toBeGreaterThanOrEqual(0.72 * 0.95);
   });
-  it('twin 51 mm at 1.0 bar on 6.2 L: boost held ≥ 0.9 bar to 6600 (~85 lb/min needed of ~94 available)', () => {
-    const r = simulate(ttLs3(1.0, 6600));
+  it('twin 51 mm at 1.0 bar on 6.2 L (E85): boost held ≥ 0.9 bar to 6600 (~85 lb/min needed of ~94 available)', () => {
+    const r = simulate(ttLs3(1.0, 6600, 'e85'));
+    expect(Math.max(...r.curve.map((p) => p.knockRetardDeg)), 'precondition: not knock-limited').toBeLessThanOrEqual(2);
     for (const p of r.curve.filter((d) => d.rpm >= 5000)) expect(p.boostBar, `${p.rpm}`).toBeGreaterThanOrEqual(0.9);
   });
   it('spark advance / knock retard are smooth rpm-to-rpm: |second difference| ≤ 1.5° away from spool onset (all references)', () => {

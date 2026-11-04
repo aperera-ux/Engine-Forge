@@ -70,7 +70,7 @@
    "choke": false
   }
  ],
- "r1:turboI4:gain0.5to1.0": 15.589,
+ "r1:turboI4:gain0.5to1.0": 30.957,
  "r1:turboI6:sweep": [
   {
    "bar": 0.4,
@@ -129,7 +129,13 @@
    "choke": false
   }
  ],
- "r1:turboI6:gain0.5to1.0": 31.25,
+ "r1:turboI6:gain0.5to1.0": 32.751,
+ "r1:ecuTrim": {
+  "maxBoost": 1.26,
+  "msgs": [
+   "info: Target boost not held: 75 % of target at 6500 rpm because knock control trims boost (octane/CR/charge temperature limit)."
+  ]
+ },
  "r1:scV8": [
   612.424,
   774.086,
@@ -160,69 +166,87 @@
   "retG93": 12.491
  },
  "r2:turboI4:inducer": {
-  "spoolSmall": null,
-  "spoolBig": 5050,
-  "hpSmall": 170.674,
-  "hpBig": 331.618,
-  "tq2000Small": 356.178,
-  "tq2000Big": 359.152
+  "thr": 1.5,
+  "spoolSmall": 1150,
+  "spoolBig": 1900,
+  "hpSmall": 185.316,
+  "hpBig": 378.858,
+  "tq2000Small": 464.119,
+  "tq2000Big": 461.129
  },
  "r2:turboI4:AR": {
-  "spoolSmall": null,
-  "spoolBig": null,
-  "hpSmall": 228.83,
-  "hpBig": 268.55,
-  "pExhRedSmall": 4.351,
-  "pExhRedBig": 2.037,
-  "tq2500Small": 374.873,
-  "tq2500Big": 393.646
+  "thr": 1.5,
+  "spoolSmall": 1450,
+  "spoolBig": 2500,
+  "hpSmall": 252.033,
+  "hpBig": 276.9,
+  "pExhRedSmall": 4.279,
+  "pExhRedBig": 2.024,
+  "rpmLow": 1975,
+  "tqLowSmall": 469.844,
+  "tqLowBig": 235.266
  },
  "r2:turboI6:inducer": {
-  "spoolSmall": null,
-  "spoolBig": 6000,
-  "hpSmall": 348.26,
-  "hpBig": 525.295,
-  "tq2000Small": 492.677,
-  "tq2000Big": 270.019
+  "thr": 1.5,
+  "spoolSmall": 1800,
+  "spoolBig": 3000,
+  "hpSmall": 397.135,
+  "hpBig": 584.321,
+  "tq2000Small": 596.204,
+  "tq2000Big": 282.298
  },
  "r2:turboI6:AR": {
-  "spoolSmall": 6600,
-  "spoolBig": 6800,
-  "hpSmall": 435.853,
-  "hpBig": 522.954,
-  "pExhRedSmall": 4.144,
-  "pExhRedBig": 2.099,
-  "tq2500Small": 521.137,
-  "tq2500Big": 282.187
+  "thr": 1.5,
+  "spoolSmall": 2000,
+  "spoolBig": 3600,
+  "hpSmall": 506.296,
+  "hpBig": 575.119,
+  "pExhRedSmall": 4.076,
+  "pExhRedBig": 2.244,
+  "rpmLow": 2800,
+  "tqLowSmall": 625.516,
+  "tqLowBig": 312.648
  },
  "r3:turboI4": {
-  "spoolOff": 2350,
-  "spoolOn": 2350,
-  "hpOff": 293.755,
-  "hpOn": 297.66
+  "spoolOff": 1750,
+  "spoolOn": 1600,
+  "hpOff": 311.478,
+  "hpOn": 315.447
  },
  "r3:turboI6": {
-  "spoolOff": 2600,
-  "spoolOn": 2200,
-  "hpOff": 378.397,
-  "hpOn": 382.671
+  "spoolOff": 2800,
+  "spoolOn": 2400,
+  "hpOff": 403.233,
+  "hpOn": 407.633
  },
  "r4:turboI4": {
-  "gainPct": 31.28,
-  "dTchargeC": -51.965,
-  "t2C": 117.279,
-  "retNo": 18.772,
-  "retYes": 11.097
+  "gainPct": 12.291,
+  "dTchargeC": -70.627,
+  "t2C": 135.941,
+  "retNo": 0,
+  "retYes": 0
  },
- "r4:turboI4:dTexpected": -69.209,
+ "r4:turboI4:dTexpected": -83.206,
+ "r4:turboI4:pumpVsRace": {
+  "gPump": 31.28,
+  "gRace": 24,
+  "retPumpNo": 18.772,
+  "retRaceNo": 14.951
+ },
  "r4:turboI6": {
-  "gainPct": 22.598,
-  "dTchargeC": -65.016,
-  "t2C": 114.861,
-  "retNo": 13.066,
-  "retYes": 6.299
+  "gainPct": 12.153,
+  "dTchargeC": -68.244,
+  "t2C": 118.282,
+  "retNo": 0,
+  "retYes": 0
  },
- "r4:turboI6:dTexpected": -67.396,
+ "r4:turboI6:dTexpected": -69.961,
+ "r4:turboI6:pumpVsRace": {
+  "gPump": 22.598,
+  "gRace": 15.456,
+  "retPumpNo": 13.066,
+  "retRaceNo": 10.866
+ },
  "r5:roots:boostRatio": 0.863,
  "r5:twin-screw:boostRatio": 0.864,
  "r5:centrifugal:ratio50": 0.254,
@@ -860,14 +884,22 @@
   "ret88": 14.419
  },
  "r20:turboI4": {
-  "dT": 28.071,
+  "dT": 35.788,
+  "slopePctPerC": -0.26
+ },
+ "r20:turboI4:pump": {
   "slopePctPerC": -0.631,
+  "isoSlope": -0.26,
   "retCool": 12.072,
   "retHot": 15.322
  },
  "r20:turboI6": {
-  "dT": 35.755,
+  "dT": 35.676,
+  "slopePctPerC": -0.159
+ },
+ "r20:turboI6:pump": {
   "slopePctPerC": -0.257,
+  "isoSlope": -0.159,
   "retCool": 8.627,
   "retHot": 12.329
  },

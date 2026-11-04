@@ -173,14 +173,30 @@ function Rig({ model, quality, offset }: { model: EngineModel | null; quality: '
       const right = new THREE.Vector3().crossVectors(fwd, Y).normalize();
       const upv = new THREE.Vector3().crossVectors(right, fwd);
       let d = 0;
-      for (let i = 0; i < 8; i++) {
-        const c = new THREE.Vector3(i & 1 ? fb.max.x : fb.min.x, i & 2 ? fb.max.y : fb.min.y, i & 4 ? fb.max.z : fb.min.z).sub(target);
-        const depth = c.dot(dir);
-        if (tanV > 0) d = Math.max(d, depth + Math.abs(c.dot(upv)) / tanV);
-        if (tanW > 0) d = Math.max(d, depth + Math.abs(c.dot(right)) / tanW);
+      const P = model.fitPoints;
+      const tx = target.x, ty = target.y, tz = target.z;
+      for (let i = 0; i < P.length; i += 3) {
+        const cx = P[i] - tx, cy = P[i + 1] - ty, cz = P[i + 2] - tz;
+        const depth = cx * dir.x + cy * dir.y + cz * dir.z;
+        if (tanV > 0) d = Math.max(d, depth + Math.abs(cx * upv.x + cy * upv.y + cz * upv.z) / tanV);
+        if (tanW > 0) d = Math.max(d, depth + Math.abs(cx * right.x + cy * right.y + cz * right.z) / tanW);
       }
       return d;
     };
+    // re-centre the target on the silhouette as seen from dir0 (orthographic estimate)
+    {
+      const fwd = dir0.clone().negate();
+      const right = new THREE.Vector3().crossVectors(fwd, Y).normalize();
+      const upv = new THREE.Vector3().crossVectors(right, fwd);
+      let u0 = Infinity, u1 = -Infinity, r0 = Infinity, r1 = -Infinity;
+      const P = model.fitPoints;
+      for (let i = 0; i < P.length; i += 3) {
+        const cx = P[i] - target.x, cy = P[i + 1] - target.y, cz = P[i + 2] - target.z;
+        const u = cx * upv.x + cy * upv.y + cz * upv.z, rr = cx * right.x + cy * right.y + cz * right.z;
+        u0 = Math.min(u0, u); u1 = Math.max(u1, u); r0 = Math.min(r0, rr); r1 = Math.max(r1, rr);
+      }
+      if (P.length) target.addScaledVector(upv, (u0 + u1) / 2).addScaledVector(right, (r0 + r1) / 2);
+    }
     // fill ~60% of the height or ~75% of the width at the current view, whichever binds first
     let dist = Math.max(need(dir0, tv * 0.6, 0), need(dir0, 0, th * 0.75));
     // never clip at any auto-rotate azimuth: 8% margin inside the region left by the view offset

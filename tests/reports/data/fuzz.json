@@ -31,10 +31,10 @@
   }
  ],
  "timing": {
-  "median": 1.133,
-  "p95": 10.92,
-  "p99": 18.816,
-  "max": 34.937
+  "median": 1.017,
+  "p95": 10.227,
+  "p99": 15.957,
+  "max": 27.665
  },
  "naBmepViolations": 0,
  "boostBmepViolations": 23,
@@ -173,200 +173,200 @@
    "count": 5,
    "worst": [
     {
-     "i": 58,
-     "ms": 34.937,
-     "points": 32,
+     "i": 1506,
+     "ms": 27.665,
+     "points": 30,
      "cfg": {
-      "layout": "v",
+      "layout": "flat",
       "cyl": 12,
-      "bore": 127.008,
-      "stroke": 95.357,
-      "cr": 12.155,
-      "vt": "dohc",
-      "vpc": 5,
-      "iv": 36.568,
+      "bore": 59.692,
+      "stroke": 96.263,
+      "cr": 13.519,
+      "vt": "sohc",
+      "vpc": 3,
+      "iv": 25.752,
       "dur": [
-       281.511,
-       190.14
+       310.728,
+       284.909
       ],
       "lift": [
-       18.761,
-       7.18
+       14.388,
+       18.311
       ],
-      "lsa": 104.541,
-      "icl": 96.789,
-      "vvt": true,
+      "lsa": 103.594,
+      "icl": 104.864,
+      "vvt": false,
       "vl": true,
       "ind": "turbo",
-      "boost": 2.489,
+      "boost": 1.639,
       "turbo": {
-       "ind": 84.419,
-       "ar": 1.271,
-       "ic": 0.643,
-       "n": 2
+       "ind": 32.486,
+       "ar": 0.437,
+       "ic": 0.28,
+       "n": 1
       },
-      "runner": 490.627,
-      "thr": 116.191,
+      "runner": 283.823,
+      "thr": 36.989,
+      "itb": true,
+      "exh": "long-tube",
+      "hdr": [
+       485.321,
+       32.186
+      ],
+      "fuel": "gas87",
+      "lambda": 0.855,
+      "di": true,
+      "red": 4400,
+      "idle": 1475
+     }
+    },
+    {
+     "i": 205,
+     "ms": 24.297,
+     "points": 37,
+     "cfg": {
+      "layout": "flat",
+      "cyl": 6,
+      "bore": 66.388,
+      "stroke": 79.869,
+      "cr": 14.132,
+      "vt": "dohc",
+      "vpc": 2,
+      "iv": 34.967,
+      "dur": [
+       210.007,
+       197.923
+      ],
+      "lift": [
+       8.224,
+       12.695
+      ],
+      "lsa": 115.318,
+      "icl": 101.579,
+      "vvt": true,
+      "vl": false,
+      "ind": "turbo",
+      "boost": 1.471,
+      "turbo": {
+       "ind": 61.225,
+       "ar": 1.094,
+       "ic": 0.016,
+       "n": 1
+      },
+      "runner": 403.858,
+      "thr": 126.744,
       "itb": false,
       "exh": "log",
       "hdr": [
-       677,
-       38.227
+       976.301,
+       43.762
       ],
-      "fuel": "race100",
-      "lambda": 0.786,
+      "fuel": "gas91",
+      "lambda": 1.028,
       "di": true,
-      "red": 8700,
-      "idle": 950
+      "red": 9100,
+      "idle": 1975
      }
     },
     {
-     "i": 19,
-     "ms": 34.12,
-     "points": 43,
+     "i": 1300,
+     "ms": 24.224,
+     "points": 36,
      "cfg": {
-      "layout": "flat",
-      "cyl": 2,
-      "bore": 118.36,
-      "stroke": 106.592,
-      "cr": 6.995,
-      "vt": "sohc",
-      "vpc": 5,
-      "iv": 33.855,
+      "layout": "inline",
+      "cyl": 4,
+      "bore": 126.772,
+      "stroke": 45.659,
+      "cr": 14.652,
+      "vt": "dohc",
+      "vpc": 4,
+      "iv": 49.756,
       "dur": [
-       236.8,
-       293.564
+       279.708,
+       302.224
       ],
       "lift": [
-       11.766,
-       19.041
+       6.291,
+       12.073
       ],
-      "lsa": 114.112,
-      "icl": 100.444,
-      "vvt": false,
-      "vl": false,
-      "ind": "turbo",
-      "boost": 1.535,
-      "turbo": {
-       "ind": 42.255,
-       "ar": 0.727,
-       "ic": 0.011,
-       "n": 2
-      },
-      "runner": 639.085,
-      "thr": 57.114,
-      "itb": true,
-      "exh": "shorty",
-      "hdr": [
-       1175.5,
-       28.456
-      ],
-      "fuel": "gas87",
-      "lambda": 1.033,
-      "di": true,
-      "red": 11800,
-      "idle": 1400
-     }
-    },
-    {
-     "i": 1164,
-     "ms": 32.999,
-     "points": 33,
-     "cfg": {
-      "layout": "v",
-      "cyl": 6,
-      "bore": 129.181,
-      "stroke": 74.846,
-      "cr": 14.845,
-      "vt": "sohc",
-      "vpc": 5,
-      "iv": 41.532,
-      "dur": [
-       241.133,
-       283.026
-      ],
-      "lift": [
-       10.492,
-       8.838
-      ],
-      "lsa": 105.758,
-      "icl": 117.57,
+      "lsa": 118.601,
+      "icl": 104.037,
       "vvt": true,
       "vl": false,
       "ind": "turbo",
-      "boost": 2.066,
+      "boost": 2.46,
       "turbo": {
-       "ind": 56.081,
-       "ar": 0.939,
-       "ic": 0.155,
-       "n": 1
+       "ind": 75.957,
+       "ar": 0.657,
+       "ic": 0.206,
+       "n": 2
       },
-      "runner": 224.013,
-      "thr": 43.526,
+      "runner": 200.404,
+      "thr": 88.166,
+      "itb": false,
+      "exh": "log",
+      "hdr": [
+       284.137,
+       33.464
+      ],
+      "fuel": "gas91",
+      "lambda": 0.853,
+      "di": false,
+      "red": 8600,
+      "idle": 1600
+     }
+    },
+    {
+     "i": 346,
+     "ms": 24.177,
+     "points": 35,
+     "cfg": {
+      "layout": "flat",
+      "cyl": 4,
+      "bore": 89.663,
+      "stroke": 121.194,
+      "cr": 13.187,
+      "vt": "pushrod",
+      "vpc": 2,
+      "iv": 48.366,
+      "dur": [
+       227.831,
+       310.458
+      ],
+      "lift": [
+       12.392,
+       19.961
+      ],
+      "lsa": 105.292,
+      "icl": 105.665,
+      "vvt": true,
+      "vl": false,
+      "ind": "turbo",
+      "boost": 2.809,
+      "turbo": {
+       "ind": 39.204,
+       "ar": 0.694,
+       "ic": 0.476,
+       "n": 2
+      },
+      "runner": 261.099,
+      "thr": 79.836,
       "itb": false,
       "exh": "long-tube",
       "hdr": [
-       605.766,
-       37.074
+       1017.369,
+       53.969
       ],
-      "fuel": "gas87",
-      "lambda": 1.035,
-      "di": true,
-      "red": 7300,
-      "idle": 575
-     }
-    },
-    {
-     "i": 969,
-     "ms": 28.531,
-     "points": 38,
-     "cfg": {
-      "layout": "v",
-      "cyl": 16,
-      "bore": 123.058,
-      "stroke": 58.992,
-      "cr": 12.687,
-      "vt": "dohc",
-      "vpc": 3,
-      "iv": 44.288,
-      "dur": [
-       181.553,
-       216.25
-      ],
-      "lift": [
-       8.406,
-       15.321
-      ],
-      "lsa": 108.489,
-      "icl": 120.709,
-      "vvt": true,
-      "vl": true,
-      "ind": "turbo",
-      "boost": 1.572,
-      "turbo": {
-       "ind": 58.865,
-       "ar": 1.034,
-       "ic": 0.297,
-       "n": 1
-      },
-      "runner": 318.802,
-      "thr": 37.123,
-      "itb": false,
-      "exh": "tuned-equal",
-      "hdr": [
-       428.911,
-       57.541
-      ],
-      "fuel": "methanol",
-      "lambda": 0.823,
+      "fuel": "gas91",
+      "lambda": 0.847,
       "di": false,
-      "red": 4700,
-      "idle": 700
+      "red": 10100,
+      "idle": 1725
      }
     },
     {
      "i": 87,
-     "ms": 25.683,
+     "ms": 22.954,
      "points": 34,
      "cfg": {
       "layout": "flat",
