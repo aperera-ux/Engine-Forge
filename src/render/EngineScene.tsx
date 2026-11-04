@@ -208,7 +208,7 @@ function Rig({ model, quality }: { model: EngineModel | null; quality: 'high' | 
               mirror={0.45}
             />
           ) : (
-            <meshStandardMaterial color="#0d0f13" roughness={0.6} metalness={0.4} />
+            <meshStandardMaterial color="#050608" roughness={0.7} metalness={0.3} />
           )}
         </mesh>
         <ContactShadows key={model ? model.root.uuid : 'none'} position={[0, 0.004, 0]} scale={Math.max(12, r * 4)} blur={2.6} far={Math.max(4, r * 1.6)} opacity={0.85} resolution={512} frames={quality === 'high' ? Infinity : 1} color="#000000" />

@@ -12,5 +12,9 @@ export interface SceneProps {
   timeScale?: number;
   onCylinderHover?: (cylinder: number | null) => void;
   quality?: 'high' | 'low';
+  /** Shift framed engine by viewport fraction (+x right, +y up). */
+  viewOffset?: { x: number; y: number };
+  /** Visual crank angle θ (deg, [0,720)), ~15 Hz. */
+  onCrankAngle?: (deg: number) => void;
   onFps?: (fps: number) => void;
 }

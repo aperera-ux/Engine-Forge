@@ -1,7 +1,13 @@
 import { useStore } from './store';
 
 /** Shared crank clock (deg) integrated from rpm, used for tooltips / audio phase. */
-export const crankClock = { thetaDeg: 0 };
+export const crankClock = { thetaDeg: 0, external: false };
+
+/** Renderer callback: snap to the real visual crank angle; the rAF clock extrapolates between samples. */
+export function onSceneCrankAngle(deg: number) {
+  crankClock.thetaDeg = deg;
+  crankClock.external = true;
+}
 
 export function visualRevPerSec(rpm: number): number {
   if (rpm <= 0) return 0;

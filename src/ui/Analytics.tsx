@@ -139,7 +139,7 @@ export function WarningItems({ items }: { items: SimWarning[] }) {
   return (
     <ul>
       {items.map((w, i) => (
-        <li key={`${w.code}-${i}`} className={`warn-item ${w.severity}`}>
+        <li key={`${w.code}-${i}`} className={`warn-item ${w.severity}`} title={w.message}>
           <Icon name={w.severity === 'critical' ? 'critical' : w.severity === 'warn' ? 'warn' : 'info'} size={14} />
           <div>
             <span className="warn-msg">{w.message}</span>

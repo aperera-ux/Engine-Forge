@@ -160,7 +160,7 @@ export class MaterialLib {
     this.base.blockDetail = this.base.block;
     this.base.crankcase = this.base.block;
     this.base.head = alu('#c9ccd1', 0.42);
-    this.base.timing = look.racy ? S({ color: '#2a2c30', metalness: 0.75, roughness: 0.4, normalMap: cast, normalScale: new THREE.Vector2(0.5, 0.5) }) : alu('#9ea3aa', 0.48);
+    this.base.timing = look.racy ? S({ color: '#43474d', metalness: 0.8, roughness: 0.38, normalMap: cast, normalScale: new THREE.Vector2(0.5, 0.5) }) : alu('#9ea3aa', 0.48);
     this.base.coilAccent = S({ color: look.racy ? '#d21d1d' : '#c9a227', metalness: 0.2, roughness: 0.4 });
     this.base.pan = look.racy ? alu('#9da1a7', 0.35) : S({ color: '#26282c', metalness: 0.7, roughness: 0.5 });
     this.base.cover = look.racy

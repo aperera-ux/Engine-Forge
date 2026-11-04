@@ -4,7 +4,10 @@ import { SceneHost } from './SceneHost';
 import { Tachometer } from './Tachometer';
 import { Segmented } from './controls';
 import { Icon } from './icons';
-import { cancelDynoPull, crankClock, runDynoPull } from './dyno';
+import { cancelDynoPull, crankClock, onSceneCrankAngle, runDynoPull } from './dyno';
+
+/** Nudge the framed engine up/right, away from the bottom-left HUD. */
+const VIEW_OFFSET = { x: 0.07, y: 0.06 };
 import { computeLayout, strokeAt, type Stroke } from '../sim/layout';
 import { show, fmt } from './units';
 import { engineCode } from './format';
@@ -44,7 +47,7 @@ export function Viewport() {
       data-testid="viewport"
     >
       <div className="scene">
-        <SceneHost config={config} rpm={rpm} running={running} viewMode={viewMode} load={load} egtC={egtC} onCylinderHover={onHover} quality={quality} onFps={onFps} />
+        <SceneHost config={config} rpm={rpm} running={running} viewMode={viewMode} load={load} egtC={egtC} onCylinderHover={onHover} quality={quality} onFps={onFps} viewOffset={VIEW_OFFSET} onCrankAngle={onSceneCrankAngle} />
       </div>
       <div className="vignette" />
       <HudTitle />

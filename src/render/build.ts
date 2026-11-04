@@ -1338,7 +1338,7 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
     }
     if (throttlePlate) (throttlePlate as THREE.Mesh).rotation.x = Math.PI / 2 - (0.12 + 0.88 * a.load) * (Math.PI / 2) * 0.95;
     // exhaust heat
-    const t = clamp((a.egtC - 560) / 480, 0, 1);
+    const t = clamp((a.egtC - 640) / 420, 0, 1);
     const flicker = 1 + 0.05 * Math.sin(time * 37) * (a.revPerSec > 0 ? 1 : 0);
     heatColor.setRGB(1, 0.1 + 0.32 * t * t, 0.03 + 0.08 * t * t * t);
     const hm = lib.base.header;
