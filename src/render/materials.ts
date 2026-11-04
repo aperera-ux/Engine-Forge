@@ -48,6 +48,34 @@ function normalMapFromHeight(size: number, height: (x: number, y: number) => num
   return t;
 }
 
+function grayTex(size: number, f: (x: number, y: number) => number) {
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const v = Math.max(0, Math.min(255, f(x / size, y / size) * 255));
+    const i = (y * size + x) * 4;
+    data[i] = data[i + 1] = data[i + 2] = v;
+    data[i + 3] = 255;
+  }
+  const t = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  t.generateMipmaps = true;
+  t.needsUpdate = true;
+  return t;
+}
+let _castRough: THREE.Texture | null = null;
+let _brushRough: THREE.Texture | null = null;
+function castRoughTex() {
+  return (_castRough ??= grayTex(256, (x, y) => {
+    let v = 0, a = 0.5, f = 16;
+    for (let o = 0; o < 4; o++) { v += valueNoise(x * f, y * f, f, o + 20) * a; a *= 0.5; f *= 2; }
+    return 0.86 + 0.14 * v + (hash(Math.floor(x * 256), Math.floor(y * 256), 3) - 0.5) * 0.1;
+  }));
+}
+function brushRoughTex() {
+  return (_brushRough ??= grayTex(256, (x, y) => 0.8 + 0.25 * valueNoise(x * 4, y * 128, 4, 31) + (hash(0, Math.floor(y * 256), 9) - 0.5) * 0.15));
+}
 let _cast: THREE.Texture | null = null;
 let _crinkle: THREE.Texture | null = null;
 let _fins: THREE.Texture | null = null;
@@ -151,56 +179,64 @@ export class MaterialLib {
   xrayShell = xrayMaterial('#6cb8ff', 1.0);
   constructor(look: Look) {
     const cast = castTex();
+    const cr = castRoughTex();
+    const br = brushRoughTex();
+    const mach = machinedTex();
+    const crink = crinkleTex();
     const S = (p: THREE.MeshPhysicalMaterialParameters) => new THREE.MeshPhysicalMaterial(p);
-    const alu = (c: string, rough = 0.5) =>
-      S({ color: c, metalness: 0.72, roughness: rough, normalMap: cast, normalScale: new THREE.Vector2(0.35, 0.35) });
-    this.base.block = look.ironBlock
-      ? S({ color: '#55585d', metalness: 0.85, roughness: 0.62, normalMap: cast, normalScale: new THREE.Vector2(0.6, 0.6) })
-      : alu('#a8adb4', 0.5);
-    this.base.blockDetail = this.base.block;
+    const v2 = (k: number) => new THREE.Vector2(k, k);
+    /** sand-cast metal: satin, grainy */
+    const castM = (c: string, rough: number, env = 0.85, ns = 0.22) =>
+      S({ color: c, metalness: 1, roughness: rough, roughnessMap: cr, normalMap: cast, normalScale: v2(ns), envMapIntensity: env });
+    /** machined / brushed metal */
+    const machM = (c: string, rough: number, env = 1, aniso = 0.5) =>
+      S({ color: c, metalness: 1, roughness: rough, roughnessMap: br, normalMap: mach, normalScale: v2(0.12 + aniso * 0.1), envMapIntensity: env }) // (physical anisotropy produced NaNs → bloom blackout);
+    this.base.block = look.ironBlock ? castM('#5d6066', 0.86, 0.7, 0.7) : castM('#b3b8bf', 0.72, 0.85);
+    this.base.blockDetail = look.ironBlock ? castM('#4a4d52', 0.6, 0.6) : castM('#8d9299', 0.6, 0.7);
     this.base.crankcase = this.base.block;
-    this.base.head = alu('#c9ccd1', 0.42);
-    this.base.timing = look.racy ? S({ color: '#43474d', metalness: 0.8, roughness: 0.38, normalMap: cast, normalScale: new THREE.Vector2(0.5, 0.5) }) : alu('#9ea3aa', 0.48);
-    this.base.coilAccent = S({ color: look.racy ? '#d21d1d' : '#c9a227', metalness: 0.2, roughness: 0.4 });
-    this.base.pan = look.racy ? alu('#9da1a7', 0.35) : S({ color: '#26282c', metalness: 0.7, roughness: 0.5 });
+    this.base.head = castM('#c2c6cc', 0.66, 0.9);
+    this.base.timing = look.racy ? castM('#6b7078', 0.62, 0.85, 0.3) : castM('#a3a8af', 0.66, 0.85);
+    this.base.coilAccent = S({ color: look.racy ? '#c81d1d' : '#c9a227', metalness: 0.1, roughness: 0.45 });
+    this.base.pan = look.racy ? castM('#9fa4ab', 0.6, 0.8) : S({ color: '#232528', metalness: 0.6, roughness: 0.6, normalMap: crink, normalScale: v2(0.4), envMapIntensity: 0.6 });
     this.base.cover = look.racy
-      ? S({ color: '#a3101a', metalness: 0.15, roughness: 0.5, clearcoat: 0.4, clearcoatRoughness: 0.5, normalMap: crinkleTex(), normalScale: new THREE.Vector2(1.1, 1.1) })
-      : S({ color: '#141416', metalness: 0.2, roughness: 0.55, clearcoat: 0.3, clearcoatRoughness: 0.6, normalMap: crinkleTex(), normalScale: new THREE.Vector2(1.0, 1.0) });
-    this.base.coverTrim = S({ color: '#d9dce0', metalness: 1, roughness: 0.18 });
-    this.base.crank = S({ color: '#dfe2e6', metalness: 1, roughness: 0.16, normalMap: machinedTex(), normalScale: new THREE.Vector2(0.15, 0.15) });
-    this.base.forged = S({ color: '#8d9198', metalness: 1, roughness: 0.42, normalMap: cast, normalScale: new THREE.Vector2(0.3, 0.3) });
-    this.base.rod = look.titaniumRods
-      ? S({ color: '#9b9488', metalness: 1, roughness: 0.32, iridescence: 0.4, iridescenceIOR: 1.6 })
-      : S({ color: '#aeb2b8', metalness: 1, roughness: 0.28 });
-    this.base.piston = S({ color: '#d4d6d9', metalness: 1, roughness: 0.3, normalMap: machinedTex(), normalScale: new THREE.Vector2(0.12, 0.12) });
-    this.base.valve = S({ color: '#c4c7cc', metalness: 1, roughness: 0.25 });
-    this.base.valveEx = S({ color: '#8f8a84', metalness: 1, roughness: 0.38 });
-    this.base.spring = S({ color: look.racy ? '#2a5bd7' : '#c9a227', metalness: 0.6, roughness: 0.35 });
-    this.base.cam = S({ color: '#cfd2d6', metalness: 1, roughness: 0.14 });
-    this.base.steel = S({ color: '#b8bcc2', metalness: 1, roughness: 0.3 });
-    this.base.chrome = S({ color: '#f0f2f5', metalness: 1, roughness: 0.06 });
-    this.base.blackPlastic = S({ color: '#121314', metalness: 0, roughness: 0.55, clearcoat: 0.2 });
+      ? S({ color: '#9a0f18', metalness: 0.1, roughness: 0.62, clearcoat: 0.25, clearcoatRoughness: 0.55, normalMap: crink, normalScale: v2(1.3), envMapIntensity: 0.8 })
+      : S({ color: '#161719', metalness: 0.15, roughness: 0.68, clearcoat: 0.2, clearcoatRoughness: 0.6, normalMap: crink, normalScale: v2(1.2), envMapIntensity: 0.8 });
+    this.base.coverTrim = machM('#cfd2d6', 0.3, 1, 0.6);
+    this.base.crank = machM('#c9ccd1', 0.28, 1, 0.7);
+    this.base.forged = castM('#7f838a', 0.62, 0.8, 0.35);
+    this.base.rod = look.titaniumRods ? machM('#8f8a80', 0.36, 1, 0.4) : machM('#a3a7ad', 0.38, 0.9, 0.3);
+    this.base.piston = machM('#c6c9cd', 0.34, 0.9, 0.4);
+    this.base.valve = machM('#b8bcc1', 0.3, 1, 0.3);
+    this.base.valveEx = S({ color: '#7d7872', metalness: 1, roughness: 0.48, envMapIntensity: 0.8 });
+    this.base.spring = S({ color: look.racy ? '#4d5a52' : '#5a5e58', metalness: 0.85, roughness: 0.42, envMapIntensity: 0.8 });
+    this.base.cam = machM('#bfc2c7', 0.26, 1, 0.6);
+    this.base.steel = machM('#a3a7ad', 0.42, 0.8, 0);
+    this.base.boltSteel = S({ color: '#8e9298', metalness: 1, roughness: 0.4, envMapIntensity: 0.8 });
+    this.base.chrome = S({ color: '#e8eaee', metalness: 1, roughness: 0.1, envMapIntensity: 1.1 });
+    this.base.blackPlastic = S({ color: '#141516', metalness: 0, roughness: 0.62, normalMap: cast, normalScale: v2(0.2), envMapIntensity: 0.6 });
     this.base.rubber = S({ color: '#0d0d0e', metalness: 0, roughness: 0.85 });
-    this.base.ceramic = S({ color: '#ece8df', metalness: 0, roughness: 0.3 });
+    this.base.ceramic = S({ color: '#e6e2d8', metalness: 0, roughness: 0.35 });
     this.base.intake = look.racy
-      ? S({ color: '#17181b', metalness: 0.3, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.12 }) // carbon-ish gloss black
-      : alu('#b4b8be', 0.4);
-    this.base.runner = look.racy ? S({ color: '#d8dbe0', metalness: 1, roughness: 0.14 }) : alu('#b4b8be', 0.4);
-    this.base.chargePipe = S({ color: '#c2c6cc', metalness: 1, roughness: 0.32 });
-    this.base.trumpet = S({ color: '#e9ecf0', metalness: 1, roughness: 0.08 });
-    this.base.castAlu = alu('#c3c6cb', 0.42);
-    this.base.filter = S({ color: look.racy ? '#b31220' : '#2b2d31', metalness: 0, roughness: 0.8, normalMap: finTex(), normalScale: new THREE.Vector2(1.2, 1.2) });
-    this.base.icCore = S({ color: '#9ea3aa', metalness: 1, roughness: 0.35, normalMap: finTex(), normalScale: new THREE.Vector2(2, 2) });
-    this.base.blower = look.racy ? S({ color: '#e4e7eb', metalness: 1, roughness: 0.1 }) : alu('#bfc3c8', 0.35);
-    this.base.belt = S({ color: '#151516', metalness: 0, roughness: 0.75, normalMap: finTex(), normalScale: new THREE.Vector2(0.6, 0.6) });
-    this.base.flywheel = S({ color: '#9fa3a9', metalness: 1, roughness: 0.22, normalMap: machinedTex(), normalScale: new THREE.Vector2(0.3, 0.3) });
+      ? S({ color: '#1a1b1e', metalness: 0.4, roughness: 0.55, normalMap: crink, normalScale: v2(0.5), clearcoat: 0.3, clearcoatRoughness: 0.4, envMapIntensity: 0.8 })
+      : castM('#b9bdc3', 0.62, 0.85);
+    this.base.runner = castM(look.racy ? '#b5b9bf' : '#b4b8be', 0.55, 0.9, 0.3);
+    this.base.chargePipe = S({ color: '#b8bcc2', metalness: 1, roughness: 0.42, roughnessMap: br, envMapIntensity: 0.85 });
+    this.base.trumpet = S({ color: '#e9ecf0', metalness: 1, roughness: 0.12, envMapIntensity: 1.1 });
+    this.base.castAlu = castM('#bcc0c6', 0.64, 0.85);
+    this.base.filter = S({ color: look.racy ? '#a3121d' : '#2b2d31', metalness: 0, roughness: 0.85, normalMap: finTex(), normalScale: v2(1.2) });
+    this.base.icCore = S({ color: '#8d9299', metalness: 1, roughness: 0.5, normalMap: finTex(), normalScale: v2(2), envMapIntensity: 0.7 });
+    this.base.blower = look.racy ? machM('#d5d8dc', 0.24, 1, 0.5) : castM('#bfc3c8', 0.55, 0.9);
+    this.base.belt = S({ color: '#151516', metalness: 0, roughness: 0.78, normalMap: finTex(), normalScale: v2(0.6) });
+    this.base.flywheel = machM('#9a9ea4', 0.36, 0.85, 0.3);
 
     this.base.mainCap = this.base.forged;
+    this.base.brass = S({ color: '#b58a3c', metalness: 1, roughness: 0.45, envMapIntensity: 0.8 });
+    this.base.oilFilter = S({ color: look.racy ? '#1b1c1f' : '#1d3f8a', metalness: 0.3, roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.3 });
     this.base.ignitionBoot = S({ color: look.racy ? '#c81e1e' : '#1b1b1d', metalness: 0, roughness: 0.6 });
-    const header = S({ color: '#ffffff', vertexColors: true, metalness: 1, roughness: 0.3, emissive: '#ff4a12', emissiveIntensity: 0 });
+    const header = S({ color: '#ffffff', vertexColors: true, metalness: 1, roughness: 0.38, roughnessMap: br, envMapIntensity: 0.85, emissive: '#ff4a12', emissiveIntensity: 0 });
     addHeat(header);
     this.base.header = header;
-    const turbine = S({ color: '#ffffff', vertexColors: true, metalness: 0.9, roughness: 0.55, emissive: '#ff4a12', emissiveIntensity: 0 });
+    const turbine = S({ color: '#ffffff', vertexColors: true, metalness: 0.9, roughness: 0.7, roughnessMap: cr, normalMap: cast, envMapIntensity: 0.7, emissive: '#ff4a12', emissiveIntensity: 0 });
     addHeat(turbine);
     this.base.turbine = turbine;
   }

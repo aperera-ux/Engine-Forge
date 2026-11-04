@@ -108,6 +108,23 @@ export function box(w: number, h: number, d: number, x = 0, y = 0, z = 0) {
   return g;
 }
 
+/** Box-projected UVs (object space mm / tile) so textures have consistent world scale. */
+export function boxUV(g: THREE.BufferGeometry, tile = 45) {
+  const p = g.attributes.position, nr = g.attributes.normal;
+  const uv = new Float32Array(p.count * 2);
+  for (let i = 0; i < p.count; i++) {
+    const ax = Math.abs(nr.getX(i)), ay = Math.abs(nr.getY(i)), az = Math.abs(nr.getZ(i));
+    let u, v;
+    if (ax >= ay && ax >= az) { u = p.getZ(i); v = p.getY(i); }
+    else if (ay >= az) { u = p.getX(i); v = p.getZ(i); }
+    else { u = p.getX(i); v = p.getY(i); }
+    uv[i * 2] = u / tile;
+    uv[i * 2 + 1] = v / tile;
+  }
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return g;
+}
+
 /** Normalize to non-indexed position/normal/uv so arbitrary geometries can be merged. */
 export function norm(g: THREE.BufferGeometry): THREE.BufferGeometry {
   let n = g.index ? g.toNonIndexed() : g;
@@ -124,7 +141,7 @@ export function norm(g: THREE.BufferGeometry): THREE.BufferGeometry {
 
 export function merge(geoms: THREE.BufferGeometry[]): THREE.BufferGeometry {
   if (geoms.length === 0) return new THREE.BufferGeometry();
-  const ns = geoms.map(norm);
+  const ns = geoms.map((g) => boxUV(norm(g)));
   const m = mergeGeometries(ns, false);
   ns.forEach((g) => g.dispose());
   return m ?? new THREE.BufferGeometry();
@@ -137,7 +154,7 @@ export class Batcher {
     if (m) g.applyMatrix4(m);
     let arr = this.parts.get(key);
     if (!arr) this.parts.set(key, (arr = []));
-    arr.push(norm(g));
+    arr.push(boxUV(norm(g)));
   }
   build(): { key: string; geometry: THREE.BufferGeometry }[] {
     const out: { key: string; geometry: THREE.BufferGeometry }[] = [];

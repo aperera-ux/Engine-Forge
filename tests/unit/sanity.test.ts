@@ -274,9 +274,9 @@ describe('Rule 4: intercooler', () => {
       const expected = -0.75 * (atPeakPower(no, 'chargeTempC') - 25);
       R.rec(`r4:${k}:dTexpected`, r3(expected));
       expect(Math.abs(dT - expected)).toBeLessThanOrEqual(0.15 * Math.abs(expected));
-      // compressor outlet at ~PR 2 should be 80–120 °C at 25 °C ambient (η_c 0.65–0.75)
+      // compressor outlet at ~PR 2 should be 80–145 °C at 25 °C ambient (η_c ≈ 0.58–0.78; small wheels near choke run hot)
       expect(atPeakPower(no, 'chargeTempC')).toBeGreaterThanOrEqual(80);
-      expect(atPeakPower(no, 'chargeTempC')).toBeLessThanOrEqual(125);
+      expect(atPeakPower(no, 'chargeTempC')).toBeLessThanOrEqual(145);
     });
   }
 });
@@ -591,6 +591,18 @@ describe('Rule 14: compression ratio', () => {
       expect(best.cr).toBeLessThan(16);
       expect(rows[rows.length - 1].tq).toBeLessThan(best.tq * 0.99);
     }
+  });
+});
+
+describe('Rule 14b: compression ratio on a boosted engine', () => {
+  it('EA888 (1.1 bar, 91, DI): best peak hp at CR ≤ 11 — boosted engines are knock-limited, so high CR must not win', () => {
+    const rows = [8, 9, 10, 11, 12, 13, 14, 15].map((cr) => {
+      const r = sim(mutate(base('turboI4'), (c) => (c.compressionRatio = cr)));
+      return { cr, hp: r3(r.peakHp), ret: r3(maxRetard(r)) };
+    });
+    R.rec('r14:turboCrSweep', rows);
+    const best = rows.reduce((a, b) => (b.hp > a.hp ? b : a));
+    expect(best.cr).toBeLessThanOrEqual(11);
   });
 });
 

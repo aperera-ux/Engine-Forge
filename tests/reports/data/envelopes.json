@@ -1,37 +1,100 @@
 {
- "stockRetard:honda-k20a-dc5": 0,
- "stockRetard:honda-f20c-ap1": 0,
- "stockRetard:toyota-4age-20v-blacktop": 0,
- "stockRetard:toyota-2jz-gte-us": 1.875,
- "stockRetard:gm-ls3": 0,
- "stockRetard:gm-ls7": 0,
- "stockRetard:ford-coyote-gen3": 0,
- "stockRetard:bmw-s54-e46m3": 1.563,
+ "stockRetard:honda-k20a-dc5": {
+  "from2000": 0,
+  "from3500": 0
+ },
+ "stockRetard:honda-f20c-ap1": {
+  "from2000": 0,
+  "from3500": 0
+ },
+ "stockRetard:toyota-4age-20v-blacktop": {
+  "from2000": 0,
+  "from3500": 0
+ },
+ "stockRetard:toyota-2jz-gte-us": {
+  "from2000": 1.875,
+  "from3500": 0
+ },
+ "stockRetard:gm-ls3": {
+  "from2000": 0,
+  "from3500": 0
+ },
+ "stockRetard:gm-ls7": {
+  "from2000": 0,
+  "from3500": 0
+ },
+ "stockRetard:ford-coyote-gen3": {
+  "from2000": 0,
+  "from3500": 0
+ },
+ "stockRetard:bmw-s54-e46m3": {
+  "from2000": 1.563,
+  "from3500": 0
+ },
+ "stockRetard:bmw-b58-340i": {
+  "from2000": 17.103,
+  "from3500": 10.625
+ },
+ "stockRetard:vw-ea888-gen3-gti": {
+  "from2000": 15.938,
+  "from3500": 9.375
+ },
+ "stockRetard:ford-10-ecoboost": {
+  "from2000": 15.882,
+  "from3500": 11.126
+ },
+ "stockRetard:ford-35-ecoboost-gen2": {
+  "from2000": 16.563,
+  "from3500": 12.5
+ },
+ "stockRetard:toyota-1gr-fe": {
+  "from2000": 0,
+  "from3500": 0
+ },
+ "stockRetard:subaru-ej257-sti": {
+  "from2000": 7.5,
+  "from3500": 4.375
+ },
+ "stockRetard:porsche-9a1-40-gt3": {
+  "from2000": 5.313,
+  "from3500": 0
+ },
+ "stockRetard:ferrari-f136-458": {
+  "from2000": 3.125,
+  "from3500": 0
+ },
+ "stockRetard:audi-52-v10-r8plus": {
+  "from2000": 4.688,
+  "from3500": 0
+ },
+ "stockRetard:ferrari-f140fc-f12": {
+  "from2000": 5.625,
+  "from3500": 0
+ },
+ "stockRetard:dodge-hellcat-62": {
+  "from2000": 2.813,
+  "from3500": 0
+ },
+ "stockRetard:mazda-skyactiv-g25": {
+  "from2000": 5.625,
+  "from3500": 0
+ },
+ "stockRetard:chevy-350-zz4": {
+  "from2000": 0,
+  "from3500": 0
+ },
  "plateau:bmw-b58-340i": {
   "worstRpm": 1400,
   "frac": 0.777
  },
- "stockRetard:bmw-b58-340i": 17.103,
  "plateau:vw-ea888-gen3-gti": {
   "worstRpm": 1600,
   "frac": 0.865
  },
- "stockRetard:vw-ea888-gen3-gti": 15.938,
  "plateau:ford-10-ecoboost": {
   "worstRpm": 1450,
   "frac": 0.666
  },
- "stockRetard:ford-10-ecoboost": 15.882,
- "stockRetard:ford-35-ecoboost-gen2": 16.563,
- "stockRetard:toyota-1gr-fe": 0,
- "stockRetard:subaru-ej257-sti": 7.5,
- "stockRetard:porsche-9a1-40-gt3": 5.313,
- "stockRetard:ferrari-f136-458": 3.125,
- "stockRetard:audi-52-v10-r8plus": 4.688,
- "stockRetard:ferrari-f140fc-f12": 5.625,
- "stockRetard:dodge-hellcat-62": 2.813,
- "stockRetard:mazda-skyactiv-g25": 5.625,
- "stockRetard:chevy-350-zz4": 0,
  "mae": 5.657,
  "summary": [
   {

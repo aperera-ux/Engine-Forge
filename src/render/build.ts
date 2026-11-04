@@ -32,6 +32,8 @@ export interface EngineModel {
   /** Invisible per-cylinder pick volumes (attach pointer handlers here only). */
   hitRoot: THREE.Group;
   bounds: THREE.Box3;
+  /** Block/heads/covers/intake only: used for camera framing. */
+  coreBounds: THREE.Box3;
   hitMeshes: THREE.Mesh[];
   update(a: AnimInput): void;
   setViewMode(m: ViewMode): void;
@@ -65,6 +67,32 @@ interface ValveRec {
   push?: { start: THREE.Vector3; dir: THREE.Vector3; len: number; idx: number };
 }
 
+function logoMat(dispL: number, vt: string): THREE.MeshStandardMaterial {
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 230;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#121315';
+  g.fillRect(0, 0, 512, 230);
+  g.strokeStyle = '#b9bdc3';
+  g.lineWidth = 10;
+  g.strokeRect(12, 12, 488, 206);
+  g.fillStyle = '#d8dbdf';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.font = 'bold 120px system-ui, sans-serif';
+  g.fillText(dispL.toFixed(1), 256, 100);
+  g.font = 'bold 34px system-ui, sans-serif';
+  g.fillText(vt === 'pushrod' ? 'OHV' : vt.toUpperCase(), 256, 185);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  const m = new THREE.MeshStandardMaterial({ map: tex, metalness: 0.7, roughness: 0.4, envMapIntensity: 0.9 });
+  const dispose = m.dispose.bind(m);
+  m.dispose = () => { tex.dispose(); dispose(); };
+  return m;
+}
+
 export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: ViewMode): EngineModel {
   const L = computeLayout(cfg);
   const cyls = L.cylinders;
@@ -81,6 +109,7 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
   const batch = new Batcher();
   const disposables: { dispose(): void }[] = [];
 
+  const up0 = new THREE.Vector3(0, 1, 0);
   // ---- z mapping (front cylinder at +z) ----
   const zsMm = cyls.map((c) => c.zMm);
   const zMinCyl = Math.min(...zsMm), zMaxCyl = Math.max(...zsMm);
@@ -287,10 +316,16 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
         batch.add(`block|${k}`, g, Mb[k]);
       }
     }
-    for (const c of bankCyls) for (const s of [-1, 1]) {
-      const g = new THREE.CylinderGeometry(0.5 * B, 0.5 * B, deck - y0Bank - 0.45 * B, 28, 1);
-      g.translate(s * (W / 2 - 0.43 * B), (deck + y0Bank) / 2 - 0.05 * B, ZW(c.zMm));
-      batch.add(`block|${k}`, g, Mb[k]);
+    // vertical cast ribs between bores and brass freeze plugs
+    for (let i = 0; i < bankCyls.length; i++) for (const s of [-1, 1]) {
+      const zw = ZW(bankCyls[i].zMm);
+      if (i > 0) {
+        const zr = (ZW(bankCyls[i - 1].zMm) + zw) / 2;
+        batch.add(`block|${k}`, extrudeY(roundRect(s * (W / 2 + 0.01 * B), zr, 0.05 * B, 0.07 * B, 0.02 * B, 3), [], y0Bank + 0.05 * B, deck - 0.1 * B, 0.01 * B, 3), Mb[k]);
+      }
+      const fp = new THREE.CylinderGeometry(0.1 * B, 0.1 * B, 0.03 * B, 20).rotateZ(Math.PI / 2);
+      fp.translate(s * (W / 2 + 0.012 * B), y0Bank + 0.42 * (deck - y0Bank), zw);
+      batch.add('brass|-1', fp, Mb[k]);
     }
     for (const s of [-1, 1]) {
       batch.add(`block|${k}`, box(0.04 * B, 0.05 * B, blockLen * 0.96, s * (W / 2 + 0.015 * B), deck - 0.18 * B, zwMid), Mb[k]);
@@ -344,6 +379,30 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
     batch.add('chrome|-1', plug);
   }
 
+  // oil filter + dipstick
+  {
+    const fpos = inline ? new THREE.Vector3(sI(0) * (W / 2 + 0.32 * B), 0.05 * deck, zwMid - 0.2 * B) : new THREE.Vector3(-(halfRail + 0.25 * B), yRail + 0.15 * B, zwF - 0.9 * B);
+    const fdir = (inline ? new THREE.Vector3(sI(0) * 0.6, -0.8, 0) : new THREE.Vector3(-0.85, -0.5, 0)).normalize();
+    const fl = 0.95 * B, fr = 0.38 * B;
+    const prof: V2[] = [[0.001, 0], [fr * 0.8, 0], [fr, 0.05 * B]];
+    for (let i = 0; i <= 12; i++) prof.push([fr * (i % 2 ? 0.985 : 1), 0.08 * B + ((fl - 0.2 * B) * i) / 12]);
+    prof.push([fr, fl - 0.08 * B], [fr * 0.9, fl], [0.001, fl]);
+    const fg = lathe(prof, 36);
+    fg.applyMatrix4(new THREE.Matrix4().compose(fpos, new THREE.Quaternion().setFromUnitVectors(up0, fdir), new THREE.Vector3(1, 1, 1)));
+    batch.add('oilFilter|-1', fg);
+    const boss = new THREE.CylinderGeometry(fr * 0.85, fr * 0.95, 0.14 * B, 28).translate(0, -0.06 * B, 0);
+    boss.applyMatrix4(new THREE.Matrix4().compose(fpos, new THREE.Quaternion().setFromUnitVectors(up0, fdir), new THREE.Vector3(1, 1, 1)));
+    batch.add('castAlu|-1', boss);
+    // dipstick tube from the pan rail up the side of the block
+    const kk = 0;
+    const sd = inline ? sI(0) : -1;
+    const p0 = toWorld(kk, sd * (W / 2 + 0.06 * B), y0Bank, zwMid + 0.6 * B);
+    const p1 = toWorld(kk, sd * (W / 2 + 0.18 * B), deck + 0.2 * B, zwMid + 0.8 * B);
+    batch.add('steel|-1', varTube(bez(p0, p0.clone().add(new THREE.Vector3(0, 0.2 * B, 0)), p1.clone().add(new THREE.Vector3(0, -0.4 * B, 0)), p1), () => 0.035 * B, 16, 8));
+    const ring = new THREE.TorusGeometry(0.11 * B, 0.03 * B, 8, 20).translate(p1.x, p1.y + 0.12 * B, p1.z);
+    batch.add('coilAccent|-1', ring);
+  }
+
   // =====================================================================
   // HEADS, COVERS, PLUGS
   // =====================================================================
@@ -378,11 +437,26 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
         }
       }
     }
-    // cover bolts / trim
-    for (const z of [zwF - 0.15 * B, zwR + 0.15 * B, zwMid]) {
-      const g = new THREE.CylinderGeometry(0.035 * B, 0.035 * B, 0.05 * B, 6);
-      g.translate(0, (vt === 'dohc' ? headTop + 0.1 * B : coverTop) + 0.02 * B, z);
-      batch.add(`chrome|${k}`, g, Mb[k]);
+    // cover gasket flange + perimeter bolts
+    batch.add(`cover|${k}`, extrudeY(roundRect(0, zwMid, Wh * 0.97, blockLen - 0.01 * B, 0.12 * B, 5), [], headTop - 0.03 * B, headTop + 0.03 * B, 0.01 * B, 4), Mb[k]);
+    {
+      const nb = Math.max(3, Math.round(blockLen / (0.55 * B)));
+      for (let i = 0; i < nb; i++) for (const sx of [-1, 1]) {
+        const z = zwR + 0.2 * B + ((blockLen - 0.4 * B) * i) / (nb - 1);
+        const g = new THREE.CylinderGeometry(0.032 * B, 0.032 * B, 0.04 * B, 6);
+        g.translate(sx * (Wh * 0.97 / 2 - 0.05 * B), headTop + 0.05 * B, z);
+        batch.add('boltSteel|-1', g, Mb[k]);
+      }
+    }
+    // cast logo plate with displacement
+    {
+      const dispL = (Math.PI / 4) * B * B * cfg.strokeMm * n / 1e6;
+      const plateY = vt === 'dohc' ? headTop + 0.1 * B : coverTop + 0.04 * B;
+      const pw = vt === 'dohc' ? Math.min(Wh * 0.36, 0.5 * B) : Wh * 0.42;
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(pw, 0.03 * B, pw * 0.45), logoMat(dispL, vt));
+      plate.position.set(0, plateY + 0.015 * B, zwF - (vt === 'pushrod' ? 0.16 * B + pw * 0.25 : 0.12 * B + pw * 0.23));
+      bankGroups[k].add(plate);
+      disposables.push(plate.geometry, plate.material as THREE.Material);
     }
     // spark plugs and coils
     for (const c of bankCyls) {
@@ -964,7 +1038,7 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
     hotGeos.push(varTube(new THREE.LineCurve3(C.clone().add(new THREE.Vector3(0, 0, 0.05 * B)), cEnd), (u) => cr0 + (cr1 - cr0) * u, 10, 24, () => tint(0.55), () => 0.45));
     collectorEnds.push({ k, p: cEnd, ob });
     if (!turbo) {
-      const tail = cEnd.clone().add(new THREE.Vector3(0, -0.4 * B, -2.2 * B));
+      const tail = cEnd.clone().add(new THREE.Vector3(0, -0.25 * B, -1.2 * B));
       hotGeos.push(varTube(bez(cEnd, cEnd.clone().add(new THREE.Vector3(0, 0, -0.8 * B)), tail.clone().add(new THREE.Vector3(0, 0.2 * B, 0.6 * B)), tail), () => cr1, 24, 20, () => tint(0.85), () => 0.25));
     }
   }
@@ -1130,25 +1204,40 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
     }
   } else if (scType === 'roots' || scType === 'twin-screw') {
     const Wsc = Math.max(1.35 * B, plenum.w * 1.05);
-    const Hsc = Wsc * 0.62;
+    const Hsc = Wsc * 0.6;
     const ic = icEff > 0 ? 0.16 * B : 0;
-    const yb = plenum.y + plenum.h / 2 + ic + Hsc / 2 - 0.02 * B;
-    const z0 = plenum.z0 + 0.05 * B, z1 = plenum.z1 - 0.05 * B;
-    const cs = hull2d([...circlePts(plenum.x - Wsc * 0.24, yb, Hsc * 0.5, 24), ...circlePts(plenum.x + Wsc * 0.24, yb, Hsc * 0.5, 24)]);
-    batch.add('blower|-1', extrudeZ(shapeOf(cs), z0, z1, 0.06 * B, 6));
-    if (scType === 'roots') {
-      for (let i = 0; i <= 6; i++) {
-        const z = z0 + ((z1 - z0) * i) / 6;
-        const rib = hull2d([...circlePts(plenum.x - Wsc * 0.24, yb, Hsc * 0.5 + 0.04 * B, 24), ...circlePts(plenum.x + Wsc * 0.24, yb, Hsc * 0.5 + 0.04 * B, 24)]);
-        batch.add('blower|-1', extrudeZ(shapeOf(rib), z - 0.025 * B, z + 0.025 * B, 0.01 * B, 4));
+    const adH = 0.16 * B;
+    const yb = plenum.y + plenum.h / 2 + ic + adH + Hsc / 2;
+    const z0 = plenum.z0 + 0.12 * B, z1 = plenum.z1 - 0.02 * B;
+    const zm = (z0 + z1) / 2;
+    const px = plenum.x;
+    // manifold adapter (tapered cast plate)
+    const ad: V2[] = [[px - plenum.w * 0.52, 0], [px + plenum.w * 0.52, 0], [px + Wsc * 0.47, adH], [px - Wsc * 0.47, adH]];
+    const adG = extrudeZ(shapeOf(ad), z0 - 0.04 * B, z1 + 0.02 * B, 0.015 * B, 2);
+    adG.translate(0, plenum.y + plenum.h / 2 + ic - 0.01 * B, 0);
+    batch.add('castAlu|-1', adG);
+    // rounded-rectangle case
+    batch.add('blower|-1', extrudeZ(shapeOf(roundRect(px, yb, Wsc, Hsc, Hsc * 0.28, 8)), z0 + 0.08 * B, z1 - 0.1 * B, 0.04 * B, 8));
+    // end plates
+    for (const [za, zb2] of [[z0, z0 + 0.12 * B], [z1 - 0.14 * B, z1]] as const) {
+      batch.add('blower|-1', extrudeZ(shapeOf(roundRect(px, yb, Wsc * 1.05, Hsc * 1.08, Hsc * 0.3, 8)), za, zb2, 0.03 * B, 6));
+      for (let i = 0; i < 10; i++) {
+        const t = (i / 10) * Math.PI * 2;
+        batch.add('boltSteel|-1', cylZ(0.03 * B, zb2 - 0.01 * B, zb2 + 0.03 * B, 6, px + Math.cos(t) * Wsc * 0.44, yb + Math.sin(t) * Hsc * 0.4).applyMatrix4(new THREE.Matrix4().makeTranslation(0, 0, za === z0 ? -(zb2 - za) - 0.02 * B : 0)));
       }
+    }
+    if (scType === 'roots') {
+      // longitudinal ribs (top and sides)
+      const L = z1 - z0 - 0.3 * B;
+      for (let i = -3; i <= 3; i++) batch.add('blower|-1', box(0.035 * B, 0.06 * B, L, px + (i * Wsc) / 8.5, yb + Hsc / 2 + 0.02 * B, zm));
+      for (const sx of [-1, 1]) for (let j = -1; j <= 1; j++) batch.add('blower|-1', box(0.06 * B, 0.035 * B, L, px + sx * (Wsc / 2 + 0.02 * B), yb + (j * Hsc) / 4.5, zm));
     } else {
-      batch.add('coverTrim|-1', box(Wsc * 0.5, 0.04 * B, (z1 - z0) * 0.8, plenum.x, yb + Hsc / 2 + 0.01 * B, (z0 + z1) / 2));
+      batch.add('coverTrim|-1', extrudeZ(shapeOf(roundRect(px, yb + Hsc / 2 + 0.015 * B, Wsc * 0.55, 0.03 * B, 0.012 * B)), z0 + 0.3 * B, z1 - 0.3 * B, 0.01 * B, 2));
     }
     if (ic > 0) batch.add('icCore|-1', box(plenum.w * 0.95, ic, (z1 - z0) * 0.9, plenum.x, plenum.y + plenum.h / 2 + ic / 2, (z0 + z1) / 2));
     // snout & pulley at the belt plane
     const pr = 0.36 * B;
-    batch.add('castAlu|-1', cylZ(0.16 * B, z1, zBelt, 20, plenum.x, yb));
+    batch.add('castAlu|-1', lathe([[0.3 * B, 0], [0.26 * B, 0.15 * B], [0.18 * B, 0.3 * B], [0.15 * B, 0.32 * B], [0.15 * B, zBelt - z1 - pulleyW * 0.25], [0.001, zBelt - z1 - pulleyW * 0.25]], 28).rotateX(Math.PI / 2).translate(plenum.x, yb, z1));
     const pg = lathe([[0.001, 0], [pr, 0], [pr, pulleyW * 0.5], [0.001, pulleyW * 0.5]], 32);
     pg.rotateX(Math.PI / 2);
     const pm = new THREE.Mesh(pg, lib.base.steel);
@@ -1161,9 +1250,23 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
     batch.add('belt|-1', extrudeZ(shapeOf(beltPts, [inner]), zBelt - pulleyW * 0.22, zBelt + pulleyW * 0.22, 0, 2));
     batch.add('steel|-1', cylZ(0.17 * B, zBelt - pulleyW * 0.3, zBelt + pulleyW * 0.3, 20, idler.x, idler.y));
     // throttle on top
-    const topP = new THREE.Vector3(plenum.x, yb + Hsc / 2 - 0.02 * B, (z0 + z1) / 2 + (scType === 'roots' ? 0 : (z1 - z0) * 0.25));
-    addThrottle(topP, up.clone(), true);
-    topOfIntake = Math.max(topOfIntake, yb + Hsc);
+    if (scType === 'roots') {
+      // classic hat scoop: rises toward the front, black grille mouth
+      const Ls = (z1 - z0) * 0.55, hS = 0.8 * B, wS = Wsc * 0.56;
+      const zr = zm - Ls * 0.45;
+      const prof: V2[] = [[0, 0], [Ls, 0], [Ls + 0.04 * B, hS], [Ls * 0.35, hS * 0.92], [0.05 * B, hS * 0.35]];
+      const sg = extrudeZ(shapeOf(prof), -wS / 2, wS / 2, 0.05 * B, 6);
+      sg.rotateY(-Math.PI / 2);
+      sg.translate(px, yb + Hsc / 2, zr);
+      batch.add('blower|-1', sg);
+      batch.add('blackPlastic|-1', box(wS * 0.8, hS * 0.62, 0.04 * B, px, yb + Hsc / 2 + hS * 0.55, zr + Ls + 0.03 * B));
+      batch.add('chrome|-1', extrudeZ(shapeOf(roundRect(px, yb + Hsc / 2 + hS * 0.55, wS * 0.9, hS * 0.74, 0.06 * B), [roundRect(px, yb + Hsc / 2 + hS * 0.55, wS * 0.8, hS * 0.62, 0.04 * B)]), zr + Ls + 0.01 * B, zr + Ls + 0.07 * B, 0.01 * B, 4));
+      topOfIntake = Math.max(topOfIntake, yb + Hsc / 2 + hS);
+    } else {
+      const topP = new THREE.Vector3(plenum.x, yb + Hsc / 2 - 0.02 * B, z0 + (z1 - z0) * 0.2);
+      addThrottle(topP, new THREE.Vector3(0, 0.75, -0.66).normalize(), true);
+      topOfIntake = Math.max(topOfIntake, yb + Hsc);
+    }
   }
   if (!forced && throttleAt && !useItb) addThrottle(throttleAt.p, throttleAt.dir, true);
 
@@ -1235,6 +1338,8 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
   }
 
   root.updateMatrixWorld(true);
+  const coreBounds = new THREE.Box3();
+  for (const m of staticMeshes) if (['block', 'head', 'cover', 'crankcase', 'pan', 'intake', 'timing', 'blower', 'trumpet', 'filter', 'runner'].includes(m.userData.matKey)) coreBounds.expandByObject(m);
   const bounds = new THREE.Box3();
   for (const m of staticMeshes) bounds.expandByObject(m);
   if (headerMesh) bounds.expandByObject(headerMesh);
@@ -1282,9 +1387,9 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
         f.mesh.visible = f.core.visible = true;
         f.mesh.scale.set(1, chamber + x * (d < 20 ? 1 : 1), 1);
         f.mat.opacity = lvl * 0.65;
-        f.mat.color.copy(flameColor).multiplyScalar(1 + 2 * lvl);
+        f.mat.color.copy(flameColor).multiplyScalar(1 + 5 * lvl);
         f.coreMat.opacity = lvl;
-        f.coreMat.color.setRGB(3 * lvl + 0.5, 2.4 * lvl + 0.4, 1.4 * lvl + 0.2);
+        f.coreMat.color.setRGB(7 * lvl + 0.5, 5.5 * lvl + 0.4, 3 * lvl + 0.2);
       } else f.mesh.visible = f.core.visible = false;
     }
     pistons.instanceMatrix.needsUpdate = true;
@@ -1377,6 +1482,7 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
     root,
     hitRoot,
     bounds,
+    coreBounds,
     hitMeshes,
     update,
     setViewMode,

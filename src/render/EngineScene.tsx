@@ -118,6 +118,24 @@ function Engine(props: EngineSceneProps & { onBuilt: (m: EngineModel) => void })
   );
 }
 
+let _spot: THREE.Texture | null = null;
+/** Soft radial light pool under the engine. */
+function spotTex() {
+  if (_spot) return _spot;
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d')!;
+  const grd = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  grd.addColorStop(0, 'rgba(64,66,72,0.3)');
+  grd.addColorStop(0.45, 'rgba(36,38,42,0.12)');
+  grd.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 256, 256);
+  _spot = new THREE.CanvasTexture(c);
+  _spot.colorSpace = THREE.SRGBColorSpace;
+  return _spot;
+}
+
 function ViewOffset({ x, y }: { x: number; y: number }) {
   const { camera, size } = useThree();
   useEffect(() => {
@@ -144,12 +162,29 @@ function Rig({ model, quality }: { model: EngineModel | null; quality: 'high' | 
     const cam = camera as THREE.PerspectiveCamera;
     const vf = (cam.fov * Math.PI) / 360;
     const hf = Math.atan(Math.tan(vf) * Math.max(0.3, cam.aspect));
-    const dist = (sphere.radius / Math.sin(Math.min(vf, hf))) * 0.86;
     const prev = fitted.current;
-    const target = sphere.center.clone();
-    target.y = sphere.center.y * 0.9;
+    const target = new THREE.Vector3();
+    model.coreBounds.getCenter(target);
+    const dir0 = prev ? cam.position.clone().sub(controls.current.target).normalize() : new THREE.Vector3(1.0, 0.62, 1.3).normalize();
+    // distance so the bounding box fills ~66% of the height (and fits the width from any azimuth)
+    const need = (dir: THREE.Vector3, tanH: number, tanW: number) => {
+      const fwd = dir.clone().negate();
+      const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+      const upv = new THREE.Vector3().crossVectors(right, fwd);
+      let d = 0;
+      const b = model.coreBounds;
+      for (let i = 0; i < 8; i++) {
+        const c = new THREE.Vector3(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z).sub(target);
+        const depth = c.dot(dir); // towards camera
+        if (tanH > 0) d = Math.max(d, depth + Math.abs(c.dot(upv)) / tanH);
+        if (tanW > 0) d = Math.max(d, depth + Math.abs(c.dot(right)) / tanW);
+      }
+      return d;
+    };
+    let dist = need(dir0, Math.tan(vf) * 0.72, Math.tan(hf) * 0.85);
+    for (let k = 1; k < 8; k++) dist = Math.max(dist, need(dir0.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), (k * Math.PI) / 4), 0, Math.tan(hf) * 1.15));
     if (!prev || Math.abs(prev.radius - sphere.radius) / prev.radius > 0.12) {
-      const dir = prev ? cam.position.clone().sub(controls.current.target).normalize() : new THREE.Vector3(1.0, 0.5, 1.15).normalize();
+      const dir = dir0;
       cam.position.copy(target).addScaledVector(dir, dist);
       controls.current.target.copy(target);
       fitted.current = { radius: sphere.radius };
@@ -211,6 +246,10 @@ function Rig({ model, quality }: { model: EngineModel | null; quality: 'high' | 
             <meshStandardMaterial color="#050608" roughness={0.7} metalness={0.3} />
           )}
         </mesh>
+        <mesh rotation-x={-Math.PI / 2} position-y={0.002} renderOrder={-1}>
+          <circleGeometry args={[Math.max(3, r * 0.95), 64]} />
+          <meshBasicMaterial map={spotTex()} transparent depthWrite={false} toneMapped={false} />
+        </mesh>
         <ContactShadows key={model ? model.root.uuid : 'none'} position={[0, 0.004, 0]} scale={Math.max(12, r * 4)} blur={2.6} far={Math.max(4, r * 1.6)} opacity={0.85} resolution={512} frames={quality === 'high' ? Infinity : 1} color="#000000" />
       </group>
     </>
@@ -224,7 +263,7 @@ function StudioEnv() {
     try {
       tex = createStudioEnvironment(gl);
       scene.environment = tex;
-      scene.environmentIntensity = 1.5;
+      scene.environmentIntensity = 1.1;
     } catch (e) {
       console.warn('EngineScene: environment generation failed, using lights only', e);
     }
@@ -239,10 +278,14 @@ function StudioEnv() {
 function Lights() {
   return (
     <>
-      <ambientLight intensity={0.08} />
-      <directionalLight position={[6, 10, 5]} intensity={2.2} color="#fff4e8" />
-      <directionalLight position={[-8, 4, -6]} intensity={1.0} color="#9cc6ff" />
-      <directionalLight position={[-4, 6, 8]} intensity={0.8} color="#ffffff" />
+      <ambientLight intensity={0.04} />
+      {/* warm key (front-right, high) */}
+      <directionalLight position={[7, 9, 6]} intensity={2.6} color="#ffe6c8" />
+      {/* soft neutral fill (front-left, low) */}
+      <directionalLight position={[-7, 2.5, 5]} intensity={0.55} color="#dfe8ff" />
+      {/* cool rim from behind to pop the silhouette */}
+      <directionalLight position={[-5, 6, -9]} intensity={2.0} color="#9ccbff" />
+      <directionalLight position={[6, 3, -8]} intensity={0.9} color="#b8d6ff" />
       <StudioEnv />
     </>
   );
@@ -253,7 +296,7 @@ function FX({ mode, ao }: { mode: ViewMode; ao: boolean }) {
     <EffectComposer multisampling={0} enableNormalPass={ao}>
       {/* N8AO 2.0.1 is incompatible with three 0.187 MRT API (texture getter returns array) → postprocessing SSAO */}
       {ao ? <SSAO samples={21} rings={5} radius={0.08} intensity={mode === 'xray' ? 4 : 9} luminanceInfluence={0.5} bias={0.025} worldDistanceThreshold={20} worldDistanceFalloff={5} worldProximityThreshold={0.4} worldProximityFalloff={0.3} /> : <></>}
-      <Bloom mipmapBlur luminanceThreshold={1.25} luminanceSmoothing={0.3} intensity={mode === 'xray' ? 0.5 : 0.85} />
+      <Bloom mipmapBlur luminanceThreshold={3} luminanceSmoothing={0.2} intensity={mode === 'xray' ? 0.4 : 0.6} />
       <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
       <Vignette offset={0.3} darkness={0.65} />
       <SMAA />
