@@ -183,7 +183,7 @@ describe('directional physics', () => {
     const roots = sc('roots');
     const mid = (r: SimResult) => r.curve.find((p) => p.rpm >= 4000)!;
     expect(mid(ts).boostBar).toBeGreaterThan(0.45);
-    expect(mid(cf).boostBar).toBeLessThan(0.25);
+    expect(mid(cf).boostBar).toBeLessThan(0.55 * mid(ts).boostBar); // centrifugal ∝ rpm², PD near-flat
     expect(torqueAt(ts, 3500)).toBeGreaterThan(torqueAt(cf, 3500));
     expect(roots.peakHp).toBeLessThan(ts.peakHp);
   });

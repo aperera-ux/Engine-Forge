@@ -32,8 +32,10 @@ export interface EngineModel {
   /** Invisible per-cylinder pick volumes (attach pointer handlers here only). */
   hitRoot: THREE.Group;
   bounds: THREE.Box3;
-  /** Block/heads/covers/intake only: used for camera framing. */
+  /** Block/heads/covers/intake only. */
   coreBounds: THREE.Box3;
+  /** Whole assembly except exhaust primaries/tailpipes: used for camera framing. */
+  fitBounds: THREE.Box3;
   hitMeshes: THREE.Mesh[];
   update(a: AnimInput): void;
   setViewMode(m: ViewMode): void;
@@ -1340,6 +1342,9 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
   root.updateMatrixWorld(true);
   const coreBounds = new THREE.Box3();
   for (const m of staticMeshes) if (['block', 'head', 'cover', 'crankcase', 'pan', 'intake', 'timing', 'blower', 'trumpet', 'filter', 'runner'].includes(m.userData.matKey)) coreBounds.expandByObject(m);
+  const fitBounds = new THREE.Box3();
+  for (const m of staticMeshes) fitBounds.expandByObject(m);
+  if (turbineMesh) fitBounds.expandByObject(turbineMesh);
   const bounds = new THREE.Box3();
   for (const m of staticMeshes) bounds.expandByObject(m);
   if (headerMesh) bounds.expandByObject(headerMesh);
@@ -1483,6 +1488,7 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
     hitRoot,
     bounds,
     coreBounds,
+    fitBounds,
     hitMeshes,
     update,
     setViewMode,

@@ -80,13 +80,15 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   // Turbo exhaust manifold between ports and turbine: friction/dynamic-head loss
   // by manifold type (log manifolds are compact but restrictive at high flow).
   let lastMExh = 0;
+  let camChoice: PreparedProfile[] | null = null;
   const manifoldLoss = (mExh: number) => (turbo ? CAL.turboManifoldLossFrac * (exhaustBackPressure(c, mExh, tExhPort) - P_AMB_PA) : 0);
 
   const flowAt = (pUp: number, tUp: number, pExhTurb: number): FlowAt => {
     const pExhCyl = pExhTurb + manifoldLoss(lastMExh);
     const tFresh = Math.max(200, tUp + chargeWallHeating(rpm, c.itb) - ctx.evapVe);
     // VE depends only weakly on the throttle drop (via pe/pi): one evaluation.
-    const ve = computeVe(g, c, ctx.profiles, {
+    // The ECU's cam choice (VVT/variable lift) is made once per rpm point.
+    const ve = computeVe(g, c, camChoice ?? ctx.profiles, {
       rpm,
       sp,
       tMan: tUp,
@@ -99,6 +101,10 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
     const pMan = solveThrottle(ctx.cdAThrottle, pUp, tUp, demandPerPa);
     lastVe = ve;
     lastTFresh = tFresh;
+    if (!camChoice && ctx.profiles.length > 1) {
+      const pp = ctx.profiles.find((x) => x.profile === ve.profile);
+      if (pp) camChoice = [pp];
+    }
     const mAir = demandPerPa * pMan;
     lastMExh = mAir * (1 + 1 / afrAct);
     return { mAir, mExh: lastMExh, pMan, tExh: turbo ? tExhPort - 40 : tExhPort };
@@ -153,7 +159,7 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   const q = CAL.pressureHeatFrac * eStoich * Math.min(1, 1 / c.lambda);
 
   const burn = burnDuration(c, rpm);
-  const spark = knockLimitedSpark({ g, rpm, pBdc, tIvc, q, burnDeg: burn, octane: ctx.octane }, burn);
+  const spark = knockLimitedSpark({ g, rpm, pBdc, tIvc, q, burnDeg: burn, octane: octaneIndex(c, pMan / 1e5) }, burn);
   const eta = indicatedEfficiency(c, rpm, burn);
   const lamF = lambdaPowerFactor(c.lambda);
   const wInd = eta * lamF * spark.workRatio * eStoich; // J/cyl-cycle
@@ -170,8 +176,8 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   const powerKw = (torqueNm * rpm * 2 * Math.PI) / 60 / 1000;
   const fuelKgS = flow.mAir / afrAct;
   const egtK = exhaustTemp(c, tIvc, (wInd / mAirCyl), rpm);
-  // BSFC is meaningless near zero brake power: report 0 (no value) below 5 kW.
-  const bsfc = powerKw >= 5 ? (fuelKgS * 3.6e6) / powerKw : 0;
+  // BSFC is meaningless near zero brake power: report 0 (no value) below 1 kW.
+  const bsfc = powerKw >= 1 ? (fuelKgS * 3.6e6) / powerKw : 0;
   const bte = fuelKgS > 0 ? Math.min(0.6, (powerKw * 1000) / (fuelKgS * fuel.lhv)) : 0;
 
   const point: DynoPoint = {
@@ -183,7 +189,7 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
     bmepBar: Math.max(0, bmepBar),
     imepBar,
     fmepBar,
-    volumetricEfficiency: Math.min(3, flow.mAir / (cyclesPerS * g.vdTotal * (P_AMB_PA / (R_AIR * T_AMB_K)))),
+    volumetricEfficiency: flow.mAir / (cyclesPerS * g.vdTotal * (P_AMB_PA / (R_AIR * T_AMB_K))),
     mapBar: pMan / 1e5,
     boostBar: c.induction === 'na' ? 0 : Math.max(0, (pMan - P_AMB_PA) / 1e5),
     airFlowKgS: flow.mAir,
@@ -214,7 +220,7 @@ export function simulate(config: EngineConfig): SimResult {
     profiles: prepareProfiles(g, c, camCandidates(c)),
     vFloat,
     cdAThrottle: CAL.throttleCd * (Math.PI / 4) * (c.throttleMm / 1000) ** 2,
-    evapVe: evapCooling(c, c.directInjection ? 0.15 : 0.1),
+    evapVe: evapCooling(c, c.directInjection ? 0.22 : 0.1),
     evapKnock: evapCooling(c, c.directInjection ? CAL.evapDi : CAL.evapPfi),
     octane: octaneIndex(c),
   };
@@ -225,15 +231,51 @@ export function simulate(config: EngineConfig): SimResult {
   let surgeRpm: number | null = null;
   let chokeRpm: number | null = null;
   let spoolRpm: number | null = null;
+  let trimPrev = 0.75;
+  let shortfall: { ratio: number; rpm: number; reason: string; reachedAnywhere: boolean } | null = null;
   for (const rpm of rpmGrid(c)) {
     // EGT / exhaust pressure warm-started from the previous rpm point; the
     // first point is iterated so the sweep starts self-consistent.
     let r = evalPoint(ctx, rpm, egt, pExh);
     if (curve.length === 0) r = evalPoint(ctx, rpm, r.egtK, r.pExhCyl);
+    // Knock-aware boost control (as OEM ECUs do): when holding target boost
+    // would need more than ecuMaxRetardDeg of retard, the wastegate target is
+    // lowered until the retard is back at that limit (secant on boost).
+    // The trim is partial (as a torque-based ECU balances retard against boost):
+    // the accepted retard still rises slowly with the knock severity.
+    if (c.induction === 'turbo' && r.point.knockRetardDeg > CAL.ecuMaxRetardDeg && r.point.boostBar > 0.05) {
+      const b0 = r.point.boostBar;
+      const k0 = r.point.knockRetardDeg;
+      const lim = CAL.ecuMaxRetardDeg + CAL.ecuRetardSoft * (k0 - CAL.ecuMaxRetardDeg);
+      const at = (bar: number) => evalPoint({ ...ctx, c: { ...c, turbo: { ...c.turbo, targetBoostBar: bar } } }, rpm, r.egtK, r.pExhCyl);
+      // Secant iterations on boost (retard is smooth and monotone in boost).
+      let bA = b0;
+      let kA = k0;
+      // Warm start from the previous rpm point's trim ratio.
+      let bB = Math.min(0.97, Math.max(0.3, trimPrev)) * b0;
+      let rB = at(bB);
+      let kB = rB.point.knockRetardDeg;
+      for (let it = 0; it < 2 && Math.abs(kB - lim) > 0.4; it++) {
+        const bN = Math.min(b0, Math.max(0.05 * b0, Math.abs(kA - kB) > 0.05 ? bB - ((kB - lim) * (bB - bA)) / (kB - kA) : 0.5 * bB));
+        const rN = at(bN);
+        bA = bB;
+        kA = kB;
+        bB = bN;
+        rB = rN;
+        kB = rN.point.knockRetardDeg;
+      }
+      r = rB;
+      trimPrev = bB / b0;
+      if (r.boost) r.boost.limit = 'knock';
+    }
     egt = r.egtK;
     pExh = r.pExhCyl;
     curve.push(r.point);
     const b = r.boost;
+    if (b && c.induction === 'turbo' && rpm >= 0.5 * c.redlineRpm && c.turbo.targetBoostBar > 0.05) {
+      const ratio = r.point.boostBar / c.turbo.targetBoostBar;
+      if (!shortfall || ratio < shortfall.ratio) shortfall = { ratio, rpm, reason: b.limit, reachedAnywhere: false };
+    }
     if (b && c.induction === 'turbo') {
       if (b.surge) surgeRpm = rpm;
       if (b.choke && chokeRpm === null) chokeRpm = rpm;
@@ -256,6 +298,9 @@ export function simulate(config: EngineConfig): SimResult {
     surgeRpm,
     chokeRpm,
     spoolRpm: c.induction === 'turbo' ? spoolRpm ?? c.redlineRpm : null,
+    boostShortfall: shortfall
+      ? { ...shortfall, reachedAnywhere: Math.max(...curve.map((p) => p.boostBar)) >= 0.8 * c.turbo.targetBoostBar }
+      : null,
   });
 
   return {

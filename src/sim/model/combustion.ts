@@ -102,9 +102,15 @@ export function fuelOf(c: EngineConfig): FuelProps {
 }
 
 /** Effective octane index for end-gas auto-ignition (Kalghatgi OI + mixture). */
-export function octaneIndex(c: EngineConfig): number {
+/**
+ * Effective octane index for end-gas auto-ignition, Kalghatgi OI = RON − K·S.
+ * K falls with boost (cooler end gas at a given pressure, "beyond-RON"
+ * conditions): ≈ +0.3 NA, negative when boosted — octane sensitivity then helps.
+ */
+export function octaneIndex(c: EngineConfig, mapBar = 1): number {
   const f = fuelOf(c);
-  let oi = f.ron - CAL.octaneK * (f.ron - f.mon);
+  const k = CAL.octaneK - CAL.octaneKPerBar * Math.max(0, mapBar - 1);
+  let oi = f.ron - k * (f.ron - f.mon);
   if (c.lambda < 1) oi += 15 * Math.min(0.3, 1 - c.lambda);
   else oi -= 25 * (c.lambda - 1);
   return oi;
@@ -116,8 +122,10 @@ export function burnDuration(c: EngineConfig, rpm: number): number {
     c.valvesPerCylinder >= 4 ? 1.0 : c.valvesPerCylinder === 3 ? 1.06 : c.valvetrain === 'pushrod' ? 1.12 : 1.1;
   const bs = c.boreMm / c.strokeMm;
   const lam = 1 + 1.5 * (c.lambda - 0.9) * (c.lambda - 0.9);
+  // DI heads are designed around high-tumble ports and a central injector/plug: faster burn.
+  const di = c.directInjection ? CAL.diBurnFactor : 1;
   return (
-    (CAL.burnDeg * head * Math.pow(bs, 0.3) * Math.pow(c.boreMm / 86, CAL.burnBoreExp) * Math.pow(Math.max(500, rpm) / 4000, CAL.burnRpmExp) * lam) /
+    (CAL.burnDeg * di * head * Math.pow(bs, 0.3) * Math.pow(c.boreMm / 86, CAL.burnBoreExp) * Math.pow(Math.max(500, rpm) / 4000, CAL.burnRpmExp) * lam) /
     fuelOf(c).flameSpeed
   );
 }
@@ -193,12 +201,14 @@ export function knockLimitedSpark(
     let a = 0;
     let fa = Math.log(atMbt.knockIntegral);
     let b = maxRetard;
-    let fb = Math.log(Math.max(1e-12, best.knockIntegral));
+    let fb = Math.max(-3, Math.log(Math.max(1e-12, best.knockIntegral)));
     let side = 0;
-    for (let i = 0; i < 12 && b - a > 0.02; i++) {
-      const r = (a * fb - b * fa) / (fb - fa);
+    for (let i = 0; i < 24 && b - a > 0.05; i++) {
+      let r = (a * fb - b * fa) / (fb - fa);
+      // Guard: fall back to bisection if the secant step stalls near a bracket end.
+      if (!(r > a + 0.02 * (b - a) && r < b - 0.02 * (b - a))) r = 0.5 * (a + b);
       const out = ki(r);
-      const fr = Math.log(Math.max(1e-12, out.knockIntegral));
+      const fr = Math.max(-3, Math.log(Math.max(1e-12, out.knockIntegral)));
       if (fr > 0) {
         a = r;
         fa = fr;
@@ -211,7 +221,11 @@ export function knockLimitedSpark(
         if (side === 1) fa /= 2;
         side = 1;
       }
-      if (Math.abs(fr) < 1e-3) break;
+      if (Math.abs(fr) < 5e-3) {
+        b = r;
+        best = out;
+        break;
+      }
     }
     retard = b;
   }

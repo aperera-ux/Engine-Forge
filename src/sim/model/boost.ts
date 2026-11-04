@@ -75,7 +75,7 @@ export function surgePr(phi: number): number {
 function turbineInletPressure(cdA: number, mExh: number, t3: number, p4: number): number {
   let lo = p4;
   let hi = 20 * P_AMB_PA;
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < 18; i++) {
     const mid = 0.5 * (lo + hi);
     if (orificeFlow(cdA, mid, t3, p4, GAMMA_EXH, R_EXH) < mExh) lo = mid;
     else hi = mid;
@@ -153,7 +153,7 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number): Bo
     const top = evalPr(hi, p3);
     if (feasible(top)) best = top;
     else {
-      for (let i = 0; i < 11; i++) {
+      for (let i = 0; i < 9; i++) {
         const mid = 0.5 * (lo + hi);
         const r = evalPr(mid, p3);
         if (feasible(r)) {
@@ -175,7 +175,7 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number): Bo
       // Wastegate regulating: turbine only has to supply compressor power.
       let lo3 = res.p4;
       let hi3 = Math.max(res.p3c, res.p4 * 1.0001);
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 14; i++) {
         const mid = 0.5 * (lo3 + hi3);
         if (turbinePower(c, res.flow.mExh, res.flow.tExh, mid, res.p4, res.phi) < res.pc) lo3 = mid;
         else hi3 = mid;
@@ -214,7 +214,8 @@ export function solveSupercharger(
   // Blower speed = crank speed × fixed pulley ratio, sized so target boost is
   // reached at the reference crank speed. The rev limiter only truncates the curve.
   const refRpm = s.referenceRpm && s.referenceRpm > 1000 ? s.referenceRpm : CAL.scReferenceRpm;
-  const x = Math.min(1.5, rpm / refRpm);
+  // Blower tip-speed limit: boost stops rising ~25 % above the reference speed.
+  const x = Math.min(1.25, rpm / refRpm);
   const boost =
     s.type === 'centrifugal'
       ? s.targetBoostBar * x * x
@@ -230,8 +231,9 @@ export function solveSupercharger(
   pe = pExhOf(flow.mExh, flow.tExh);
   flow = flowAt(pUp, tc, pe);
   const dispL = (c.cylinders * Math.PI * (c.boreMm / 10) ** 2 * (c.strokeMm / 10)) / 4000;
-  const drag = (s.type === 'centrifugal' ? 0.25 : 0.55) * (rpm / 1000) * Math.sqrt(dispL) * 1000;
-  const drive = compressPower(flow.mAir, T_AMB_K, pr, eta) / 0.95 + drag;
+  // Drive losses: belt/gears (η ≈ 0.92) plus rotor/bearing drag that grows with blower speed.
+  const drag = (s.type === 'centrifugal' ? 0.3 : 0.8) * (rpm / 1000) * Math.sqrt(dispL) * 1000;
+  const drive = compressPower(flow.mAir, T_AMB_K, pr, eta) / 0.92 + drag;
   return {
     pr,
     tComp: t2,

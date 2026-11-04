@@ -54,7 +54,7 @@ export interface TurboConfig {
 
 export interface SuperchargerConfig {
   type: SuperchargerType;
-  /** Target boost at redline, bar gauge. (Physics: reached at `referenceRpm`, fixed pulley ratio.) */
+  /** Target boost, bar gauge, reached at `referenceRpm` (fixed pulley drive ratio). */
   targetBoostBar: number;
   /** Optional (physics agent): crank rpm at which targetBoostBar is reached, i.e. the pulley sizing. Default 6000. */
   referenceRpm?: number;

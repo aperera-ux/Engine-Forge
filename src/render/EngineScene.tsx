@@ -148,10 +148,10 @@ function ViewOffset({ x, y }: { x: number; y: number }) {
   return null;
 }
 
-function Rig({ model, quality }: { model: EngineModel | null; quality: 'high' | 'low' }) {
+function Rig({ model, quality, offset }: { model: EngineModel | null; quality: 'high' | 'low'; offset: { x: number; y: number } }) {
   const controls = useRef<OrbitControlsImpl>(null);
-  const { camera, scene } = useThree();
-  const fitted = useRef<{ radius: number } | null>(null);
+  const { camera, scene, size } = useThree();
+  const fitted = useRef(false);
   const idleTimer = useRef<number | undefined>(undefined);
   const floor = useRef<THREE.Group>(null);
   const sizeRef = useRef(5);
@@ -160,39 +160,45 @@ function Rig({ model, quality }: { model: EngineModel | null; quality: 'high' | 
     if (!model || !controls.current) return;
     const sphere = model.bounds.getBoundingSphere(new THREE.Sphere());
     const cam = camera as THREE.PerspectiveCamera;
-    const vf = (cam.fov * Math.PI) / 360;
-    const hf = Math.atan(Math.tan(vf) * Math.max(0.3, cam.aspect));
-    const prev = fitted.current;
-    const target = new THREE.Vector3();
-    model.coreBounds.getCenter(target);
-    const dir0 = prev ? cam.position.clone().sub(controls.current.target).normalize() : new THREE.Vector3(1.0, 0.62, 1.3).normalize();
-    // distance so the bounding box fills ~66% of the height (and fits the width from any azimuth)
-    const need = (dir: THREE.Vector3, tanH: number, tanW: number) => {
+    cam.aspect = size.width / Math.max(1, size.height);
+    const tv = Math.tan((cam.fov * Math.PI) / 360);
+    const th = tv * Math.max(0.2, cam.aspect);
+    const fb = model.fitBounds;
+    const target = fb.getCenter(new THREE.Vector3());
+    const dir0 = fitted.current ? cam.position.clone().sub(controls.current.target).normalize() : new THREE.Vector3(1.0, 0.6, 1.3).normalize();
+    const Y = new THREE.Vector3(0, 1, 0);
+    /** distance needed so the box projects within tanV / tanW half-angles from direction `dir` */
+    const need = (dir: THREE.Vector3, tanV: number, tanW: number) => {
       const fwd = dir.clone().negate();
-      const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+      const right = new THREE.Vector3().crossVectors(fwd, Y).normalize();
       const upv = new THREE.Vector3().crossVectors(right, fwd);
       let d = 0;
-      const b = model.coreBounds;
       for (let i = 0; i < 8; i++) {
-        const c = new THREE.Vector3(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z).sub(target);
-        const depth = c.dot(dir); // towards camera
-        if (tanH > 0) d = Math.max(d, depth + Math.abs(c.dot(upv)) / tanH);
+        const c = new THREE.Vector3(i & 1 ? fb.max.x : fb.min.x, i & 2 ? fb.max.y : fb.min.y, i & 4 ? fb.max.z : fb.min.z).sub(target);
+        const depth = c.dot(dir);
+        if (tanV > 0) d = Math.max(d, depth + Math.abs(c.dot(upv)) / tanV);
         if (tanW > 0) d = Math.max(d, depth + Math.abs(c.dot(right)) / tanW);
       }
       return d;
     };
-    let dist = need(dir0, Math.tan(vf) * 0.72, Math.tan(hf) * 0.85);
-    for (let k = 1; k < 8; k++) dist = Math.max(dist, need(dir0.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), (k * Math.PI) / 4), 0, Math.tan(hf) * 1.15));
-    if (!prev || Math.abs(prev.radius - sphere.radius) / prev.radius > 0.12) {
-      const dir = dir0;
-      cam.position.copy(target).addScaledVector(dir, dist);
-      controls.current.target.copy(target);
-      fitted.current = { radius: sphere.radius };
-    } else controls.current.target.lerp(target, 1);
+    // fill ~60% of the height or ~75% of the width at the current view, whichever binds first
+    let dist = Math.max(need(dir0, tv * 0.6, 0), need(dir0, 0, th * 0.75));
+    // never clip at any auto-rotate azimuth: 8% margin inside the region left by the view offset
+    // (8% margin at the framed view; while auto-rotating only require it to stay inside the frame)
+    const fv = Math.max(0.3, 1 - 2 * Math.abs(offset.y)), fh = Math.max(0.3, 1 - 2 * Math.abs(offset.x));
+    for (let k = 0; k < 12; k++) {
+      // framed view: 8% margin; other azimuths: stay in frame vertically, allow the extreme
+      // corners of long/wide engines to graze the side edges while auto-rotating
+      const dirK = dir0.clone().applyAxisAngle(Y, (k * Math.PI) / 6);
+      dist = Math.max(dist, k === 0 ? need(dirK, tv * fv * 0.92, th * fh * 0.92) : need(dirK, tv * fv, th * fh * 1.15));
+    }
+    cam.position.copy(target).addScaledVector(dir0, dist);
+    controls.current.target.copy(target);
+    fitted.current = true;
     cam.near = dist / 50;
     cam.far = dist * 20;
     cam.updateProjectionMatrix();
-    controls.current.minDistance = sphere.radius * 0.6;
+    controls.current.minDistance = dist * 0.35;
     controls.current.maxDistance = dist * 3;
     controls.current.update();
     sizeRef.current = sphere.radius;
@@ -201,7 +207,7 @@ function Rig({ model, quality }: { model: EngineModel | null; quality: 'high' | 
       (scene.fog as THREE.Fog).near = dist * 1.1;
       (scene.fog as THREE.Fog).far = dist * 3.2;
     }
-  }, [model, camera, scene]);
+  }, [model, camera, scene, size.width, size.height, offset.x, offset.y]);
 
   const r = sizeRef.current;
   return (
@@ -334,7 +340,7 @@ export function EngineScene(props: EngineSceneProps): JSX.Element {
         <fog attach="fog" args={[BG, 12, 40]} />
         <Lights />
         <Engine {...props} onBuilt={setModel} />
-        <Rig model={model} quality={quality} />
+        <Rig model={model} quality={quality} offset={{ x: props.viewOffset?.x ?? 0.06, y: props.viewOffset?.y ?? 0.05 }} />
         <ViewOffset x={props.viewOffset?.x ?? 0.06} y={props.viewOffset?.y ?? 0.05} />
         {quality === 'high' ? <FX mode={props.viewMode} ao={props.ao ?? false} /> : <LowFX />}
       </Canvas>

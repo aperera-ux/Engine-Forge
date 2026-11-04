@@ -63,7 +63,8 @@ export function camCandidates(c: EngineConfig): CamProfile[] {
   }
   if (!cam.vvt) return profiles;
   const out: CamProfile[] = [];
-  for (const p of profiles) for (const s of [-24, -12, 0, 12, 24]) out.push({ ...p, icl: p.icl + s });
+  const r = CAL.vvtRangeDeg;
+  for (const p of profiles) for (const s of [-r, -r / 2, 0, r / 2, r]) out.push({ ...p, icl: p.icl + s });
   return out;
 }
 
@@ -155,6 +156,10 @@ function profileVe(g: Geometry, c: EngineConfig, pp: PreparedProfile, inp: VeInp
   // Cam filling: IVC sets the inlet Mach index at which inertia ram fills best.
   const s = z / pp.zOpt;
   let fCam = s < 1 ? 1 - pp.backflow * Math.pow(1 - s, CAL.backflowExp) : 1 / (1 + CAL.camHighLoss * (s - 1) * (s - 1));
+  // Inertia ram: a late-closing intake valve keeps filling after BDC while the
+  // inlet gas column is moving fast — the gain is largest near the cam's tuned
+  // speed and scales with how late IVC is (the same volume that is pushed back at low speed).
+  fCam += CAL.ramGain * pp.backflow * Math.exp(-(((s - 1) / 0.35) ** 2));
 
   // Overlap reversion at low speed (worse with exhaust pressure above intake).
   const sub = Math.max(0, 1 - Math.min(1, s));
@@ -219,8 +224,8 @@ export function computeVe(g: Geometry, c: EngineConfig, profiles: PreparedProfil
   // Valve float: control of the valve is lost, VE collapses.
   const xf = inp.rpm / inp.valveFloatRpm - 1;
   // Past float the valves bounce and close late: steep but bounded loss
-  // (≈50 % by 15 % over float, floor 45 %).
-  const fFloat = xf > 0 ? Math.max(0.45, 1 - 0.5 * Math.pow(Math.min(1, xf / 0.15), 1.5)) : 1;
+  // (≈50 % by 20 % over float, floor 45 %).
+  const fFloat = xf > 0 ? Math.max(0.45, 1 - 0.5 * Math.pow(Math.min(1, xf / 0.2), 1.5)) : 1;
 
   let base = CAL.veBase[c.valvetrain];
   if (c.valvesPerCylinder === 2) base -= CAL.ve2ValvePenalty;

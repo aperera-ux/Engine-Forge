@@ -14,6 +14,8 @@ export interface WarningInputs {
   surgeRpm: number | null;
   chokeRpm: number | null;
   spoolRpm: number | null;
+  /** Boost shortfall in the upper rev range: worst achieved/target ratio and why. */
+  boostShortfall: { ratio: number; rpm: number; reason: string; reachedAnywhere: boolean } | null;
 }
 
 export function computeWarnings(w: WarningInputs): { warnings: SimWarning[]; reliabilityScore: number } {
@@ -56,7 +58,7 @@ export function computeWarnings(w: WarningInputs): { warnings: SimWarning[]; rel
   const pk = curve.reduce((a2, b2) => (b2.powerKw > a2.powerKw ? b2 : a2));
   const lossAtPeak = 1 - sparkWorkRatio(pk.knockRetardDeg);
   if (meanRetard > 15 || lossAtPeak > 0.12) add('critical', 'knock', `Severe knock: average ${r1(meanRetard)}° spark retard above 2500 rpm (${r1(maxRetard)}° at ${knockPt?.rpm} rpm), costing ${Math.round(100 * lossAtPeak)} % at peak power. Lower compression/boost or use higher-octane fuel.`, 15 + meanRetard);
-  else if (meanRetard > 12 || lossAtPeak > 0.06) add('warn', 'knock', `Knock-limited: average ${r1(meanRetard)}° retard above 2500 rpm costs torque and raises EGT.`, 4 + meanRetard / 2);
+  else if (meanRetard > 13 || lossAtPeak > 0.09) add('warn', 'knock', `Knock-limited: average ${r1(meanRetard)}° retard above 2500 rpm costs torque and raises EGT.`, 4 + meanRetard / 2);
   else if (maxRetard > 3) add('info', 'knock', `Knock-limited in places (${r1(maxRetard)}° retard at ${knockPt?.rpm} rpm); normal for a pump-fuel calibration.`, 0);
 
   // Peak cylinder pressure vs components.
@@ -83,8 +85,32 @@ export function computeWarnings(w: WarningInputs): { warnings: SimWarning[]; rel
 
   // Compressor.
   if (w.surgeRpm !== null) add('warn', 'compressor-surge', `Compressor surge below ~${w.surgeRpm} rpm: the compressor is too large for the airflow at that pressure ratio.`, 8);
-  if (w.chokeRpm !== null) add('warn', 'compressor-choke', `Compressor choked above ~${w.chokeRpm} rpm: boost falls off, charge temperature rises. Use a larger inducer.`, 6);
+  if (w.chokeRpm !== null) {
+    // Choke only in the last few hundred rpm before the limiter is the usual OEM sizing compromise.
+    const late = w.chokeRpm >= 0.9 * c.redlineRpm;
+    add(late ? 'info' : 'warn', 'compressor-choke', `Compressor choked above ~${w.chokeRpm} rpm: boost falls off, charge temperature rises.${late ? ' (Near the limiter only.)' : ' Use a larger inducer.'}`, late ? 0 : 6);
+  }
   if (w.spoolRpm !== null && w.spoolRpm > 0.7 * c.redlineRpm) add('info', 'turbo-lag', `Turbo reaches target boost only at ~${w.spoolRpm} rpm: big turbo for this displacement.`, 0);
+
+  // Boost target not reached.
+  const bs = w.boostShortfall;
+  if (bs && bs.ratio < 0.95) {
+    const why: Record<string, string> = {
+      turbine: 'the turbine cannot supply enough power (exhaust energy too low / turbine too large)',
+      'speed-line': 'the compressor is at its maximum wheel speed (pressure ratio limit) — use a larger compressor',
+      choke: 'the compressor is choking (flow limit) — use a larger inducer',
+      'exhaust-pressure': 'turbine-inlet pressure would exceed the limit — use a larger turbine A/R',
+      knock: 'knock control trims boost (octane/CR/charge temperature limit)',
+      none: 'compressor/turbine limits',
+    };
+    // Tapering at the top end is normal OEM practice (info); never getting near target is a build problem.
+    const sev = !bs.reachedAnywhere ? 'warn' : 'info';
+    add(sev, 'boost-target', `Target boost not held: ${Math.round(100 * bs.ratio)} % of target at ${bs.rpm} rpm because ${why[bs.reason] ?? bs.reason}.`, sev === 'warn' ? 4 : 0);
+  }
+
+  // No usable output at all (e.g. enormous engine on a tiny throttle/turbo).
+  const peakKw = Math.max(...curve.map((p) => p.powerKw));
+  if (peakKw < 1) add('critical', 'no-power', 'The engine produces no brake power: pumping and friction losses exceed the indicated work (check throttle size, turbine size and compression).', 50);
 
   // Geometry.
   const rodRatio = c.rodLengthMm / c.strokeMm;

@@ -48,14 +48,14 @@ export const FUELS: Record<FuelType, FuelProps> = {
 export const CAL = {
   // ── airflow ──
   /** Base volumetric efficiency (re. manifold density, before tuning gains). */
-  veBase: { pushrod: 1.0, sohc: 1.0, dohc: 1.02 } as Record<'pushrod' | 'sohc' | 'dohc', number>,
+  veBase: { pushrod: 0.99, sohc: 0.99, dohc: 1.01 } as Record<'pushrod' | 'sohc' | 'dohc', number>,
   /** VE penalty for 2-valve heads (shrouding, single port). */
   ve2ValvePenalty: 0.02,
   /** Taylor inlet Mach index at which choking begins to bite. */
-  zChoke: 0.95,
-  zChokeExp: 6,
+  zChoke: 0.85,
+  zChokeExp: 4,
   /** Optimum inlet Mach index for cam filling vs IVC (deg ABDC @0.050"). */
-  zOptAt43: 0.58,
+  zOptAt43: 0.62,
   zOptPerDeg: 0.0075,
   /** Mean valve flow coefficient scale (Ci = cdPeak * this * duration factor). */
   ciProfile: 0.6,
@@ -65,12 +65,16 @@ export const CAL = {
   backflowExp: 1.5,
   /** VE loss coefficient above the cam's tuned speed. */
   camHighLoss: 0.5,
+  /** Inertia-ram VE gain near the cam's tuned speed, × push-back volume fraction. */
+  ramGain: 0.35,
+  /** Intake cam-phaser authority used at WOT, ± crank deg about the nominal centerline. */
+  vvtRangeDeg: 24,
   /** Variable-lift low-speed lobe: duration reduction (deg) and lift ratio. */
   lowLobeDurDelta: 45,
   lowLobeLiftRatio: 0.65,
   /** Intake runner tuning amplitude (plenum / ITB). */
-  runnerAmp: 0.06,
-  runnerAmpItb: 0.08,
+  runnerAmp: 0.09,
+  runnerAmpItb: 0.11,
   /** Helmholtz frequency ratio for the main tuning peak. */
   helmholtzK: 2.1,
   /** Depth of the off-tune VE dip at 1.5× the runner tuned rpm (× amplitude). */
@@ -88,6 +92,8 @@ export const CAL = {
   burnDeg: 50,
   /** Burn-duration exponent on bore (flame travel distance). */
   burnBoreExp: 0.5,
+  /** Burn-duration factor for DI high-tumble combustion systems. */
+  diBurnFactor: 0.8,
   /** Burn-duration exponent on rpm (laminar share larger at low speed). */
   burnRpmExp: 0.1,
   /** In-cylinder heat-loss fraction at 3000 rpm and its rpm exponent. */
@@ -96,7 +102,7 @@ export const CAL = {
   /** Ignition / flame-development delay, crank deg. */
   delayDeg: 10,
   /** Douaud–Eyzat induction-time multiplier (global knock calibration). */
-  knockTauScale: 1.5,
+  knockTauScale: 1.3,
   /** Knock time-base exponent β: 0 = wall-clock time (∝1/rpm), 1 = crank-angle based. */
   knockRpmExp: 0.6,
   /** Pressure exponent of the induction-time correlation (Douaud–Eyzat 1.7). */
@@ -104,13 +110,19 @@ export const CAL = {
   /** CR-dependent heat-transfer/crevice penalty on indicated efficiency, per CR² above 10. */
   crPenalty: 0.0015,
   /** Torque loss coefficient per deg² of retard from MBT. */
-  sparkLossK: 0.0006,
+  sparkLossK: 0.0005,
+  /** Knock-aware boost control: max spark retard the ECU accepts before trimming boost, deg. */
+  ecuMaxRetardDeg: 10,
+  /** Fraction of the excess retard (beyond ecuMaxRetardDeg) the ECU still accepts. */
+  ecuRetardSoft: 0.5,
   /** Relative reduction of the end-gas compression exponent at 1000 rpm (wall heat loss). */
   endGasHeatLoss: 0.0,
   /** Residual blow-through rate when intake pressure exceeds exhaust pressure. */
   scavengeK: 1,
   /** Octane-index weighting K in OI = RON − K·S. */
   octaneK: 0.25,
+  /** Reduction of K per bar of boost (Kalghatgi: K < 0 under boosted conditions). */
+  octaneKPerBar: 1.0,
   /** Fraction of fuel heat of vaporisation that cools the charge (PFI / DI). */
   evapPfi: 0.35,
   evapDi: 0.55,
@@ -124,23 +136,23 @@ export const CAL = {
   valvetrainFmep: { pushrod: 0.12, sohc: 0.1, dohc: 0.12 } as Record<'pushrod' | 'sohc' | 'dohc', number>,
   // ── turbo ──
   /** Compressor choke flow per inducer area, kg/s per mm². */
-  compChokePerMm2: 1.35e-4,
+  compChokePerMm2: 1.2e-4,
   compEtaPeak: 0.74,
   turbineEta: 0.68,
   /** Turbine effective flow area per (A/R · inducer² mm²), m². */
-  turbineAreaPerARmm2: 3.5e-7,
+  turbineAreaPerARmm2: 2.6e-7,
   /** (turbine nozzle + open wastegate) / turbine nozzle effective area. */
-  wastegateAreaFactor: 1.5,
+  wastegateAreaFactor: 2.0,
   /** Fraction of the header-type exhaust loss that a turbo manifold adds ahead of the turbine. */
   turboManifoldLossFrac: 0.5,
   /** Compressor top-speed line: max PR and the flow fraction where it starts rolling off. */
-  compPrMax: 3.8,
+  compPrMax: 3.9,
   compPrMaxPerMm: 0.01,
   compSpeedLineKnee: 0.75,
   /** Turbine frame size exponent on inducer diameter (turbine area ∝ A/R · D^exp). */
-  turbineFrameExp: 1.0,
+  turbineFrameExp: 1.5,
   /** Extra low-flow turbine efficiency from twin-scroll pulse separation. */
-  twinScrollPulse: 0.25,
+  twinScrollPulse: 0.5,
   /** Supercharger pulley sizing: crank rpm where targetBoostBar is reached (default). */
   scReferenceRpm: 6000,
   /** Turbine-inlet (exhaust manifold) pressure limit enforced by boost control, bar abs. */

@@ -368,7 +368,9 @@ function InductionTab() {
                 { value: 'centrifugal', label: 'Centrifugal' },
               ]}
             />
-            <Slider label="Boost at redline" q="pressure" value={c.supercharger.targetBoostBar} min={0.1} max={2} step={0.05} onChange={(targetBoostBar) => setSc({ targetBoostBar })} />
+            <Slider label="Target boost" q="pressure" value={c.supercharger.targetBoostBar} min={0.1} max={2} step={0.05} onChange={(targetBoostBar) => setSc({ targetBoostBar })} />
+            <Slider label="Pulley sized for" value={c.supercharger.referenceRpm ?? 6000} min={3000} max={9000} step={100} unit="rpm" onChange={(referenceRpm) => setSc({ referenceRpm })}
+              hint="Crank speed at which target boost is reached. Smaller pulley = lower rpm = more boost everywhere" />
             <Slider label="Intercooler effectiveness" value={Math.round(c.supercharger.intercoolerEffectiveness * 100)} min={0} max={95} step={1} unit="%" onChange={(v) => setSc({ intercoolerEffectiveness: v / 100 })} />
           </div>
         )}
