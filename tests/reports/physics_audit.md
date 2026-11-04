@@ -408,3 +408,68 @@ Stock reliability: all 21 references score ≥ 93 with no warn/critical warnings
 - Tests (all new, all mine): `tests/unit/helpers.ts`, `tests/unit/sanity.test.ts`, `tests/unit/envelopes.test.ts`, `tests/unit/fuzz.test.ts`, `tests/unit/continuity.test.ts`, `tests/unit/ui_regressions.test.ts`.
 - Data: `tests/reports/data/{sanity,envelopes,fuzz,continuity,vitest-results}.json`.
 - No files under `src/sim/` were modified.
+
+---
+
+## 10. v3 re-audit (physics v3, with the knock-aware ECU boost trim)
+
+### 10.1 Test changes after the lead's ruling ("keep the ECU, isolate hardware effects")
+- **Hardware-comparison tests now run on a non-knock-limited setup:**
+  - Rule 1 (EA888 boost scaling), Rule 2 (inducer and A/R), Rule 3 (twin-scroll), Rule 4 (intercooler gain and charge temperature) and Rule 20 (charge-temperature slope) now run on E85 with CR ≤ 8.5 (`isolateKnock` in `sanity.test.ts`).
+  - Every isolated test asserts a precondition that knock retard is ≤ 2°, so the isolation cannot drift silently.
+  - The UI twin-51 mm LS3 choke tests run on E85, with the same precondition.
+- **New companion tests (all pass on v3):**
+  - Intercooler gain on 91 ≥ gain on race 100: EA888 +31.3% vs +24.0%; 2JZ +22.6% vs +15.5%.
+  - A hotter charge costs at least as much on pump gas as on the knock-free setup, with more retard: EA888 −0.63 vs −0.26 %/°C; 2JZ −0.26 vs −0.16 %/°C.
+  - When the ECU trims boost, a `boost-target` message citing knock appears. EA888 on 91 with no intercooler at 1.5 bar reaches 1.26 bar max: "Target boost not held: 75 % … because knock control trims boost".
+- **Spool measurement:** spool is now compared at a common threshold, 95% of min(target, the lower run's max boost), so a run that is legitimately trimmed or choked cannot score "Infinity".
+- **Rule 1 (EA888):** both runs now use a ≥ 48 mm wheel and must hold 1.0 bar at peak power. The doc rule says "until … compressor choke", and the stock 40 mm wheel chokes at 1 bar near redline even on E85.
+- **Rule 2 low-rpm torque (my own criterion):** now compared midway between the two spool points, i.e. where only the smaller housing is on boost. The old fixed 2500 rpm sat at the big housing's spool point.
+- **Rule 4 ε·ΔT check (my own criterion):** both runs are now evaluated at the same rpm instead of at each run's own peak-power rpm.
+- Nothing else was loosened.
+
+### 10.2 Counts
+
+| Suite | v2 (pass/fail) | **v3 (pass/fail)** |
+|---|---|---|
+| sanity | 81 / 11 (+ Rule 21/IC rulings) | **96 / 2** |
+| envelopes | 225 / 35 | **223 / 37** |
+| fuzz | 12 / 3 | **11 / 4** |
+| continuity | 81 / 3 | **83 / 1** |
+| ui_regressions | 2 / 4 | **5 / 1** |
+| **total** | 401 / 56 | **418 / 45** (463 tests) |
+
+### 10.3 Status of the original top 10
+
+| # | Issue | v3 status | Evidence |
+|---|---|---|---|
+| 1 | Knock doesn't limit CR/boost at high rpm | **Mostly closed** (residual at extreme boost, see 10.4 R1) | K20 on 87: CR optimum is now **12** (213.8 N·m), falling to 201 at CR 16. EA888 turbo: optimum CR **9–10**, falling to 183 hp at CR 15. Rules 14 and 14b pass. |
+| 2 | NA curves too flat; power to the limiter | **Open** (partial gain) | Z at peak is now 0.64/0.69 (Rule 10 passes). F20C: torque peak at 5000 (published 7500), power still at the 9000 limiter, −13.6%. K20 duration sweep: torque-peak rpm stuck at 6000. LS3 runner peak-rpm still non-monotone. |
+| 3 | Supercharger boost tied to redline | **Closed** | `referenceRpm` pulley; the continuity redline sweep on the Hellcat passes. |
+| 4 | Turbo hardware sliders backwards | **Closed** (isolated) | Inducer ×0.85/×1.3: spool 1150/1900 (EA888) and 1800/3000 (2JZ). A/R: small housing gives 2× torque between the spool points and higher back pressure. |
+| 5 | Silent PR 3.2 ceiling | **Closed** | 2.0 L E85: 541 → 609 hp from 2.0 → 2.5 bar. `boost-target` warning names the limiter. |
+| 6 | Turbo LS3 → 0 hp past float; BSFC clamp | **Closed** | UI test passes (float floor 45%, BSFC 0 below 5 kW). |
+| 7 | Intercooler 0 → 1% step | **Closed** | Continuity intercooler sweeps pass for turbo and SC. |
+| 8 | Twin-scroll / turbo exhaust no-ops | **Closed** (exhaust still weak) | Twin-scroll spool −8.6% (EA888) and −14% (2JZ). Log manifold spools 200 rpm earlier, but turbo exhaust-type hp spread is only 0.5%. |
+| 9 | Calibration outside tolerance | **Open, slightly worse** | MAE **6.18%** (v2 5.66, goal ≤ 5). F20C −13.6% and Mazda +12.1% are outside ±12%. 7 peak-power-rpm and 6 peak-torque-rpm misses. Plateaus: 1.0 EB 67%, B58 87%, EA888 90%. |
+| 10 | Piston-speed thresholds | **Closed** (arbitration) | Spec changed to the code's 22/27/30 m/s. |
+| 11 | Jagged retard/BSFC | **Mostly closed** | BSFC smoothness passes. One retard kink remains (EJ257 @ 3800, Δ² = 1.81°). |
+| 12 | Premature 51 mm choke | **Closed** | On E85: 0.72 bar held with no choke; ≥ 0.9 bar held at 1.0 bar. |
+
+### 10.4 What remains, ranked (v3)
+1. **Pump-gas BMEP can still reach 46–57 bar at very high boost** (fuzz `boost-bmep` 23 cases, up from 13). Example: #1569, a flat-12 with 61 mm bores on 91 at 2.98 bar target, gives **46.2 bar**. The knock-aware trim does not bind for small bores at PR > 3.5. Check `knockLimitedSpark` and the ECU trim in `engine.ts` (`trimPrev` loop) at high MAP with small bore: the bore exponent in the knock/burn model, plus the higher PR ceiling (`3.8 + 0.01/mm`), lets it through.
+2. **NA torque character (#2):**
+   - F20C torque peak 5000 vs 7500 and power at the limiter. GT3 power at 9000 vs 8250. LS7 peak at 5600 vs 6300. Coyote torque peak 5400 vs 4600. R8 torque peak 5500 vs 6500.
+   - Cam duration on DOHC (K20) no longer moves the torque peak.
+   - Model: `airflow.ts › profileVe`/`computeVe`. The IVC → zOpt mapping and the cam/runner interaction still give one broad hump that is insensitive to cam timing.
+3. **Calibration (#9):** MAE 6.18%. F20C −13.6, Mazda +12.1, 2JZ +9.9 (power peak 6400 vs 5600), Hellcat +9.5 (125.5 hp/L), R8 −8.8, F136 torque −11.5. Turbo plateaus at their published start rpm: 1.0 EcoBoost 67%, B58 87%, EA888 90% (need ≥ 95%).
+4. **Performance tail regressed:** fuzz median 1.0 ms (assert passes), but **p95 10.2, p99 16.0, max 27.7 ms**, above the 15 ms budget in ARCHITECTURE.md. Likely cause is the ECU trim loop re-solving the turbo per rpm point. Worth a cap on iterations or a cheaper warm start.
+5. **New small discontinuity:** EA888 CR 15.6 → 15.7 drops 2.6% in one 1% step, and the drop does not shrink at 0.1% resolution (true step). Probably a branch switch in the ECU trim (retard threshold of 10° vs boost), in `engine.ts`'s trim loop. Make the trim continuous, e.g. blend near the threshold.
+6. **EGT > 1100 °C** in 74 of 627 gasoline fuzz configs (`combustion.ts › exhaustTemp` at its 1500 K clamp under heavy retard).
+7. **Extreme-config shape:** 21 NA configs with > 10% of peak torque jumping between adjacent points. One single-cylinder E85 config at 2.66 bar reaches 432 hp/L; it carries critical warnings, but it is still above the 400 hp/L sanity cap.
+8. **Minor:**
+   - EJ257 retard kink (1.8°).
+   - Mass: 1.0 EB +27%, F20C −17.5%, F12 +17%.
+   - LS3 runner peak-torque rpm argmax is non-monotone.
+   - Turbo exhaust type has almost no effect on peak (0.5%).
+   - Envelope BSFC slightly below 270 for the GT3, F136 and F12 (261–269 g/kWh).
