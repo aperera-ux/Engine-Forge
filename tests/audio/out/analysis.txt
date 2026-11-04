@@ -1,0 +1,68 @@
+file                              nan clip  dc        peak   crestIdle crestWOT  maxF0err%  rt×
+tests/audio/out/b58_cruise.wav      0    0  3.2e-5    0.198    12.4      -        -     16.5
+tests/audio/out/b58_idle.wav        0    0  1.8e-6    0.082    17.3      -        -     16.5
+tests/audio/out/b58_overrun.wav     0    0  1.4e-5    0.670    13.2     15.8     0.43   16.3
+tests/audio/out/b58_pull.wav        0    0  5.0e-5    0.665    17.3     20.5     0.58   16.0
+tests/audio/out/ecoboost-i3_cruise.wav  0    0  1.9e-4    0.456    14.0      -        -     20.6
+tests/audio/out/ecoboost-i3_idle.wav  0    0  5.9e-6    0.207    20.0      -        -     21.4
+tests/audio/out/ecoboost-i3_overrun.wav  0    0  2.0e-4    0.663    11.9     14.4     0.59   20.8
+tests/audio/out/ecoboost-i3_pull.wav  0    0  4.1e-4    0.672    20.0     10.6     0.64   20.0
+tests/audio/out/ej257_cruise.wav    0    0  4.1e-5    0.221    11.2      -        -     19.8
+tests/audio/out/ej257_idle.wav      0    0  3.2e-7    0.068    15.3      -        -     20.6
+tests/audio/out/ej257_overrun.wav   0    0  4.5e-5    0.704    11.4     14.8    48.90   19.9
+tests/audio/out/ej257_pull.wav      0    0  1.8e-4    0.669    15.3     15.1    24.69   18.1
+tests/audio/out/f136_cruise.wav     0    0  4.8e-5    0.225    10.2      -        -     18.8
+tests/audio/out/f136_idle.wav       0    0  5.7e-6    0.090    19.3      -        -     18.9
+tests/audio/out/f136_overrun.wav    0    0  2.5e-4    0.677     9.7     14.8     0.81   18.7
+tests/audio/out/f136_pull.wav       0    0  3.7e-4    0.644    19.3     10.4     0.85   18.7
+tests/audio/out/f140_cruise.wav     0    0  4.7e-6    0.121     7.4      -        -     15.0
+tests/audio/out/f140_idle.wav       0    0  8.1e-7    0.057    14.7      -        -     14.9
+tests/audio/out/f140_overrun.wav    0    0  2.0e-5    0.691     7.7     13.6     0.84   14.8
+tests/audio/out/f140_pull.wav       0    0  6.0e-5    0.689    14.7     11.1    50.33   14.9
+tests/audio/out/hellcat_cruise.wav  0    0  6.7e-5    0.247     9.8      -        -     16.1
+tests/audio/out/hellcat_idle.wav    0    0  8.0e-7    0.084    16.7      -        -     16.4
+tests/audio/out/hellcat_overrun.wav  0    0  7.4e-5    0.683    10.8     17.7     0.94   16.1
+tests/audio/out/hellcat_pull.wav    0    0  3.4e-4    0.690    16.7     13.2    38.32   16.1
+tests/audio/out/k20a_cruise.wav     0    0  1.7e-4    0.368    10.1      -        -     30.1
+tests/audio/out/k20a_idle.wav       0    0  5.2e-6    0.199    18.2      -        -     30.2
+tests/audio/out/k20a_overrun.wav    0    0  9.2e-4    0.673     8.6     15.2     0.58   30.0
+tests/audio/out/k20a_pull.wav       0    0  8.0e-4    0.687    18.2      9.5    99.44   26.2
+tests/audio/out/ls3_cruise.wav      0    0  2.5e-5    0.191    11.2      -        -     21.2
+tests/audio/out/ls3_idle.wav        0    0  5.3e-7    0.058    16.4      -        -     21.5
+tests/audio/out/ls3_overrun.wav     0    0  1.1e-4    0.586    11.0     16.6     0.74   21.5
+tests/audio/out/ls3_pull.wav        0    0  2.1e-4    0.573    16.4     14.0    37.62   21.5
+tests/audio/out/vtwin_cruise.wav    0    0  2.7e-4    0.482    13.9      -        -     39.7
+tests/audio/out/vtwin_idle.wav      0    0  2.3e-6    0.229    23.1      -        -     39.1
+tests/audio/out/vtwin_overrun.wav   0    0  9.0e-5    0.654     9.8     15.8      -     39.8
+tests/audio/out/vtwin_pull.wav      0    0  5.8e-4    0.675    23.1     11.6      -     39.1
+
+Steady WOT exhaust-only orders (dB): half-order ratio max(L1.5,L2.5)/L(n/2), per bank (left) and mono
+k20a         2500  left  -24.0  mono  -24.3   L(0.5,1,1.5,2,2.5,3,4)=-63.8 -73.8 -59.2 -21.1 -45 -63.8 -15.4
+k20a         5000  left  -30.6  mono  -30.9   L(0.5,1,1.5,2,2.5,3,4)=-54.2 -56.5 -53.5 -16.1 -46.7 -60.9 -16.3
+ls3          2500  left    0.8  mono  -16.8   L(0.5,1,1.5,2,2.5,3,4)=-47.1 -47.8 -26.2 -38.2 -21.9 -40.6 -22.8
+ls3          5000  left    5.1  mono   -9.6   L(0.5,1,1.5,2,2.5,3,4)=-32.2 -36.9 -17.5 -35.2 -20.5 -39.6 -22.6
+f136         2500  left  -26.2  mono  -28.5   L(0.5,1,1.5,2,2.5,3,4)=-71 -66.7 -64.6 -22.1 -48.3 -53.6 -23.9
+f136         5000  left  -27.6  mono  -21.4   L(0.5,1,1.5,2,2.5,3,4)=-59.2 -52.7 -54.2 -19.5 -47.2 -51.6 -28.6
+f140         2500  left  -27.0  mono  -24.5   L(0.5,1,1.5,2,2.5,3,4)=-76 -65.4 -60.6 -59.7 -51.5 -24.5 -57.6
+f140         5000  left  -29.1  mono  -30.3   L(0.5,1,1.5,2,2.5,3,4)=-65.5 -54.6 -52.3 -56 -50.4 -27.4 -52.9
+ej257        2500  left  -25.6  mono  -25.6   L(0.5,1,1.5,2,2.5,3,4)=-82.6 -68.5 -66.4 -30.6 -56.2 -40.4 -36.2
+ej257        5000  left  -17.0  mono  -17.0   L(0.5,1,1.5,2,2.5,3,4)=-72.7 -55.7 -68.4 -37.5 -54.6 -38 -37.5
+b58          2500  left  -30.0  mono  -30.0   L(0.5,1,1.5,2,2.5,3,4)=-89.9 -67.3 -65.5 -59.8 -58.3 -28.3 -60.1
+b58          5000  left  -17.0  mono  -17.1   L(0.5,1,1.5,2,2.5,3,4)=-74.8 -68.4 -71.8 -67 -66.9 -50 -63.7
+hellcat      2500  left    2.0  mono  -15.4   L(0.5,1,1.5,2,2.5,3,4)=-43.3 -44.7 -22.6 -35.9 -19.3 -37.6 -21.4
+hellcat      5000  left    8.4  mono   -6.3   L(0.5,1,1.5,2,2.5,3,4)=-30.5 -37.2 -16 -35.6 -20.2 -36 -24.3
+ecoboost-i3  2500  left    0.0  mono    0.0   L(0.5,1,1.5,2,2.5,3,4)=-69 -66.9 -27.6 -48.4 -61.3 -24.2 -56.7
+ecoboost-i3  5000  left    0.0  mono    0.0   L(0.5,1,1.5,2,2.5,3,4)=-61.4 -55.5 -32.9 -48.8 -57.2 -33.4 -49.1
+vtwin        2500  left    8.3  mono    8.3   L(0.5,1,1.5,2,2.5,3,4)=-56.1 -28.1 -28.3 -23.1 -19.8 -25 -45.2
+vtwin        5000  left    0.9  mono    1.1   L(0.5,1,1.5,2,2.5,3,4)=-35.6 -19.3 -20.9 -20.4 -18.3 -27.9 -33.4
+
+Load / level / boost
+k20a         {"rpm":4620,"centroidPartHz":1997,"centroidWotHz":3069,"centroidIdleHz":1053,"wotVsPartDb":4.6,"idleToThreeQuarterDb":21.7,"idleDbfs":-34.1,"wotTopDbfs":-12.4,"boostWot":0,"whineBandWotVsPartDb":null}
+ls3          {"rpm":3630,"centroidPartHz":1859,"centroidWotHz":3579,"centroidIdleHz":1472,"wotVsPartDb":10.7,"idleToThreeQuarterDb":28.3,"idleDbfs":-46,"wotTopDbfs":-17.6,"boostWot":0,"whineBandWotVsPartDb":null}
+f136         {"rpm":4950,"centroidPartHz":2406,"centroidWotHz":3348,"centroidIdleHz":1911,"wotVsPartDb":5.6,"idleToThreeQuarterDb":27.7,"idleDbfs":-41.8,"wotTopDbfs":-14.2,"boostWot":0,"whineBandWotVsPartDb":null}
+f140         {"rpm":4785,"centroidPartHz":2272,"centroidWotHz":3291,"centroidIdleHz":2082,"wotVsPartDb":5.5,"idleToThreeQuarterDb":23.9,"idleDbfs":-43.7,"wotTopDbfs":-19.7,"boostWot":0,"whineBandWotVsPartDb":null}
+ej257        {"rpm":3685,"centroidPartHz":1571,"centroidWotHz":3569,"centroidIdleHz":2184,"wotVsPartDb":9.7,"idleToThreeQuarterDb":23.3,"idleDbfs":-41.1,"wotTopDbfs":-17.8,"boostWot":1,"whineBandWotVsPartDb":6.4}
+b58          {"rpm":3850,"centroidPartHz":2135,"centroidWotHz":3676,"centroidIdleHz":1545,"wotVsPartDb":13.4,"idleToThreeQuarterDb":13.9,"idleDbfs":-41.2,"wotTopDbfs":-27.3,"boostWot":0.95,"whineBandWotVsPartDb":7.7}
+hellcat      {"rpm":3410,"centroidPartHz":2339,"centroidWotHz":3812,"centroidIdleHz":1065,"wotVsPartDb":9,"idleToThreeQuarterDb":25.8,"idleDbfs":-41.2,"wotTopDbfs":-15.4,"boostWot":0,"whineBandWotVsPartDb":17.8}
+ecoboost-i3  {"rpm":3575,"centroidPartHz":1516,"centroidWotHz":3292,"centroidIdleHz":1448,"wotVsPartDb":6.7,"idleToThreeQuarterDb":19.1,"idleDbfs":-35.5,"wotTopDbfs":-16.4,"boostWot":0.92,"whineBandWotVsPartDb":10.7}
+vtwin        {"rpm":3080,"centroidPartHz":1722,"centroidWotHz":3456,"centroidIdleHz":1174,"wotVsPartDb":5.2,"idleToThreeQuarterDb":23.4,"idleDbfs":-36.5,"wotTopDbfs":-13.1,"boostWot":0,"whineBandWotVsPartDb":null}
