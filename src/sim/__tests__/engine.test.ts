@@ -214,8 +214,32 @@ describe('directional physics', () => {
   });
   it('piston speed warnings', () => {
     const r = simulate(mod(DEFAULT_CONFIG, (c) => { c.strokeMm = 100; c.redlineRpm = 8500; }));
-    expect(r.warnings.find((w) => w.code === 'piston-speed')?.severity).toBe('critical');
+    expect(r.warnings.find((w) => w.code === 'piston-speed')?.severity).toBe('warn'); // 28.3 m/s
     expect(r.reliabilityScore).toBeLessThan(simulate(DEFAULT_CONFIG).reliabilityScore);
+    const crit = simulate(mod(DEFAULT_CONFIG, (c) => { c.strokeMm = 100; c.redlineRpm = 9500; }));
+    expect(crit.warnings.find((w) => w.code === 'piston-speed')?.severity).toBe('critical'); // 31.7 m/s
+  });
+});
+
+describe('stock engines look healthy', () => {
+  it('every reference engine: reliability ≥ 80 and no warn/critical warnings', () => {
+    for (const e of REFERENCE_ENGINES) {
+      const r = simulate(e.config);
+      const bad = r.warnings.filter((w) => w.severity !== 'info');
+      expect(bad.map((w) => `${w.code}: ${w.message}`), e.id).toEqual([]);
+      expect(r.reliabilityScore, e.id).toBeGreaterThanOrEqual(80);
+    }
+  });
+  it('abused engines still warn: CR 13 PFI turbo on gas87, over-revved cast LS3', () => {
+    const t = mod(turboI4(), (c) => { c.fuel = 'gas87'; c.compressionRatio = 11.5; c.turbo.targetBoostBar = 1.6; });
+    expect(simulate(t).warnings.some((w) => w.code === 'knock' && w.severity !== 'info')).toBe(true);
+    const ls = mod(ref('gm-ls3'), (c) => { c.redlineRpm = 8500; c.rods = 'cast'; });
+    const r = simulate(ls);
+    expect(r.warnings.some((w) => w.code === 'rotating-assembly' && w.severity !== 'info')).toBe(true);
+    expect(r.reliabilityScore).toBeLessThan(80);
+  });
+  it('dyno curve starts at max(idle, 1000) rpm', () => {
+    expect(simulate(DEFAULT_CONFIG).curve[0].rpm).toBe(1000);
   });
 });
 

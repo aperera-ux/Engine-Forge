@@ -122,7 +122,7 @@ function xrayMaterial(color: string, strength = 1) {
       void main(){ vec4 mv = modelViewMatrix*vec4(position,1.0); vN = normalize(normalMatrix*normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix*mv; }`,
     fragmentShader: `uniform vec3 color; uniform float strength; varying vec3 vN; varying vec3 vV;
       void main(){ float f = 1.0 - abs(dot(normalize(vN), normalize(vV))); f = pow(f, 2.2);
-        gl_FragColor = vec4(color*(0.025 + f*0.55)*strength, 1.0); }`,
+        gl_FragColor = vec4(color*(0.008 + f*0.6)*strength, 1.0); }`,
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
@@ -156,11 +156,12 @@ export class MaterialLib {
       S({ color: c, metalness: 0.72, roughness: rough, normalMap: cast, normalScale: new THREE.Vector2(0.35, 0.35) });
     this.base.block = look.ironBlock
       ? S({ color: '#55585d', metalness: 0.85, roughness: 0.62, normalMap: cast, normalScale: new THREE.Vector2(0.6, 0.6) })
-      : alu('#b8bcc2', 0.5);
+      : alu('#a8adb4', 0.5);
     this.base.blockDetail = this.base.block;
     this.base.crankcase = this.base.block;
     this.base.head = alu('#c9ccd1', 0.42);
-    this.base.timing = look.racy ? S({ color: '#1d1e21', metalness: 0.6, roughness: 0.45, normalMap: crinkleTex(), normalScale: new THREE.Vector2(0.4, 0.4) }) : alu('#a9adb3', 0.5);
+    this.base.timing = look.racy ? S({ color: '#2a2c30', metalness: 0.75, roughness: 0.4, normalMap: cast, normalScale: new THREE.Vector2(0.5, 0.5) }) : alu('#9ea3aa', 0.48);
+    this.base.coilAccent = S({ color: look.racy ? '#d21d1d' : '#c9a227', metalness: 0.2, roughness: 0.4 });
     this.base.pan = look.racy ? alu('#9da1a7', 0.35) : S({ color: '#26282c', metalness: 0.7, roughness: 0.5 });
     this.base.cover = look.racy
       ? S({ color: '#a3101a', metalness: 0.15, roughness: 0.5, clearcoat: 0.4, clearcoatRoughness: 0.5, normalMap: crinkleTex(), normalScale: new THREE.Vector2(1.1, 1.1) })
@@ -185,6 +186,7 @@ export class MaterialLib {
       ? S({ color: '#17181b', metalness: 0.3, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.12 }) // carbon-ish gloss black
       : alu('#b4b8be', 0.4);
     this.base.runner = look.racy ? S({ color: '#d8dbe0', metalness: 1, roughness: 0.14 }) : alu('#b4b8be', 0.4);
+    this.base.chargePipe = S({ color: '#c2c6cc', metalness: 1, roughness: 0.32 });
     this.base.trumpet = S({ color: '#e9ecf0', metalness: 1, roughness: 0.08 });
     this.base.castAlu = alu('#c3c6cb', 0.42);
     this.base.filter = S({ color: look.racy ? '#b31220' : '#2b2d31', metalness: 0, roughness: 0.8, normalMap: finTex(), normalScale: new THREE.Vector2(1.2, 1.2) });

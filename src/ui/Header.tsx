@@ -9,6 +9,7 @@ import { engineCode } from './format';
 import { fmt, type Units } from './units';
 import { SNAP_COLORS } from './charts/common';
 import { setAudioEnabled } from './audio';
+import { buildSheet } from './buildSheet';
 
 const PRESETS: EngineConfig[] = PresetsModule.PRESETS;
 const PRESET_GROUPS = (PresetsModule as Record<string, unknown>).PRESET_GROUPS as Record<string, string[]> | undefined;
@@ -148,17 +149,30 @@ export function Header() {
   const setMuted = useStore((s) => s.setMuted);
   const config = useStore((s) => s.config);
   const loadConfig = useStore((s) => s.loadConfig);
-  const [copied, setCopied] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef(0);
+  const flash = (msg: string) => {
+    setToast(msg);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 1800);
+  };
+  const copy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
+  };
   const share = async () => {
     const url = shareUrl(config);
     history.replaceState(null, '', url);
-    try {
-      await navigator.clipboard.writeText(url);
-    } catch {
-      /* clipboard may be unavailable; URL bar still updated */
-    }
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
+    flash((await copy(url)) ? 'Share link copied' : 'Share link is in the address bar');
+  };
+  const copySheet = async () => {
+    const text = buildSheet(useStore.getState().result, shareUrl(config));
+    (window as unknown as { __efLastSheet?: string }).__efLastSheet = text;
+    flash((await copy(text)) ? 'Build sheet copied to clipboard' : 'Clipboard unavailable');
   };
   return (
     <header className="topbar">
@@ -198,13 +212,20 @@ export function Header() {
       >
         <Icon name={muted ? 'mute' : 'speaker'} />
       </button>
+      <button className="icon-btn" onClick={copySheet} title="Copy build sheet (spec + peak numbers)" aria-label="Copy build sheet" data-testid="sheet-btn">
+        <Icon name="sheet" />
+      </button>
       <button className="icon-btn" onClick={share} title="Copy share link" aria-label="Copy share link" data-testid="share-btn">
-        <Icon name={copied ? 'check' : 'link'} />
+        <Icon name={toast === 'Share link copied' ? 'check' : 'link'} />
       </button>
       <button className="icon-btn" onClick={() => loadConfig(DEFAULT_CONFIG)} title="Reset to default engine" aria-label="Reset">
         <Icon name="reset" />
       </button>
-      {copied && <div className="toast">Share link copied</div>}
+      {toast && (
+        <div className="toast" role="status">
+          <Icon name="check" size={13} /> {toast}
+        </div>
+      )}
     </header>
   );
 }

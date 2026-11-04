@@ -16,9 +16,11 @@ describe('calibration vs reference engines', () => {
     const tqRange = p.torqueRpmRange;
     // For plateau engines: does the simulated curve stay ≥95 % of peak across the published plateau?
     let plateauOk: boolean | null = null;
+    let plateauFrac = 1;
     if (tqRange) {
       const inRange = r.curve.filter((d) => d.rpm >= tqRange[0] && d.rpm <= tqRange[1]);
       plateauOk = inRange.length > 0 && inRange.every((d) => d.torqueNm >= 0.95 * r.peakTorqueNm);
+      plateauFrac = inRange.length ? inRange.filter((d) => d.torqueNm >= 0.95 * r.peakTorqueNm).length / inRange.length : 0;
     }
     const tqRpmErr = tqRange
       ? r.peakTorqueRpm >= tqRange[0] && r.peakTorqueRpm <= tqRange[1]
@@ -47,6 +49,7 @@ describe('calibration vs reference engines', () => {
       tqRpmPub: p.torqueRpm,
       tqRpmErr,
       plateauOk,
+      plateauFrac,
       mass: r.massKg,
       massPub: p.massKg,
       knock: r.curve.find((d) => d.rpm === r.peakTorqueRpm)?.knockRetardDeg ?? 0,
@@ -64,7 +67,7 @@ describe('calibration vs reference engines', () => {
     'id                          conf   hp    pub   err%  @rpm   pub  err% |  Nm    pub   err%  @rpm   pub  err% plat | kT   kP  boost  VE   pmax  EGT  bsfc  mass/pub',
     ...rows.map(
       (r) =>
-        `${r.id.padEnd(27)} ${r.conf.padEnd(5)}${f(r.hp)}${f(r.hpPub)}${f(r.hpErr, 6, 1)}${f(r.hpRpm)}${f(r.hpRpmPub)}${f(r.hpRpmErr, 6, 1)} |${f(r.tq)}${f(r.tqPub)}${f(r.tqErr, 6, 1)}${f(r.tqRpm)}${f(r.tqRpmPub)}${f(r.tqRpmErr, 6, 1)} ${r.plateauOk === null ? '  - ' : r.plateauOk ? ' ok ' : ' NO '} |${f(r.knock, 5, 1)}${f(r.knockP, 5, 1)}${f(r.boost, 6, 2)}${f(r.ve, 5, 2)}${f(r.pmax, 6)}${f(r.egt, 5)}${f(r.bsfc, 5)} ${f(r.mass, 4)}/${r.massPub ?? '-'}`,
+        `${r.id.padEnd(27)} ${r.conf.padEnd(5)}${f(r.hp)}${f(r.hpPub)}${f(r.hpErr, 6, 1)}${f(r.hpRpm)}${f(r.hpRpmPub)}${f(r.hpRpmErr, 6, 1)} |${f(r.tq)}${f(r.tqPub)}${f(r.tqErr, 6, 1)}${f(r.tqRpm)}${f(r.tqRpmPub)}${f(r.tqRpmErr, 6, 1)} ${r.plateauOk === null ? '  -  ' : f(100 * r.plateauFrac, 4) + '%'} |${f(r.knock, 5, 1)}${f(r.knockP, 5, 1)}${f(r.boost, 6, 2)}${f(r.ve, 5, 2)}${f(r.pmax, 6)}${f(r.egt, 5)}${f(r.bsfc, 5)} ${f(r.mass, 4)}/${r.massPub ?? '-'}`,
     ),
   ];
   const scored = rows.filter((r) => r.conf !== 'low');
@@ -78,22 +81,21 @@ describe('calibration vs reference engines', () => {
   );
   console.log('\n' + lines.join('\n'));
 
-  it('median absolute peak-hp error ≤ 7 % (excluding low-confidence ratings)', () => {
-    expect(median).toBeLessThanOrEqual(7);
+  it('median absolute peak-hp error ≤ 6 % (excluding low-confidence ratings)', () => {
+    expect(median).toBeLessThanOrEqual(6);
   });
-  // High-confidence ratings: ±15 %. Medium/low-confidence ratings (conservative
-  // OEM figures, crate dyno sheets, estimated turbo hardware) get +25 % on the
-  // upper side: currently only the 3.5 EcoBoost (F-150 rating on 87, turbo
-  // hardware estimated) exceeds +15 %.
-  it('every engine within ±15 % on peak hp and peak torque (medium/low: −15/+25 %)', () => {
+  it('every engine within ±15 % on peak hp and peak torque (low-confidence B58: −15/+25 %)', () => {
     for (const r of rows) {
       const lo = -15;
-      const hi = r.conf === 'high' ? 15 : 25;
+      const hi = r.conf === 'low' ? 25 : 15;
       expect(r.hpErr, `${r.id} hp`).toBeGreaterThanOrEqual(lo);
       expect(r.hpErr, `${r.id} hp`).toBeLessThanOrEqual(hi);
       expect(r.tqErr, `${r.id} tq`).toBeGreaterThanOrEqual(lo);
       expect(r.tqErr, `${r.id} tq`).toBeLessThanOrEqual(hi);
     }
+  });
+  it('peak-torque rpm within ±15 % (or inside the published plateau) for ≥ 15 of the engines', () => {
+    expect(rows.filter((r) => Math.abs(r.tqRpmErr) <= 15).length).toBeGreaterThanOrEqual(15);
   });
   it('peak-power rpm within ±15 % for most engines', () => {
     const ok = rows.filter((r) => Math.abs(r.hpRpmErr) <= 15).length;

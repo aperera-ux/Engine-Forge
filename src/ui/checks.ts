@@ -51,3 +51,27 @@ export function pistonSpeedLevel(ms: number): HintLevel {
   if (ms > 22) return 'warn';
   return 'ok';
 }
+
+/** Sensible turbo sizing for a displacement (per-turbo share). */
+export function seedTurbo(c: EngineConfig, count: 1 | 2 = c.turbo.count): EngineConfig['turbo'] {
+  const L = ((Math.PI / 4) * (c.boreMm / 10) ** 2 * (c.strokeMm / 10) * c.cylinders) / 1000;
+  const per = L / count;
+  const inducer = Math.round(Math.min(90, Math.max(32, 29 * Math.sqrt(per))));
+  const ar = +Math.min(1.0, Math.max(0.5, 0.6 + (per - 2) * 0.07)).toFixed(2);
+  // Keep boost moderate on high-compression engines.
+  const boost = +Math.min(1.2, Math.max(0.5, 0.8 - (c.compressionRatio - 10) * 0.12)).toFixed(2);
+  return {
+    targetBoostBar: boost,
+    compressorInducerMm: inducer,
+    turbineAR: ar,
+    intercoolerEffectiveness: 0.75,
+    twinScroll: c.layout === 'inline' && c.cylinders >= 4,
+    count,
+  };
+}
+
+/** Sensible supercharger seed: boost scaled down as compression rises. */
+export function seedSupercharger(c: EngineConfig): EngineConfig['supercharger'] {
+  const boost = +Math.min(0.9, Math.max(0.3, 0.6 - (c.compressionRatio - 10) * 0.1)).toFixed(2);
+  return { type: c.cylinders >= 6 ? 'twin-screw' : 'centrifugal', targetBoostBar: boost, intercoolerEffectiveness: 0.65 };
+}

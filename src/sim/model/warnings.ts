@@ -3,6 +3,7 @@
  */
 import type { DynoPoint, EngineConfig, SimWarning } from '../types';
 import { PISTON_PMAX, ROD_PMAX } from './mechanical';
+import { sparkWorkRatio } from './combustion';
 
 export interface WarningInputs {
   c: EngineConfig;
@@ -25,12 +26,12 @@ export function computeWarnings(w: WarningInputs): { warnings: SimWarning[]; rel
   };
   const r1 = (x: number) => Math.round(x * 10) / 10;
 
-  // Piston speed.
+  // Piston speed. Modern production engines run up to ~25–27 m/s (F20C 25.2,
+  // Audi V10 26.9) with forged parts and DLC/FRM bores; beyond that is racing.
   const sp = w.meanPistonSpeedRedline;
-  if (sp > 25) add('critical', 'piston-speed', `Mean piston speed ${r1(sp)} m/s at redline (> 25 m/s): ring flutter and rod/bearing failure risk.`, 25 + 4 * (sp - 25));
-  else if (sp > 22) add('warn', 'piston-speed', `Mean piston speed ${r1(sp)} m/s at redline (> 22 m/s): race-engine territory.`, 4 * (sp - 22));
-  else if (sp > 20) score -= 1.5 * (sp - 20);
-
+  if (sp > 30) add('critical', 'piston-speed', `Mean piston speed ${r1(sp)} m/s at redline (> 30 m/s): ring flutter and rod/bearing failure risk.`, 30 + 4 * (sp - 30));
+  else if (sp > 27) add('warn', 'piston-speed', `Mean piston speed ${r1(sp)} m/s at redline (> 27 m/s): beyond production-engine practice.`, 10 + 4 * (sp - 27));
+  else if (sp > 22) add('info', 'piston-speed', `High mean piston speed ${r1(sp)} m/s at redline (high-performance territory).`, 1.5 * (sp - 22));
   // Mechanical limit.
   if (w.mechanicalLimitRpm < c.redlineRpm) {
     const over = c.redlineRpm / w.mechanicalLimitRpm - 1;
@@ -45,15 +46,18 @@ export function computeWarnings(w: WarningInputs): { warnings: SimWarning[]; rel
     add(w.valveFloatRpm < 0.95 * c.redlineRpm ? 'critical' : 'warn', 'valve-float', `Valve float predicted at ~${Math.round(w.valveFloatRpm)} rpm, below the ${Math.round(c.redlineRpm)} rpm redline. Use lighter valves, stiffer springs or less lift.`, 12 + 120 * (c.redlineRpm / w.valveFloatRpm - 1));
   }
 
-  // Knock.
-  // Lugging at WOT near idle is always knock-limited; judge the usable band.
-  const band = curve.filter((p) => p.rpm >= Math.max(1500, 2 * c.idleRpm));
+  // Knock. Retard at lugging speeds is normal ECU behaviour; judge the main
+  // band (≥2500 rpm) by average retard and the torque cost at peak power.
+  const band = curve.filter((p) => p.rpm >= Math.max(2500, 2 * c.idleRpm));
   const kc = band.length ? band : curve;
+  const meanRetard = kc.reduce((s2, p) => s2 + p.knockRetardDeg, 0) / kc.length;
   const maxRetard = Math.max(...kc.map((p) => p.knockRetardDeg));
   const knockPt = kc.find((p) => p.knockRetardDeg === maxRetard);
-  if (maxRetard > 15) add('critical', 'knock', `Severe knock: ${r1(maxRetard)}° of spark retard needed at ${knockPt?.rpm} rpm. Lower compression/boost or use higher-octane fuel.`, 15 + maxRetard);
-  else if (maxRetard > 6) add('warn', 'knock', `Knock-limited: ${r1(maxRetard)}° retard at ${knockPt?.rpm} rpm costs torque and raises EGT.`, maxRetard);
-  else if (maxRetard > 0.5) add('info', 'knock', `Mildly knock-limited (${r1(maxRetard)}° retard at ${knockPt?.rpm} rpm).`, 0.5 * maxRetard);
+  const pk = curve.reduce((a2, b2) => (b2.powerKw > a2.powerKw ? b2 : a2));
+  const lossAtPeak = 1 - sparkWorkRatio(pk.knockRetardDeg);
+  if (meanRetard > 15 || lossAtPeak > 0.12) add('critical', 'knock', `Severe knock: average ${r1(meanRetard)}° spark retard above 2500 rpm (${r1(maxRetard)}° at ${knockPt?.rpm} rpm), costing ${Math.round(100 * lossAtPeak)} % at peak power. Lower compression/boost or use higher-octane fuel.`, 15 + meanRetard);
+  else if (meanRetard > 12 || lossAtPeak > 0.06) add('warn', 'knock', `Knock-limited: average ${r1(meanRetard)}° retard above 2500 rpm costs torque and raises EGT.`, 4 + meanRetard / 2);
+  else if (maxRetard > 3) add('info', 'knock', `Knock-limited in places (${r1(maxRetard)}° retard at ${knockPt?.rpm} rpm); normal for a pump-fuel calibration.`, 0);
 
   // Peak cylinder pressure vs components.
   const pmax = Math.max(...curve.map((p) => p.peakCylinderPressureBar));
@@ -62,10 +66,11 @@ export function computeWarnings(w: WarningInputs): { warnings: SimWarning[]; rel
   if (pmax > cap) add(pmax > 1.1 * cap ? 'critical' : 'warn', 'cylinder-pressure', `Peak cylinder pressure ${Math.round(pmax)} bar exceeds what ${weak} tolerate (~${cap} bar).`, 10 + 100 * (pmax / cap - 1));
   else if (pmax > 0.9 * cap) score -= 40 * (pmax / cap - 0.9);
 
-  // EGT.
+  // EGT. Modern turbine housings and exhaust valves are rated ~980–1050 °C.
   const egt = Math.max(...curve.map((p) => p.egtC));
-  if (egt > 1000) add('critical', 'egt', `Exhaust gas temperature ${Math.round(egt)} °C: turbine/valve damage likely. Richen mixture or reduce retard.`, 15 + 0.1 * (egt - 1000));
-  else if (egt > 950) add('warn', 'egt', `Exhaust gas temperature ${Math.round(egt)} °C exceeds 950 °C.`, 5 + 0.2 * (egt - 950));
+  if (egt > 1050) add('critical', 'egt', `Exhaust gas temperature ${Math.round(egt)} °C: turbine/valve damage likely. Richen mixture or reduce retard.`, 15 + 0.1 * (egt - 1050));
+  else if (egt > 1000) add('warn', 'egt', `Exhaust gas temperature ${Math.round(egt)} °C exceeds 1000 °C.`, 5 + 0.2 * (egt - 1000));
+  else if (egt > 950) add('info', 'egt', `Exhaust gas temperature ${Math.round(egt)} °C: hot but within modern turbine/valve ratings.`, 0);
 
   // Lambda under boost.
   const maxBoost = Math.max(...curve.map((p) => p.boostBar));

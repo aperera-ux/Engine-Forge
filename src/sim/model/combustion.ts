@@ -113,7 +113,7 @@ export function burnDuration(c: EngineConfig, rpm: number): number {
   const bs = c.boreMm / c.strokeMm;
   const lam = 1 + 1.5 * (c.lambda - 0.9) * (c.lambda - 0.9);
   return (
-    (CAL.burnDeg * head * Math.pow(bs, 0.3) * Math.pow(c.boreMm / 86, CAL.burnBoreExp) * Math.pow(Math.max(500, rpm) / 4000, 0.1) * lam) /
+    (CAL.burnDeg * head * Math.pow(bs, 0.3) * Math.pow(c.boreMm / 86, CAL.burnBoreExp) * Math.pow(Math.max(500, rpm) / 4000, CAL.burnRpmExp) * lam) /
     fuelOf(c).flameSpeed
   );
 }
@@ -136,8 +136,8 @@ export function lambdaPowerFactor(lambda: number): number {
 export function indicatedEfficiency(c: EngineConfig, rpm: number, burnDeg: number): number {
   const cr = c.compressionRatio;
   const ideal = CAL.etaScale * (1 - Math.pow(cr, -CAL.etaExp));
-  const h = 0.1 * Math.pow(3000 / Math.max(400, rpm), 0.35) * Math.pow(86 / c.boreMm, 0.25) * Math.pow(cr / 11, 0.3);
-  const gHeat = (1 - h) / 0.9;
+  const h = CAL.heatLoss * Math.pow(3000 / Math.max(400, rpm), CAL.heatLossRpmExp) * Math.pow(86 / c.boreMm, 0.25) * Math.pow(cr / 11, 0.3);
+  const gHeat = (1 - h) / (1 - CAL.heatLoss);
   const gBurn = 1 - 0.0015 * (burnDeg - 50);
   return ideal * gHeat * gBurn * fuelOf(c).etaFactor;
 }

@@ -12,10 +12,9 @@ import type {
   ValvetrainType,
 } from '../sim/types';
 import { SUPPORTED_CYLINDERS } from '../sim/layout';
-import { DEFAULT_CONFIG } from '../sim/defaults';
 import { useStore } from './store';
 import { Derived, Section, Segmented, Select, Slider, Toggle } from './controls';
-import { exhaustBiggerThanIntake, pistonSpeedLevel, valveFit, valveSplit } from './checks';
+import { exhaustBiggerThanIntake, pistonSpeedLevel, seedSupercharger, seedTurbo, valveFit, valveSplit } from './checks';
 import { fmt, show } from './units';
 import { Icon } from './icons';
 
@@ -311,6 +310,8 @@ function InductionTab() {
   const [bv, bu] = show(maxBoost, 'pressure', units, 2);
   // Rule of thumb for the dominant ram-tuning harmonic: rpm ≈ 2.1e6 / runner length (mm).
   const runnerTuneRpm = 2.1e6 / c.intakeRunnerMm;
+  const choke = r.warnings.some((w) => w.code.includes('choke'));
+  const surge = r.warnings.some((w) => w.code.includes('surge'));
   return (
     <>
       <Section title="Aspiration">
@@ -319,8 +320,8 @@ function InductionTab() {
           onChange={(induction) => {
             const patch: Partial<typeof c> = { induction };
             // Presets store unused boosters zeroed; seed sane defaults when enabling one.
-            if (induction === 'turbo' && c.turbo.targetBoostBar < 0.2) patch.turbo = { ...DEFAULT_CONFIG.turbo };
-            if (induction === 'supercharger' && c.supercharger.targetBoostBar < 0.1) patch.supercharger = { ...DEFAULT_CONFIG.supercharger };
+            if (induction === 'turbo' && c.turbo.targetBoostBar < 0.2) patch.turbo = seedTurbo(c, c.cylinders >= 8 ? 2 : 1);
+            if (induction === 'supercharger' && c.supercharger.targetBoostBar < 0.1) patch.supercharger = seedSupercharger(c);
             set(patch);
           }}
           options={[
@@ -332,11 +333,24 @@ function InductionTab() {
         />
         {c.induction === 'turbo' && (
           <div className="subgroup">
+            <div className="subgroup-h">
+              <span>
+                Sized for {fmt(r.displacementL / c.turbo.count, 1)} L per turbo: ~{fmt(seedTurbo(c).compressorInducerMm)} mm
+              </span>
+              <button className="link-btn" onClick={() => setTurbo(seedTurbo(c))} data-testid="autosize-turbo">
+                Auto-size
+              </button>
+            </div>
             <Slider label="Target boost" q="pressure" value={c.turbo.targetBoostBar} min={0.2} max={3} step={0.05} onChange={(targetBoostBar) => setTurbo({ targetBoostBar })} />
-            <Slider label="Compressor inducer" q="length" value={c.turbo.compressorInducerMm} min={30} max={90} step={0.5} onChange={(compressorInducerMm) => setTurbo({ compressorInducerMm })} />
+            <Slider label="Compressor inducer" q="length" value={c.turbo.compressorInducerMm} min={30} max={90} step={0.5} onChange={(compressorInducerMm) => setTurbo({ compressorInducerMm })}
+              hint={choke ? 'Turbo too small for this displacement: increase the inducer (or go twin)' : surge ? 'Compressor surges at low rpm: inducer too large for the airflow' : undefined}
+              hintLevel={choke || surge ? 'warn' : undefined} testId="slider-inducer" />
             <Slider label="Turbine A/R" value={c.turbo.turbineAR} min={0.4} max={1.4} step={0.01} onChange={(turbineAR) => setTurbo({ turbineAR })} hint="Smaller = earlier spool, more backpressure" />
             <Slider label="Intercooler effectiveness" value={Math.round(c.turbo.intercoolerEffectiveness * 100)} min={0} max={95} step={1} unit="%" onChange={(v) => setTurbo({ intercoolerEffectiveness: v / 100 })} />
-            <Segmented label="Turbos" value={c.turbo.count} onChange={(count) => setTurbo({ count })} size="sm"
+            <Segmented label="Turbos" value={c.turbo.count} onChange={(count) => {
+                const t = seedTurbo(c, count);
+                setTurbo({ count, compressorInducerMm: t.compressorInducerMm, turbineAR: t.turbineAR });
+              }} size="sm"
               options={[{ value: 1, label: 'Single' }, { value: 2, label: 'Twin' }]} />
             <Toggle label="Twin-scroll housing" desc="Divided turbine — sharper response" value={c.turbo.twinScroll} onChange={(twinScroll) => setTurbo({ twinScroll })} />
           </div>

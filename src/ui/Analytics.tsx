@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useStore } from './store';
 import { fmt, show } from './units';
 import { Icon } from './icons';
@@ -120,19 +121,45 @@ function Balance() {
 
 const SEV_ORDER: Record<SimWarning['severity'], number> = { critical: 0, warn: 1, info: 2 };
 
-export function WarningsList() {
+/** Sim warnings plus UI-side geometric checks, sorted by severity. */
+export function useAllWarnings(): SimWarning[] {
   const simWarnings = useStore((s) => s.result.warnings);
   const config = useStore((s) => s.config);
-  const fit = valveFit(config);
-  const warnings: SimWarning[] =
-    fit.level !== 'ok' && !simWarnings.some((w) => /valve-(fit|size|pack)/.test(w.code))
-      ? [...simWarnings, { severity: fit.level === 'bad' ? 'critical' : 'warn', code: 'valve-fit', message: fit.message }]
-      : simWarnings;
-  const sorted = [...warnings].sort((a, b) => SEV_ORDER[a.severity] - SEV_ORDER[b.severity]);
+  return useMemo(() => {
+    const fit = valveFit(config);
+    const all: SimWarning[] =
+      fit.level !== 'ok' && !simWarnings.some((w) => /valve-(fit|size|pack|geometry)/.test(w.code))
+        ? [...simWarnings, { severity: fit.level === 'bad' ? 'critical' : 'warn', code: 'valve-fit', message: fit.message }]
+        : simWarnings;
+    return [...all].sort((a, b) => SEV_ORDER[a.severity] - SEV_ORDER[b.severity]);
+  }, [simWarnings, config]);
+}
+
+export function WarningItems({ items }: { items: SimWarning[] }) {
+  return (
+    <ul>
+      {items.map((w, i) => (
+        <li key={`${w.code}-${i}`} className={`warn-item ${w.severity}`}>
+          <Icon name={w.severity === 'critical' ? 'critical' : w.severity === 'warn' ? 'warn' : 'info'} size={14} />
+          <div>
+            <span className="warn-msg">{w.message}</span>
+            <span className="warn-code">
+              {w.severity === 'critical' ? 'Critical' : w.severity === 'warn' ? 'Warning' : 'Info'} · {w.code}
+            </span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function WarningsList() {
+  const warnings = useAllWarnings();
+  const sorted = warnings;
   const counts = { critical: 0, warn: 0, info: 0 };
   warnings.forEach((w) => counts[w.severity]++);
   return (
-    <div className="warnings" data-testid="warnings">
+    <div className={`warnings ${sorted.length ? 'has-items' : ''}`} data-testid="warnings">
       <div className="panel-h sub">
         <span className="panel-title">Diagnostics</span>
         <span className="sev-counts">
@@ -146,19 +173,7 @@ export function WarningsList() {
           <Icon name="check" size={14} /> All systems nominal
         </div>
       ) : (
-        <ul>
-          {sorted.map((w, i) => (
-            <li key={`${w.code}-${i}`} className={`warn-item ${w.severity}`}>
-              <Icon name={w.severity === 'critical' ? 'critical' : w.severity === 'warn' ? 'warn' : 'info'} size={14} />
-              <div>
-                <span className="warn-msg">{w.message}</span>
-                <span className="warn-code">
-                  {w.severity === 'critical' ? 'Critical' : w.severity === 'warn' ? 'Warning' : 'Info'} · {w.code}
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <WarningItems items={sorted} />
       )}
     </div>
   );

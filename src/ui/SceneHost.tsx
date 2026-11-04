@@ -21,8 +21,12 @@ const RealScene = loader
 
 export const HAS_REAL_SCENE = !!loader;
 
-class Boundary extends Component<{ children: ReactNode; fallback: ReactNode }, { err: Error | null }> {
+class Boundary extends Component<{ children: ReactNode; fallback: ReactNode; resetKey: unknown }, { err: Error | null }> {
   state = { err: null as Error | null };
+  componentDidUpdate(prev: { resetKey: unknown }) {
+    // Retry the real scene after the config changes (a crash may be config-specific).
+    if (this.state.err && prev.resetKey !== this.props.resetKey) this.setState({ err: null });
+  }
   static getDerivedStateFromError(err: Error) {
     return { err };
   }
@@ -43,7 +47,7 @@ export function SceneHost(props: SceneProps) {
   );
   if (!RealScene) return placeholder;
   return (
-    <Boundary fallback={placeholder}>
+    <Boundary fallback={placeholder} resetKey={props.config}>
       <Suspense fallback={loading}>
         <RealScene {...props} />
       </Suspense>

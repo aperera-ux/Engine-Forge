@@ -23,7 +23,7 @@ export function valveFloatRpm(c: EngineConfig): number {
     const mEff = valveMassG(d) + VT_EXTRA_G[c.valvetrain];
     const spring = Math.pow(d / 35, 1.5) * VT_STIFF[c.valvetrain];
     const adv = dur + 40;
-    return 1250 * Math.sqrt(spring / ((mEff * lift) / (adv * adv)));
+    return 1320 * Math.sqrt(spring / ((mEff * lift) / (adv * adv)));
   };
   const cam = c.cam;
   const nI = side(c.intakeValveMm, cam.intakeLiftMm, cam.intakeDurationDeg);
@@ -32,11 +32,11 @@ export function valveFloatRpm(c: EngineConfig): number {
 }
 
 const ROD_CAP_KN = { cast: 20, 'forged-steel': 33, 'billet-steel': 40, titanium: 38 } as const;
-const PISTON_CAP_KN = { cast: 24, hypereutectic: 27, forged: 36 } as const;
+const PISTON_CAP_KN = { cast: 27, hypereutectic: 29, forged: 36 } as const;
 const CRANK_F = { cast: 0.93, forged: 1.0, billet: 1.06 } as const;
 /** Peak cylinder pressure capability, bar. */
-export const PISTON_PMAX = { cast: 105, hypereutectic: 120, forged: 165 } as const;
-export const ROD_PMAX = { cast: 125, 'forged-steel': 170, 'billet-steel': 200, titanium: 185 } as const;
+export const PISTON_PMAX = { cast: 120, hypereutectic: 130, forged: 170 } as const;
+export const ROD_PMAX = { cast: 140, 'forged-steel': 180, 'billet-steel': 210, titanium: 190 } as const;
 
 export function reciprocatingMassKg(c: EngineConfig): number {
   const pist = 0.3 * Math.pow(c.boreMm / 86, 2.5) * (c.pistons === 'forged' ? 1.0 : 1.05);

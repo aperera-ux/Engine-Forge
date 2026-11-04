@@ -55,10 +55,19 @@ export const CAL = {
   zChoke: 0.95,
   zChokeExp: 6,
   /** Optimum inlet Mach index for cam filling vs IVC (deg ABDC @0.050"). */
-  zOptAt43: 0.47,
+  zOptAt43: 0.58,
   zOptPerDeg: 0.0075,
   /** Mean valve flow coefficient scale (Ci = cdPeak * this * duration factor). */
   ciProfile: 0.6,
+  /** Seat-timing offset added to IVC@0.050" for low-speed charge push-back, deg. */
+  ivcSeatOffset: 20,
+  /** Exponent on (1 − Z/Zopt) for push-back loss below the cam's tuned speed. */
+  backflowExp: 1.5,
+  /** VE loss coefficient above the cam's tuned speed. */
+  camHighLoss: 0.5,
+  /** Variable-lift low-speed lobe: duration reduction (deg) and lift ratio. */
+  lowLobeDurDelta: 45,
+  lowLobeLiftRatio: 0.65,
   /** Intake runner tuning amplitude (plenum / ITB). */
   runnerAmp: 0.06,
   runnerAmpItb: 0.08,
@@ -73,12 +82,17 @@ export const CAL = {
   throttleCd: 0.82,
   // ── combustion ──
   /** Indicated gross efficiency = etaScale * (1 - CR^-etaExp) at MBT, stoich-ish. */
-  etaScale: 0.81,
+  etaScale: 0.8,
   etaExp: 0.28,
   /** Base 0–100 % Wiebe burn duration, crank deg (4-valve pent-roof, B/S = 1). */
   burnDeg: 50,
   /** Burn-duration exponent on bore (flame travel distance). */
   burnBoreExp: 0.5,
+  /** Burn-duration exponent on rpm (laminar share larger at low speed). */
+  burnRpmExp: 0.1,
+  /** In-cylinder heat-loss fraction at 3000 rpm and its rpm exponent. */
+  heatLoss: 0.13,
+  heatLossRpmExp: 0.35,
   /** Ignition / flame-development delay, crank deg. */
   delayDeg: 10,
   /** Douaud–Eyzat induction-time multiplier (global knock calibration). */
@@ -87,6 +101,8 @@ export const CAL = {
   sparkLossK: 0.0006,
   /** Relative reduction of the end-gas compression exponent at 1000 rpm (wall heat loss). */
   endGasHeatLoss: 0.0,
+  /** Residual blow-through rate when intake pressure exceeds exhaust pressure. */
+  scavengeK: 1,
   /** Octane-index weighting K in OI = RON − K·S. */
   octaneK: 0.25,
   /** Fraction of fuel heat of vaporisation that cools the charge (PFI / DI). */
@@ -109,4 +125,9 @@ export const CAL = {
   turbineAreaPerARmm2: 3.5e-7,
   /** (turbine nozzle + open wastegate) / turbine nozzle effective area. */
   wastegateAreaFactor: 1.5,
+  /** Compressor top-speed line: max PR and the flow fraction where it starts rolling off. */
+  compPrMax: 3.2,
+  compSpeedLineKnee: 0.6,
+  /** Turbine-inlet (exhaust manifold) pressure limit enforced by boost control, bar abs. */
+  turbineInletMaxBar: 4.5,
 };

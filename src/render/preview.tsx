@@ -37,13 +37,14 @@ const ts = q.get('ts') ? Number(q.get('ts')) : undefined;
 function App() {
   const [hover, setHover] = useState<number | null>(null);
   const [fps, setFps] = useState(0);
+  const [st, setSt] = useState('');
   const cfg = P[cfgName] ?? D;
   const vs = visualSpeed(rpm, ts);
   return (
     <div style={{ height: '100%', position: 'relative' }}>
-      <EngineScene config={cfg} rpm={rpm} running={running} viewMode={mode} load={Number(q.get('load') ?? 0.8)} egtC={Number(q.get('egt') ?? 820)} timeScale={ts} onCylinderHover={setHover} quality={quality} ao={q.get('ao') === '1'} onFps={setFps} />
+      <EngineScene config={cfg} rpm={rpm} running={running} viewMode={mode} load={Number(q.get('load') ?? 0.8)} egtC={Number(q.get('egt') ?? 820)} timeScale={ts} onCylinderHover={setHover} quality={quality} ao={q.get('ao') === '1'} onFps={(f, c, t) => { setFps(f); setSt(`${c} calls ${(t / 1000).toFixed(0)}k tris`); }} />
       <div id="hud" style={{ position: 'absolute', left: 12, top: 10, pointerEvents: 'none' }}>
-        <b>{cfg.name}</b> · {mode} · {rpm} rpm · shown {vs.revPerSec.toFixed(2)} rev/s (×{vs.factor.toFixed(3)}) · cyl {hover ?? '-'} · <span id="fps">{fps.toFixed(0)}</span> fps
+        <b>{cfg.name}</b> · {mode} · {rpm} rpm · shown {vs.revPerSec.toFixed(2)} rev/s (×{vs.factor.toFixed(3)}) · cyl {hover ?? '-'} · <span id="fps">{fps.toFixed(0)}</span> fps · <span id="st">{st}</span>
         <div style={{ marginTop: 4, opacity: 0.6 }}>{Object.keys(P).map((k) => <a key={k} href={`?cfg=${k}&mode=${mode}`} style={{ color: '#8fc3ff', marginRight: 8, pointerEvents: 'auto' }}>{k}</a>)}</div>
       </div>
     </div>

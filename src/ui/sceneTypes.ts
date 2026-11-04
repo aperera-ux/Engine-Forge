@@ -11,4 +11,6 @@ export interface SceneProps {
   egtC?: number;
   timeScale?: number;
   onCylinderHover?: (cylinder: number | null) => void;
+  quality?: 'high' | 'low';
+  onFps?: (fps: number) => void;
 }

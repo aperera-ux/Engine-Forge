@@ -55,9 +55,9 @@ export function camCandidates(c: EngineConfig): CamProfile[] {
     // Low-speed lobe: ~45° shorter, ~35% less lift (VTEC / Valvetronic-style).
     profiles.push({
       ...base,
-      durI: Math.max(150, base.durI - 45),
+      durI: Math.max(150, base.durI - CAL.lowLobeDurDelta),
       durE: Math.max(150, base.durE - 30),
-      liftI: base.liftI * 0.65,
+      liftI: base.liftI * CAL.lowLobeLiftRatio,
       liftE: base.liftE * 0.75,
     });
   }
@@ -134,7 +134,7 @@ export function prepareProfiles(g: Geometry, c: EngineConfig, profiles: CamProfi
     const ci = cdPeak(p.liftI / c.intakeValveMm) * CAL.ciProfile * Math.min(1.25, (p.durI + 40) / 270);
     const ce = cdPeak(p.liftE / c.exhaustValveMm) * CAL.ciProfile * Math.min(1.25, (p.durE + 40) / 270);
     const zOpt = Math.max(0.15, CAL.zOptAt43 + CAL.zOptPerDeg * (ev.ivc - 43));
-    const backflow = riseFractionAfterBdc(g, Math.min(120, Math.max(0, ev.ivc + 10)));
+    const backflow = riseFractionAfterBdc(g, Math.min(120, Math.max(0, ev.ivc + CAL.ivcSeatOffset)));
     const ovlSeat = ev.overlap + 40;
     const lenIn = c.headerPrimaryMm / 25.4;
     const nEx = (850 * (180 + ev.evo + 15)) / (lenIn + 3);
@@ -154,7 +154,7 @@ function profileVe(g: Geometry, c: EngineConfig, pp: PreparedProfile, inp: VeInp
 
   // Cam filling: IVC sets the inlet Mach index at which inertia ram fills best.
   const s = z / pp.zOpt;
-  let fCam = s < 1 ? 1 - pp.backflow * (1 - s) * (1 - s) : 1 / (1 + 0.3 * (s - 1) * (s - 1));
+  let fCam = s < 1 ? 1 - pp.backflow * Math.pow(1 - s, CAL.backflowExp) : 1 / (1 + CAL.camHighLoss * (s - 1) * (s - 1));
 
   // Overlap reversion at low speed (worse with exhaust pressure above intake).
   const sub = Math.max(0, 1 - Math.min(1, s));

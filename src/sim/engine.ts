@@ -57,7 +57,7 @@ interface PointOut {
 }
 
 function rpmGrid(c: EngineConfig): number[] {
-  const start = Math.max(500, Math.round(c.idleRpm / 50) * 50);
+  const start = Math.max(1000, Math.round(c.idleRpm / 50) * 50);
   const span = c.redlineRpm - start;
   const step = Math.min(250, Math.max(100, Math.round(span / 32 / 50) * 50));
   const out: number[] = [];
@@ -127,7 +127,12 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   // ── Trapped charge state ──
   const cr = c.compressionRatio;
   const scav = Math.min(1.3, Math.max(0.5, 1 - 4 * (ve.fExhaust - 1)));
-  const xr = Math.min(0.3, Math.max(0.02, (1 / cr) * Math.pow(pExhCyl / pMan, 1 / 1.3) * scav * (1 + Math.max(0, ve.overlap) / 100)));
+  // Residual fraction: grows with exhaust/intake pressure ratio and overlap;
+  // with intake above exhaust pressure, overlap scavenges (blows residuals out).
+  const ovlSeat = Math.max(0, ve.overlap + 40);
+  const pRatio = pExhCyl / pMan;
+  const scavBlow = pRatio < 1 ? Math.exp(-CAL.scavengeK * (1 / pRatio - 1) * (ovlSeat / 40)) : 1;
+  const xr = Math.min(0.3, Math.max(0.015, (1 / cr) * Math.pow(pRatio, 1 / 1.3) * scav * scavBlow * (1 + Math.max(0, ve.overlap) / 100)));
   const tIvc = lastTFresh + xr * (950 - lastTFresh) * 0.8 - (ctx.evapKnock - ctx.evapVe);
   const mAirCyl = flow.mAir / (cyclesPerS * c.cylinders);
   const mTrap = mAirCyl * (1 + 1 / afrAct) / (1 - xr);

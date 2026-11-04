@@ -23,12 +23,16 @@ export interface EngineSceneProps {
   /** Visual slow-motion factor (shown rev/s = rpm/60·timeScale). Default: auto 0.5–3 rev/s. */
   timeScale?: number;
   onCylinderHover?: (n: number | null) => void;
+  /** Called at ~15 Hz with the visual crank angle θ (deg, [0,720)) — same θ as layout.ts localCrankAngle/cyclePhase. */
+  onCrankAngle?: (deg: number) => void;
+  /** Shift the framed engine by a fraction of the viewport (+x right, +y up). Default { x: 0.06, y: 0.05 }. */
+  viewOffset?: { x: number; y: number };
   /** Postprocessing quality. 'low' disables AO/bloom/reflections for slow GPUs. */
   quality?: 'high' | 'low';
   /** Screen-space ambient occlusion (high quality only). Default false (noisy on some GPUs). */
   ao?: boolean;
   /** Called every ~0.5 s with the measured frame rate (diagnostics). */
-  onFps?: (fps: number) => void;
+  onFps?: (fps: number, drawCalls: number, triangles: number) => void;
   className?: string;
   style?: CSSProperties;
 }
@@ -58,8 +62,9 @@ function Engine(props: EngineSceneProps & { onBuilt: (m: EngineModel) => void })
   const live = useRef(props);
   live.current = props;
   const fps = useRef({ t: 0, f: 0 });
+  const crankT = useRef(1);
 
-  useFrame((_, dtRaw) => {
+  useFrame((state, dtRaw) => {
     const p = live.current;
     const dt = Math.min(dtRaw, 0.1);
     const target = p.running ? visualSpeed(p.rpm, p.timeScale).revPerSec : 0;
@@ -70,11 +75,20 @@ function Engine(props: EngineSceneProps & { onBuilt: (m: EngineModel) => void })
     const load = p.load ?? 0.5;
     const egt = p.running ? (p.egtC ?? 500 + 400 * load) : 0;
     model.update({ theta: a.theta, dt, load, egtC: egt, revPerSec: a.rev, boost: config.induction === 'turbo' ? load : 0 });
+    if (p.onCrankAngle) {
+      crankT.current += dtRaw;
+      if (crankT.current >= 1 / 15) {
+        crankT.current = 0;
+        p.onCrankAngle(((a.theta % 720) + 720) % 720);
+      }
+    }
+    const calls = state.gl.info.render.calls, tris = state.gl.info.render.triangles;
+    state.gl.info.reset();
     if (p.onFps) {
       fps.current.t += dtRaw;
       fps.current.f++;
       if (fps.current.t > 0.5) {
-        p.onFps(fps.current.f / fps.current.t);
+        p.onFps(fps.current.f / fps.current.t, calls, tris);
         fps.current.t = 0;
         fps.current.f = 0;
       }
@@ -102,6 +116,18 @@ function Engine(props: EngineSceneProps & { onBuilt: (m: EngineModel) => void })
       />
     </>
   );
+}
+
+function ViewOffset({ x, y }: { x: number; y: number }) {
+  const { camera, size } = useThree();
+  useEffect(() => {
+    const cam = camera as THREE.PerspectiveCamera;
+    const w = size.width, h = size.height;
+    if (x === 0 && y === 0) cam.clearViewOffset();
+    else cam.setViewOffset(w, h, -x * w, y * h, w, h);
+    cam.updateProjectionMatrix();
+  }, [camera, size.width, size.height, x, y]);
+  return null;
 }
 
 function Rig({ model, quality }: { model: EngineModel | null; quality: 'high' | 'low' }) {
@@ -177,9 +203,9 @@ function Rig({ model, quality }: { model: EngineModel | null; quality: 'high' | 
               depthScale={1.1}
               minDepthThreshold={0.3}
               maxDepthThreshold={1.3}
-              color="#0d0f13"
-              metalness={0.6}
-              mirror={0.6}
+              color="#07080b"
+              metalness={0.5}
+              mirror={0.45}
             />
           ) : (
             <meshStandardMaterial color="#0d0f13" roughness={0.6} metalness={0.4} />
@@ -227,7 +253,7 @@ function FX({ mode, ao }: { mode: ViewMode; ao: boolean }) {
     <EffectComposer multisampling={0} enableNormalPass={ao}>
       {/* N8AO 2.0.1 is incompatible with three 0.187 MRT API (texture getter returns array) → postprocessing SSAO */}
       {ao ? <SSAO samples={21} rings={5} radius={0.08} intensity={mode === 'xray' ? 4 : 9} luminanceInfluence={0.5} bias={0.025} worldDistanceThreshold={20} worldDistanceFalloff={5} worldProximityThreshold={0.4} worldProximityFalloff={0.3} /> : <></>}
-      <Bloom mipmapBlur luminanceThreshold={0.9} luminanceSmoothing={0.2} intensity={mode === 'xray' ? 0.5 : 0.85} />
+      <Bloom mipmapBlur luminanceThreshold={1.25} luminanceSmoothing={0.3} intensity={mode === 'xray' ? 0.5 : 0.85} />
       <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
       <Vignette offset={0.3} darkness={0.65} />
       <SMAA />
@@ -257,6 +283,7 @@ export function EngineScene(props: EngineSceneProps): JSX.Element {
         camera={{ fov: 32, position: [6, 3, 7], near: 0.05, far: 200 }}
         onCreated={({ gl }) => {
           gl.localClippingEnabled = true;
+          gl.info.autoReset = false;
         }}
         onPointerMissed={() => props.onCylinderHover?.(null)}
       >
@@ -265,6 +292,7 @@ export function EngineScene(props: EngineSceneProps): JSX.Element {
         <Lights />
         <Engine {...props} onBuilt={setModel} />
         <Rig model={model} quality={quality} />
+        <ViewOffset x={props.viewOffset?.x ?? 0.06} y={props.viewOffset?.y ?? 0.05} />
         {quality === 'high' ? <FX mode={props.viewMode} ao={props.ao ?? false} /> : <LowFX />}
       </Canvas>
     </div>

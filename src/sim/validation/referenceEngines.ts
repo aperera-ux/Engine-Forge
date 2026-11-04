@@ -394,7 +394,7 @@ export const REFERENCE_ENGINES: ReferenceEngine[] = [
       },
       induction: 'turbo',
       turbo: {
-        targetBoostBar: 1.0, compressorInducerMm: 41, turbineAR: 0.55,
+        targetBoostBar: 1.0, compressorInducerMm: 38, turbineAR: 0.55, // physics agent v2: 41 -> 38 mm (stock GT15-class; Garrett PowerMax Stage 2 upgrade for 2017+ is 45 mm inducer per Garrett/KC Turbos listings, described as larger than stock)
         intercoolerEffectiveness: 0.7, twinScroll: false, count: 2,
       },
       supercharger: NO_SC,

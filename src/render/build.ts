@@ -287,6 +287,11 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
         batch.add(`block|${k}`, g, Mb[k]);
       }
     }
+    for (const c of bankCyls) for (const s of [-1, 1]) {
+      const g = new THREE.CylinderGeometry(0.5 * B, 0.5 * B, deck - y0Bank - 0.45 * B, 28, 1);
+      g.translate(s * (W / 2 - 0.43 * B), (deck + y0Bank) / 2 - 0.05 * B, ZW(c.zMm));
+      batch.add(`block|${k}`, g, Mb[k]);
+    }
     for (const s of [-1, 1]) {
       batch.add(`block|${k}`, box(0.04 * B, 0.05 * B, blockLen * 0.96, s * (W / 2 + 0.015 * B), deck - 0.18 * B, zwMid), Mb[k]);
       batch.add(`block|${k}`, box(0.03 * B, 0.04 * B, blockLen * 0.96, s * (W / 2 + 0.01 * B), y0Bank + 0.25 * (deck - y0Bank), zwMid), Mb[k]);
@@ -387,11 +392,14 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
         plug.translate(0, seatY, zw);
         batch.add('ceramic|-1', plug, Mb[k]);
         const coilBase = vt === 'dohc' ? headTop + 0.1 * B : coverTop;
-        batch.add('blackPlastic|-1', box(0.3 * B, 0.12 * B, 0.36 * B, 0, coilBase + 0.08 * B, zw), Mb[k]);
+        const coilTop = (vt === 'dohc' ? coverTop : coverTop) + 0.12 * B;
+        batch.add('blackPlastic|-1', box(0.26 * B, coilTop - coilBase - 0.06 * B, 0.3 * B, 0, (coilTop + coilBase) / 2 - 0.03 * B, zw), Mb[k]);
+        batch.add('blackPlastic|-1', box(0.3 * B, 0.08 * B, 0.42 * B, 0, coilTop - 0.02 * B, zw), Mb[k]);
+        batch.add('coilAccent|-1', box(0.06 * B, 0.07 * B, 0.12 * B, 0, coilTop + 0.035 * B, zw - 0.14 * B), Mb[k]);
         const boot = new THREE.CylinderGeometry(0.07 * B, 0.07 * B, coilBase - seatY - 0.2 * B, 12);
         boot.translate(0, (coilBase + seatY + 0.2 * B) / 2, zw);
         batch.add('blackPlastic|-1', boot, Mb[k]);
-        batch.add('coverTrim|-1', box(0.32 * B, 0.015 * B, 0.1 * B, 0, coilBase + 0.145 * B, zw), Mb[k]);
+        batch.add('coverTrim|-1', box(0.32 * B, 0.015 * B, 0.1 * B, 0, coilTop + 0.025 * B, zw + 0.08 * B), Mb[k]);
       } else {
         const g = new THREE.CylinderGeometry(0.06 * B, 0.06 * B, 0.35 * B, 12);
         g.rotateZ(sE(k) * (70 * DEG));
@@ -411,6 +419,20 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
       }
       pts.push([-halfRail * 0.9, yRail], [halfRail * 0.9, yRail]);
       batch.add('timing|-1', extrudeZ(shapeOf(hull2d(pts)), zwF - 0.02 * B, zwF + coverT, 0.05 * B, 8));
+    }
+    const zf = zwF + coverT;
+    for (const k of banks) {
+      for (const sx of [-0.28, 0.28]) {
+        const g = box(0.06 * B, coverTop - y0Bank - 0.45 * B, 0.05 * B, sx * Wh, (coverTop + y0Bank) / 2 - 0.1 * B, zf);
+        batch.add('timing|-1', g, Mb[k]);
+      }
+      batch.add('timing|-1', box(Wh * 0.7, 0.05 * B, 0.05 * B, 0, deck, zf), Mb[k]);
+      if (vt !== 'pushrod') {
+        const cxs = vt === 'dohc' ? [-camX, camX] : [0];
+        for (const cx of cxs) batch.add('timing|-1', cylZ(camBaseR * 2.5, zf - 0.02 * B, zf + 0.06 * B, 32, cx, camY), Mb[k]);
+      }
+      for (const [bx, by] of [[-Wh * 0.45, coverTop - 0.15 * B], [Wh * 0.45, coverTop - 0.15 * B], [-Wh * 0.45, y0Bank + 0.2 * B], [Wh * 0.45, y0Bank + 0.2 * B]] as const)
+        batch.add('chrome|-1', cylZ(0.035 * B, zf, zf + 0.04 * B, 6, bx, by), Mb[k]);
     }
     // seal boss around snout
     const g = cylZ(mainR * 1.05, zwF + coverT - 0.02 * B, zwF + coverT + 0.05 * B, 32);
@@ -759,7 +781,7 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
     const pw = centered ? 1.15 * B : 0.8 * B;
     const ph = centered ? 0.75 * B : 1.15 * B;
     const median = intakePorts[Math.floor(intakePorts.length / 2)];
-    const makeRunner = (ip: (typeof intakePorts)[number], px: number, py: number) => {
+    const makeRunner = (ip: (typeof intakePorts)[number], px: number, py: number, k1 = runnerL * 0.32) => {
       let pe: THREE.Vector3, endDir: THREE.Vector3;
       if (centered) {
         pe = new THREE.Vector3(Math.sign(ip.p.x || 1) * pw * 0.22, py - ph * 0.35, ip.p.z);
@@ -768,21 +790,32 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
         pe = new THREE.Vector3(px - sI(0) * pw * 0.3, py, ip.p.z);
         endDir = new THREE.Vector3(sI(0), 0, 0);
       }
-      const k1 = runnerL * 0.32;
       return bez(ip.p, ip.p.clone().addScaledVector(ip.d, k1), pe.clone().addScaledVector(endDir, -k1), pe);
     };
     let lo = 0, hi = runnerL * 1.4;
     for (let it = 0; it < 30; it++) {
       const m = (lo + hi) / 2;
-      const len = centered ? makeRunner(median, 0, median.p.y + m).getLength() : makeRunner(median, median.p.x + sI(0) * m, median.p.y + 0.3 * B).getLength();
+      const len = centered ? makeRunner(median, 0, median.p.y + m).getLength() : makeRunner(median, median.p.x + sI(0) * m, median.p.y + 0.85 * B).getLength();
       if (len < runnerL) lo = m;
       else hi = m;
     }
     const off = (lo + hi) / 2;
     const minAbove = isV ? Math.max(0, coverTop * 0.5) : 0;
-    if (centered) plenum = { ...plenum, x: 0, y: Math.max(median.p.y + off, minAbove), w: pw, h: ph };
-    else plenum = { ...plenum, x: median.p.x + sI(0) * Math.max(off, 0.6 * B), y: median.p.y + 0.3 * B, w: pw, h: ph };
-    for (const ip of intakePorts) tubeGeos('runner|-1', varTube(makeRunner(ip, plenum.x, plenum.y), (u) => rr * (1 + 0.15 * u), 32, 18));
+    // keep the plenum compact; long runners arch outward instead (length stays = intakeRunnerMm)
+    let coverTopW = -Infinity;
+    for (const k of banks) for (const sx of [-1, 1]) coverTopW = Math.max(coverTopW, toWorld(k, (sx * Wh) / 2, coverTop, 0).y);
+    const capY = coverTopW + ph * 0.5 + 0.25 * B;
+    if (centered) plenum = { ...plenum, x: 0, y: clamp(median.p.y + off, minAbove, Math.max(minAbove, capY)), w: pw, h: ph };
+    else plenum = { ...plenum, x: median.p.x + sI(0) * clamp(off, 0.6 * B, 1.5 * B), y: median.p.y + 0.85 * B, w: pw, h: ph };
+    for (const ip of intakePorts) {
+      let a = 0.05 * runnerL, b = 2.5 * runnerL;
+      for (let it = 0; it < 26; it++) {
+        const m = (a + b) / 2;
+        if (makeRunner(ip, plenum.x, plenum.y, m).getLength() < runnerL) a = m;
+        else b = m;
+      }
+      tubeGeos('runner|-1', varTube(makeRunner(ip, plenum.x, plenum.y, (a + b) / 2), (u) => rr * (1 + 0.15 * u), 40, 18));
+    }
     const pg = extrudeZ(shapeOf(roundRect(plenum.x, plenum.y, pw, ph, Math.min(pw, ph) * 0.42, 6)), plenum.z0, plenum.z1, 0.14 * B, 8);
     batch.add('intake|-1', pg);
     topOfIntake = Math.max(topOfIntake, plenum.y + ph / 2);
@@ -866,10 +899,10 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
       const base = Q.clone().addScaledVector(ob, 0.5 * B).addScaledVector(down, 0.08 * B);
       const a = new THREE.Vector3(base.x, base.y, zFront + 0.25 * B);
       const b = new THREE.Vector3(base.x, base.y, zRear - 0.45 * B);
-      hotGeos.push(varTube(new THREE.LineCurve3(a, b), () => logR, 8, 20, () => IRON, () => 0.85, true));
+      hotGeos.push(varTube(new THREE.LineCurve3(a, b), () => logR, 8, 20, () => IRON, () => 0.6, true));
       for (const e of ports) {
         const tgt = new THREE.Vector3(base.x, base.y, e.p.z);
-        hotGeos.push(varTube(new THREE.LineCurve3(e.p, tgt), () => rp * 1.05, 4, 16, () => IRON, () => 1));
+        hotGeos.push(varTube(new THREE.LineCurve3(e.p, tgt), () => rp * 1.05, 4, 16, () => IRON, () => 0.8));
         hotGeos.push(withHeat(box(0.06 * B, rp * 3, rp * 3.2, 0, 0, 0).applyMatrix4(new THREE.Matrix4().compose(e.p, new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), e.d), new THREE.Vector3(1, 1, 1))), IRON, 1));
       }
       const outEnd = b.clone().addScaledVector(ob, 0.3 * B).addScaledVector(down, turbo ? 0.1 * B : 0.9 * B);
@@ -922,7 +955,7 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
       const curve = mkPath(e, C, kOut, idx);
       hotGeos.push(varTube(curve, () => rp, 64, 16, tint, (u) => Math.exp(-u * 2.6)));
       // flange
-      hotGeos.push(withHeat(box(0.06 * B, rp * 2.9, rp * 3.1).applyMatrix4(new THREE.Matrix4().compose(e.p, new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), e.d), new THREE.Vector3(1, 1, 1))), [0.7, 0.7, 0.72], 0.9));
+      hotGeos.push(withHeat(box(0.06 * B, rp * 2.9, rp * 3.1).applyMatrix4(new THREE.Matrix4().compose(e.p, new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), e.d), new THREE.Vector3(1, 1, 1))), [0.62, 0.62, 0.64], 0.35));
     });
     // collector cone
     const collLen = 1.1 * B;
@@ -945,8 +978,8 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
   const icW = Math.max(engineHalfW * 1.5, 3 * B);
   const icH = 0.85 * B;
   const yIC = yPan + icH / 2 + 0.05 * B;
-  const zIC = zPulley0 + pulleyW + 1.3 * B;
-  const chargeR = Math.max(throttleR, 0.26 * B) * 0.9;
+  const zIC = zPulley0 + pulleyW + 0.9 * B;
+  const chargeR = clamp(throttleR * 0.8, 0.2 * B, 0.3 * B);
   const icPorts = icEff > 0 ? {
     a: new THREE.Vector3(-icW / 2 - 0.25 * B, yIC + icH * 0.25, zIC),
     b: new THREE.Vector3(icW / 2 + 0.25 * B, yIC + icH * 0.25, zIC),
@@ -956,8 +989,8 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
     for (const s of [-1, 1]) batch.add('castAlu|-1', extrudeZ(shapeOf(roundRect(s * (icW / 2 + 0.13 * B), yIC, 0.28 * B, icH * 1.04, 0.1 * B)), zIC - 0.2 * B, zIC + 0.2 * B, 0.05 * B, 4));
   };
   const chargePipe = (a: THREE.Vector3, aDir: THREE.Vector3, b: THREE.Vector3, bDir: THREE.Vector3, rad = chargeR) => {
-    const d = a.distanceTo(b) * 0.4;
-    batch.add('runner|-1', varTube(bez(a, a.clone().addScaledVector(aDir, d), b.clone().addScaledVector(bDir, -d), b), () => rad, 48, 18));
+    const d = Math.min(a.distanceTo(b) * 0.3, 2.2 * B);
+    batch.add('chargePipe|-1', varTube(bez(a, a.clone().addScaledVector(aDir, d), b.clone().addScaledVector(bDir, -d), b), () => rad, 48, 18));
   };
   // compressor (shared by turbo & centrifugal); returns outlet point/dir in root frame
   const buildCompressor = (center: THREE.Vector3, inducer: number, facing: 1 | -1, outletSide: number) => {
@@ -1134,8 +1167,40 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
   }
   if (!forced && throttleAt && !useItb) addThrottle(throttleAt.p, throttleAt.dir, true);
 
+  // accessory drive: water pump + alternator on a serpentine belt (unless a blower owns the belt plane)
+  if (!(scType === 'roots' || scType === 'twin-screw' || scType === 'centrifugal')) {
+    const wp = new THREE.Vector2(0, isFlat ? Rswing + 0.45 * B : Math.max(Rswing + 0.55 * B, 0.42 * deck));
+    const alt = isFlat
+      ? new THREE.Vector2(-(1.1 * B), wp.y + 0.35 * B)
+      : inline
+        ? new THREE.Vector2(sE(0) * (W / 2 + 0.55 * B), 0.5 * deck)
+        : new THREE.Vector2(-(Math.abs(toWorld(0, -Wh / 2, deck, 0).x) * 0.75), 0.42 * deck);
+    const wpR = 0.42 * B, altR = 0.22 * B;
+    const pulley = (c: THREE.Vector2, R: number, rate: number) => {
+      const pg = lathe([[0.001, 0], [R, 0], [R * 0.93, pulleyW * 0.25], [R, pulleyW * 0.5], [0.001, pulleyW * 0.5]], 32);
+      pg.rotateX(Math.PI / 2);
+      const pm = new THREE.Mesh(pg, lib.base.steel);
+      pm.position.set(c.x, c.y, zBelt - pulleyW * 0.25);
+      root.add(pm);
+      spinners.push({ obj: pm, rate, kind: 'crank' });
+    };
+    pulley(wp, wpR, pulleyR / wpR);
+    pulley(alt, altR, pulleyR / altR);
+    batch.add('castAlu|-1', cylZ(0.25 * B, zwF + coverT, zBelt - pulleyW * 0.25, 20, wp.x, wp.y));
+    const az0 = zBelt - pulleyW * 0.3 - 0.9 * B, az1 = zBelt - pulleyW * 0.3;
+    batch.add('castAlu|-1', cylZ(0.55 * B, az0, az1 - 0.12 * B, 36, alt.x, alt.y));
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      batch.add('steel|-1', box(0.04 * B, 0.12 * B, 0.7 * B, alt.x + Math.cos(a) * 0.56 * B, alt.y + Math.sin(a) * 0.56 * B, (az0 + az1) / 2 - 0.06 * B).applyMatrix4(new THREE.Matrix4()));
+    }
+    batch.add('steel|-1', cylZ(0.08 * B, az1 - 0.12 * B, az1, 12, alt.x, alt.y));
+    const outer = hull2d([...circlePts(0, 0, pulleyR * 0.99, 48), ...circlePts(wp.x, wp.y, wpR * 0.99, 32), ...circlePts(alt.x, alt.y, altR * 0.99, 24)]);
+    const inner = hull2d([...circlePts(0, 0, pulleyR * 0.94, 48), ...circlePts(wp.x, wp.y, wpR * 0.92, 32), ...circlePts(alt.x, alt.y, altR * 0.9, 24)]);
+    batch.add('belt|-1', extrudeZ(shapeOf(outer, [inner]), zBelt - pulleyW * 0.2, zBelt + pulleyW * 0.2, 0, 2));
+  }
+
   // clipping planes (world space; root sits at origin with uniform scale)
-  const camDir = new THREE.Vector2(0.6, 0.8);
+  const camDir = new THREE.Vector2(1, 0.3);
   for (const k of banks) {
     const lx = new THREE.Vector3(1, 0, 0).transformDirection(Mb[k]);
     const sgn = lx.x * camDir.x + lx.y * camDir.y >= 0 ? 1 : -1;
@@ -1278,7 +1343,7 @@ export function buildEngine(cfg: EngineConfig, lib: MaterialLib, initialMode: Vi
     heatColor.setRGB(1, 0.1 + 0.32 * t * t, 0.03 + 0.08 * t * t * t);
     const hm = lib.base.header;
     hm.emissive.copy(heatColor);
-    hm.emissiveIntensity = Math.pow(t, 1.8) * 2.2 * flicker;
+    hm.emissiveIntensity = Math.pow(t, 2) * 1.6 * flicker;
     const tm = lib.base.turbine;
     tm.emissive.copy(heatColor);
     tm.emissiveIntensity = Math.pow(t, 1.8) * 1.8 * flicker;

@@ -8,6 +8,8 @@ import { cancelDynoPull, crankClock, runDynoPull } from './dyno';
 import { computeLayout, strokeAt, type Stroke } from '../sim/layout';
 import { show, fmt } from './units';
 import { engineCode } from './format';
+import { useAllWarnings, WarningItems } from './Analytics';
+import { Onboarding } from './Onboarding';
 
 export function Viewport() {
   const config = useStore((s) => s.config);
@@ -21,6 +23,15 @@ export function Viewport() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const mouse = useRef({ x: 0, y: 0 });
   const onHover = useCallback((n: number | null) => setHovered(n), [setHovered]);
+  const [quality, setQuality] = useState<'high' | 'low'>('high');
+  const [fps, setFps] = useState<number | null>(null);
+  const slow = useRef(0);
+  const onFps = useCallback((f: number) => {
+    setFps(Math.round(f));
+    // Auto-degrade post-processing on slow GPUs (2 s of < 28 fps).
+    slow.current = f < 28 ? slow.current + 1 : 0;
+    if (slow.current >= 4) setQuality('low');
+  }, []);
 
   return (
     <section
@@ -33,16 +44,29 @@ export function Viewport() {
       data-testid="viewport"
     >
       <div className="scene">
-        <SceneHost config={config} rpm={rpm} running={running} viewMode={viewMode} load={load} egtC={egtC} onCylinderHover={onHover} />
+        <SceneHost config={config} rpm={rpm} running={running} viewMode={viewMode} load={load} egtC={egtC} onCylinderHover={onHover} quality={quality} onFps={onFps} />
       </div>
       <div className="vignette" />
       <HudTitle />
       <div className="hud hud-tr">
         <ViewToggle />
+        {fps !== null && (
+          <button
+            className="fps"
+            title={`Render quality: ${quality} (click to toggle)`}
+            onClick={() => {
+              slow.current = -1e9;
+              setQuality(quality === 'high' ? 'low' : 'high');
+            }}
+          >
+            {fps} fps · {quality === 'high' ? 'HQ' : 'LQ'}
+          </button>
+        )}
       </div>
       <HudGauges />
       <HudControls />
       <CylinderTooltip mouse={mouse} />
+      <Onboarding />
     </section>
   );
 }
@@ -79,20 +103,37 @@ function HudTitle() {
 }
 
 function HudAlerts() {
-  const warnings = useStore((s) => s.result.warnings);
+  const warnings = useAllWarnings();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
   const crit = warnings.filter((w) => w.severity === 'critical').length;
   const warn = warnings.filter((w) => w.severity === 'warn').length;
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  useEffect(() => {
+    if (!crit && !warn) setOpen(false);
+  }, [crit, warn]);
   if (!crit && !warn) return null;
   return (
-    <button
-      className={`hud-alerts ${crit ? 'critical' : 'warn'}`}
-      onClick={() => document.querySelector('[data-testid="warnings"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-      title="Show diagnostics"
-    >
-      <Icon name={crit ? 'critical' : 'warn'} size={13} />
-      {crit > 0 && <span>{crit} critical</span>}
-      {warn > 0 && <span>{warn} warning{warn > 1 ? 's' : ''}</span>}
-    </button>
+    <div className="hud-alerts-wrap" ref={ref}>
+      <button className={`hud-alerts ${crit ? 'critical' : 'warn'} ${open ? 'open' : ''}`} onClick={() => setOpen(!open)} title="Show diagnostics" data-testid="hud-alerts">
+        <Icon name={crit ? 'critical' : 'warn'} size={13} />
+        {crit > 0 && <span>{crit} critical</span>}
+        {warn > 0 && <span>{warn} warning{warn > 1 ? 's' : ''}</span>}
+        <svg viewBox="0 0 10 6" width="8" height="5" aria-hidden>
+          <path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.4" />
+        </svg>
+      </button>
+      {open && (
+        <div className="alerts-pop warnings" data-testid="alerts-pop">
+          <WarningItems items={warnings} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -128,7 +169,7 @@ function HudGauges() {
   const [b, bu] = show(curveAt(result, rpm, 'boostBar'), 'pressure', units, 2);
   return (
     <div className="hud hud-bl">
-      <Tachometer rpm={rpm} redline={redline} max={max} dyno={dyno} />
+      <Tachometer rpm={rpm} redline={redline} max={max} dyno={dyno} size={136} />
       <div className="hud-readouts">
         <Readout label="Power" value={p} unit={pu} accent testId="hud-power" />
         <Readout label="Torque" value={t} unit={tu} testId="hud-torque" />

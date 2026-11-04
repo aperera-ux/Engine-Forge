@@ -54,6 +54,15 @@ export function compressorEta(phi: number, pr: number): number {
   return Math.max(0.45, e);
 }
 
+/**
+ * Maximum pressure ratio on the compressor's top wheel-speed line vs flow
+ * fraction: flat up to the efficiency island, then rolling off into choke.
+ */
+export function compressorMaxPr(phi: number): number {
+  const x = Math.min(1, Math.max(0, (phi - CAL.compSpeedLineKnee) / (1.05 - CAL.compSpeedLineKnee)));
+  return 1 + (CAL.compPrMax - 1) * (1 - x * x);
+}
+
 export function surgePr(phi: number): number {
   return 1 + 5 * Math.pow(Math.max(0, phi), 0.9);
 }
@@ -108,7 +117,9 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number): Bo
     const p4 = P_AMB_PA + 0.05e5 * Math.min(2, phi) ** 2;
     const p3c = turbineInletPressure(at, flow.mExh, flow.tExh, p4);
     const ptc = turbinePower(c, flow.mExh, flow.tExh, p3c, p4);
-    return { pr, phi, eta, flow, t2, tc, pUp, pc, p3c, ptc, p4 };
+    // Exhaust pressure with the wastegate open (lower bound on the operating p3).
+    const p3wg = turbineInletPressure(at * CAL.wastegateAreaFactor, flow.mExh, flow.tExh, p4);
+    return { pr, phi, eta, flow, t2, tc, pUp, pc, p3c, ptc, p4, p3wg };
   };
 
   let p3 = p3Guess;
@@ -118,7 +129,11 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number): Bo
   // p3 is warm-started from the previous rpm point, so one refinement pass suffices.
   for (let pass = 0; pass < 1; pass++) {
     const prMax = Math.max(1.0001, (pTarget / P_AMB_PA) * 1.35);
-    const feasible = (r: ReturnType<typeof evalPr>) => r.ptc >= r.pc && r.phi <= 0.98 && r.flow.pMan <= pTarget;
+    // Feasible: turbine can drive the compressor, the compressor is inside its
+    // maximum wheel-speed (tip-speed) line, and boost control keeps the
+    // turbine-inlet pressure below its limit (ECU/wastegate strategy).
+    const feasible = (r: ReturnType<typeof evalPr>) =>
+      r.ptc >= r.pc && r.pr <= compressorMaxPr(r.phi) && r.flow.pMan <= pTarget && Math.min(r.p3c, r.p3wg) <= CAL.turbineInletMaxBar * 1e5;
     let lo = 1;
     let hi = prMax;
     let best = evalPr(1, p3);
@@ -137,7 +152,8 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number): Bo
     res = best;
     const atTarget = res.flow.pMan >= pTarget - 0.03e5;
     spoolLimited = !atTarget && res.ptc < res.pc * 1.05;
-    choke = !atTarget && !spoolLimited && res.phi > 0.95;
+    // Genuinely past choke: flow pinned at the speed line with collapsed efficiency.
+    choke = res.phi > 0.97 && res.eta < 0.58;
     if (atTarget || !spoolLimited) {
       // Wastegate regulating: turbine only has to supply compressor power.
       let lo3 = res.p4;
@@ -148,8 +164,7 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number): Bo
         else hi3 = mid;
       }
       // Wastegate port + turbine nozzle together still restrict flow.
-      const p3wg = turbineInletPressure(at * CAL.wastegateAreaFactor, res.flow.mExh, res.flow.tExh, res.p4);
-      p3 = Math.min(res.p3c, Math.max(hi3, p3wg));
+      p3 = Math.min(res.p3c, Math.max(hi3, res.p3wg));
     } else {
       p3 = res.p3c;
     }

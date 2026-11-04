@@ -15,6 +15,7 @@ for (const s of shots) {
   await page.waitForTimeout(wait);
   const fps = await page.$eval('#fps', (e) => e.textContent).catch(() => '?');
   await page.screenshot({ path: `${outDir}/${name}.png` });
-  console.log(name, 'fps', fps, errs.length ? '\n  ' + [...new Set(errs)].slice(0, 6).join('\n  ') : '');
+  const st = await page.$eval('#st', (e) => e.textContent).catch(() => '?');
+  console.log(name, 'fps', fps, st, errs.length ? '\n  ' + [...new Set(errs)].slice(0, 6).join('\n  ') : '');
 }
 await browser.close();

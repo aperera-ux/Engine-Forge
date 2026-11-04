@@ -74,8 +74,8 @@ export function Tachometer({ rpm, redline, max, size = 168, dyno }: Props) {
     <svg className={`tach ${over ? 'over' : ''} ${dyno ? 'dyno' : ''}`} width={size} height={size} viewBox={`0 0 ${size} ${size}`} data-testid="tach">
       <defs>
         <radialGradient id="tachbg" cx="50%" cy="40%" r="65%">
-          <stop offset="0%" stopColor="#1c1d21" />
-          <stop offset="100%" stopColor="#0b0c0e" />
+          <stop offset="0%" stopColor="#1c1d21" stopOpacity="0.72" />
+          <stop offset="100%" stopColor="#0b0c0e" stopOpacity="0.82" />
         </radialGradient>
       </defs>
       <circle cx={c} cy={c} r={R + 2} fill="url(#tachbg)" />

@@ -3,6 +3,12 @@ import { useStore } from './store';
 /** Shared crank clock (deg) integrated from rpm, used for tooltips / audio phase. */
 export const crankClock = { thetaDeg: 0 };
 
+export function visualRevPerSec(rpm: number): number {
+  if (rpm <= 0) return 0;
+  const t = Math.min(1, Math.max(0, (rpm - 600) / 8400));
+  return 0.5 + 2.5 * Math.pow(t, 0.85);
+}
+
 let clockStarted = false;
 export function startCrankClock() {
   if (clockStarted) return;
@@ -12,7 +18,9 @@ export function startCrankClock() {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     const s = useStore.getState();
-    if (s.running) crankClock.thetaDeg = (crankClock.thetaDeg + s.rpm * 6 * dt) % 720;
+    // Mirror the renderer's auto slow-motion (src/render/speed.ts) so the tooltip stroke
+    // advances at the same visual rate as the animation.
+    if (s.running) crankClock.thetaDeg = (crankClock.thetaDeg + visualRevPerSec(s.rpm) * 360 * dt) % 720;
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);

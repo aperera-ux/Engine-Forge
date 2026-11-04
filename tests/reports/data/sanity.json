@@ -1,0 +1,929 @@
+{
+ "identity:power = torque·ω (0.1%)": [],
+ "identity:hp = kW/0.7457 and lb-ft = N·m·0.73756": [],
+ "identity:BMEP = 4π·T/Vd (0.5%)": [],
+ "identity:IMEP − FMEP = BMEP (where BMEP > 0)": [],
+ "identity:BSFC = fuel flow / power (1%)": [],
+ "identity:fuel flow = air flow / (λ·AFR_stoich) (1%)": [],
+ "identity:BTE = P/(ṁf·LHV) within 2%": [],
+ "identity:VE·Vd·ρ_amb·rpm/120 ≈ air flow (2%)": [],
+ "identity:NA: MAP ≤ ambient and boost = 0": [],
+ "identity:EGT 500–1100 °C at WOT (all points ≥ 1500 rpm)": [],
+ "identity:BSFC ≥ 200 g/kWh gasoline-equivalent (no perpetual motion)": [],
+ "identity:BTE ≤ 0.42 (gasoline); ≤ 0.44 alcohols": [],
+ "identity:peaks reported = curve maxima; rpm strictly increasing": [],
+ "r1:turboI4:sweep": [
+  {
+   "bar": 0.4,
+   "hp": 169.02,
+   "retard": 6.487,
+   "maxBoost": 0.4,
+   "choke": false
+  },
+  {
+   "bar": 0.6,
+   "hp": 192.211,
+   "retard": 10.502,
+   "maxBoost": 0.6,
+   "choke": false
+  },
+  {
+   "bar": 0.8,
+   "hp": 207.434,
+   "retard": 14.518,
+   "maxBoost": 0.8,
+   "choke": false
+  },
+  {
+   "bar": 1,
+   "hp": 212.858,
+   "retard": 18.225,
+   "maxBoost": 1,
+   "choke": false
+  },
+  {
+   "bar": 1.2,
+   "hp": 213.098,
+   "retard": 21.623,
+   "maxBoost": 1.2,
+   "choke": false
+  },
+  {
+   "bar": 1.5,
+   "hp": 213.143,
+   "retard": 28.418,
+   "maxBoost": 1.5,
+   "choke": false
+  },
+  {
+   "bar": 1.8,
+   "hp": 213.085,
+   "retard": 37.376,
+   "maxBoost": 1.8,
+   "choke": false
+  },
+  {
+   "bar": 2,
+   "hp": 213.033,
+   "retard": 39.929,
+   "maxBoost": 2,
+   "choke": false
+  }
+ ],
+ "r1:turboI4:gain0.5to1.0": 17.678,
+ "r1:turboI6:sweep": [
+  {
+   "bar": 0.4,
+   "hp": 275.095,
+   "retard": 0,
+   "maxBoost": 0.4,
+   "choke": false
+  },
+  {
+   "bar": 0.6,
+   "hp": 315.026,
+   "retard": 0,
+   "maxBoost": 0.6,
+   "choke": false
+  },
+  {
+   "bar": 0.8,
+   "hp": 354.378,
+   "retard": 2.813,
+   "maxBoost": 0.8,
+   "choke": false
+  },
+  {
+   "bar": 1,
+   "hp": 392.648,
+   "retard": 6.875,
+   "maxBoost": 1,
+   "choke": false
+  },
+  {
+   "bar": 1.2,
+   "hp": 429.446,
+   "retard": 10,
+   "maxBoost": 1.2,
+   "choke": false
+  },
+  {
+   "bar": 1.5,
+   "hp": 445.732,
+   "retard": 15,
+   "maxBoost": 1.5,
+   "choke": false
+  },
+  {
+   "bar": 1.8,
+   "hp": 445.811,
+   "retard": 19.688,
+   "maxBoost": 1.8,
+   "choke": false
+  },
+  {
+   "bar": 2,
+   "hp": 445.67,
+   "retard": 23.125,
+   "maxBoost": 2,
+   "choke": false
+  }
+ ],
+ "r1:turboI6:gain0.5to1.0": 33.049,
+ "r1:scV8": [
+  613.058,
+  778.908,
+  932.232
+ ],
+ "r1:2.0L-gas93-retard": [
+  {
+   "bar": 1,
+   "retard": 0
+  },
+  {
+   "bar": 1.5,
+   "retard": 4.063
+  },
+  {
+   "bar": 2,
+   "retard": 10.313
+  },
+  {
+   "bar": 2.5,
+   "retard": 12.188
+  }
+ ],
+ "r1:2.0L-e85": {
+  "hp2": 522.049,
+  "hp25": 522.025,
+  "retE85": 0,
+  "retG93": 10.313
+ },
+ "r2:turboI4:inducer": {
+  "spoolSmall": 1000,
+  "spoolBig": 2350,
+  "hpSmall": 150.145,
+  "hpBig": 351.809,
+  "tq2000Small": 183.782,
+  "tq2000Big": 231.002
+ },
+ "r2:turboI4:AR": {
+  "spoolSmall": 1600,
+  "spoolBig": 2950,
+  "hpSmall": 213.143,
+  "hpBig": 246.696,
+  "pExhRedSmall": 4.33,
+  "pExhRedBig": 1.953,
+  "tq2500Small": 317.417,
+  "tq2500Big": 244.564
+ },
+ "r2:turboI6:inducer": {
+  "spoolSmall": 1800,
+  "spoolBig": 3600,
+  "hpSmall": 326.801,
+  "hpBig": 566.914,
+  "tq2000Small": 490.95,
+  "tq2000Big": 259.522
+ },
+ "r2:turboI6:AR": {
+  "spoolSmall": 2200,
+  "spoolBig": 4000,
+  "hpSmall": 434.409,
+  "hpBig": 494.796,
+  "pExhRedSmall": 4.015,
+  "pExhRedBig": 1.833,
+  "tq2500Small": 536.943,
+  "tq2500Big": 272.496
+ },
+ "r3:turboI4": {
+  "spoolOff": 2050,
+  "spoolOn": 2050,
+  "hpOff": 295.555,
+  "hpOn": 299.622
+ },
+ "r3:turboI6": {
+  "spoolOff": 3200,
+  "spoolOn": 3000,
+  "hpOff": 384.502,
+  "hpOn": 388.84
+ },
+ "r4:turboI4": {
+  "gainPct": 10.404,
+  "dTchargeC": -82.041,
+  "retNo": 36.759,
+  "retYes": 16.68
+ },
+ "r4:turboI6": {
+  "gainPct": 12.547,
+  "dTchargeC": -68.04,
+  "retNo": 11.563,
+  "retYes": 5
+ },
+ "r5:roots:boostRatio": 0.866,
+ "r5:twin-screw:boostRatio": 0.866,
+ "r5:centrifugal:ratio50": 0.254,
+ "r5:midTorque": {
+  "centrifugal": 662.464,
+  "twinScrew": 892.891
+ },
+ "r5:driveFrac": {
+  "at0_4": 0.065,
+  "at0_8": 0.096
+ },
+ "r7:naI4": [
+  {
+   "L": 150,
+   "tqRpm": 7250,
+   "tq": 208.363,
+   "hp": 231.569
+  },
+  {
+   "L": 200,
+   "tqRpm": 7000,
+   "tq": 209.442,
+   "hp": 226.505
+  },
+  {
+   "L": 250,
+   "tqRpm": 6250,
+   "tq": 209.874,
+   "hp": 220.969
+  },
+  {
+   "L": 300,
+   "tqRpm": 6250,
+   "tq": 209.8,
+   "hp": 216.609
+  },
+  {
+   "L": 350,
+   "tqRpm": 6000,
+   "tq": 209.163,
+   "hp": 214.08
+  },
+  {
+   "L": 400,
+   "tqRpm": 5750,
+   "tq": 207.888,
+   "hp": 213.237
+  },
+  {
+   "L": 500,
+   "tqRpm": 4750,
+   "tq": 207.308,
+   "hp": 214.377
+  }
+ ],
+ "r7:naPushrodV8": [
+  {
+   "L": 150,
+   "tqRpm": 4600,
+   "tq": 557.639,
+   "hp": 437.525
+  },
+  {
+   "L": 200,
+   "tqRpm": 4200,
+   "tq": 560.856,
+   "hp": 438.206
+  },
+  {
+   "L": 250,
+   "tqRpm": 4800,
+   "tq": 561.967,
+   "hp": 435.008
+  },
+  {
+   "L": 300,
+   "tqRpm": 4800,
+   "tq": 567.567,
+   "hp": 429.966
+  },
+  {
+   "L": 350,
+   "tqRpm": 4600,
+   "tq": 571.745,
+   "hp": 423.821
+  },
+  {
+   "L": 400,
+   "tqRpm": 4400,
+   "tq": 574.308,
+   "hp": 417.62
+  },
+  {
+   "L": 500,
+   "tqRpm": 4200,
+   "tq": 577.346,
+   "hp": 406.088
+  }
+ ],
+ "r8:ls3": {
+  "pkRpmStock": 6000,
+  "pkRpmBig": 6600,
+  "hpStock": 434.192,
+  "hpBig": 461.895,
+  "tq2000Pct": -6.854,
+  "tqRpmStock": 4800,
+  "tqRpmBig": 5200,
+  "floatStock": 7165,
+  "floatBig": 7736
+ },
+ "r8:naI4:sweep": [
+  {
+   "d": -20,
+   "pkRpm": 8400,
+   "tqRpm": 6000,
+   "hp": 206.575,
+   "tq2500": 197.478
+  },
+  {
+   "d": 0,
+   "pkRpm": 8400,
+   "tqRpm": 6250,
+   "hp": 217.342,
+   "tq2500": 197.436
+  },
+  {
+   "d": 20,
+   "pkRpm": 8400,
+   "tqRpm": 6500,
+   "hp": 223.345,
+   "tq2500": 194.941
+  },
+  {
+   "d": 40,
+   "pkRpm": 8400,
+   "tqRpm": 6250,
+   "hp": 223.939,
+   "tq2500": 188.539
+  }
+ ],
+ "r8:naPushrodV8:sweep": [
+  {
+   "d": -20,
+   "pkRpm": 5400,
+   "tqRpm": 3800,
+   "hp": 385.652,
+   "tq2500": 546.183
+  },
+  {
+   "d": 0,
+   "pkRpm": 6000,
+   "tqRpm": 4800,
+   "hp": 434.192,
+   "tq2500": 524.138
+  },
+  {
+   "d": 20,
+   "pkRpm": 6600,
+   "tqRpm": 5200,
+   "hp": 461.895,
+   "tq2500": 491.764
+  },
+  {
+   "d": 40,
+   "pkRpm": 7200,
+   "tqRpm": 5400,
+   "hp": 474.046,
+   "tq2500": 448.104
+  }
+ ],
+ "r8:turboI6:sweep": [
+  {
+   "d": -20,
+   "pkRpm": 5800,
+   "tqRpm": 3800,
+   "hp": 316.7,
+   "tq2500": 440.999
+  },
+  {
+   "d": 0,
+   "pkRpm": 6600,
+   "tqRpm": 3800,
+   "hp": 344.697,
+   "tq2500": 427.055
+  },
+  {
+   "d": 20,
+   "pkRpm": 7200,
+   "tqRpm": 3800,
+   "hp": 353.469,
+   "tq2500": 393.187
+  },
+  {
+   "d": 40,
+   "pkRpm": 7500,
+   "tqRpm": 3800,
+   "hp": 350.32,
+   "tq2500": 337.734
+  }
+ ],
+ "r9:ls3": {
+  "ve2000Wide": 0.84,
+  "ve2000Tight": 0.836,
+  "veHiWide": 0.904,
+  "veHiTight": 0.911
+ },
+ "r9:naVsTurbo": {
+  "na": {
+   "hi": 0.923,
+   "lo": -1.278
+  },
+  "turbo": {
+   "hi": -1.31,
+   "lo": 0.278
+  }
+ },
+ "r10:naI4": {
+  "rpmSmall": 7750,
+  "rpmBig": 9900,
+  "hpSmall": 182.81,
+  "hpBig": 236.266
+ },
+ "r10:naPushrodV8": {
+  "rpmSmall": 4800,
+  "rpmBig": 6800,
+  "hpSmall": 352.766,
+  "hpBig": 474.54
+ },
+ "r10:zAtPeak": {
+  "naI4": 0.708,
+  "naPushrodV8": 0.743
+ },
+ "r11:naI4:vvt": {
+  "areaPct": 6.157,
+  "peakTqPct": 3.946
+ },
+ "r11:naPushrodV8:vvt": {
+  "areaPct": 3.244,
+  "peakTqPct": 1.681
+ },
+ "r11:vtec": {
+  "vl3000": 194.386,
+  "hi3000": 171.627,
+  "lo3000": 194.386,
+  "vlHp": 217.342,
+  "hiHp": 217.342,
+  "loHp": 163.019
+ },
+ "r12:naI4": {
+  "ve": {
+   "log": 0.922,
+   "shorty": 0.934,
+   "long-tube": 0.946,
+   "tuned-equal": 0.953
+  },
+  "hp": {
+   "log": 205.086,
+   "shorty": 208.863,
+   "long-tube": 212.408,
+   "tuned-equal": 214.299
+  }
+ },
+ "r12:naPushrodV8": {
+  "ve": {
+   "log": 0.892,
+   "shorty": 0.898,
+   "long-tube": 0.902,
+   "tuned-equal": 0.905
+  },
+  "hp": {
+   "log": 431.42,
+   "shorty": 435.928,
+   "long-tube": 439.317,
+   "tuned-equal": 440.909
+  }
+ },
+ "r12:turbo": {
+  "naSpread": 0.06,
+  "turboSpread": 0,
+  "spoolLog": 3200,
+  "spoolTuned": 3200
+ },
+ "r13:itb": {
+  "plenum": 216.609,
+  "itb": 243.315,
+  "plenumRpm": 8400,
+  "itbRpm": 8400
+ },
+ "r13:naI4:throttle": {
+  "dCrit": 35.093,
+  "hp06": 84.28,
+  "hp1": 179.901,
+  "hp15": 212.856,
+  "hp25": 221.081
+ },
+ "r13:naPushrodV8:throttle": {
+  "dCrit": 55.146,
+  "hp06": 200.116,
+  "hp1": 383.588,
+  "hp15": 430.578,
+  "hp25": 441.695
+ },
+ "r14:crGain": {
+  "gainPct": 2.982,
+  "ret10": 0,
+  "ret11": 0
+ },
+ "r14:crGainLs3": 2.669,
+ "r14:cr13gas87": {
+  "naI4": 10.938,
+  "naPushrodV8": 7.813
+ },
+ "r14:naI4:crSweep87": [
+  {
+   "cr": 9,
+   "tq": 194.429,
+   "ret": 0
+  },
+  {
+   "cr": 10,
+   "tq": 201.252,
+   "ret": 2.813
+  },
+  {
+   "cr": 11,
+   "tq": 207.256,
+   "ret": 5.938
+  },
+  {
+   "cr": 12,
+   "tq": 212.45,
+   "ret": 8.75
+  },
+  {
+   "cr": 13,
+   "tq": 216.989,
+   "ret": 10.938
+  },
+  {
+   "cr": 14,
+   "tq": 220.995,
+   "ret": 12.813
+  },
+  {
+   "cr": 15,
+   "tq": 224.549,
+   "ret": 15
+  },
+  {
+   "cr": 16,
+   "tq": 227.731,
+   "ret": 16.875
+  }
+ ],
+ "r15:naI4": [
+  217.342,
+  217.342,
+  217.342,
+  218.568
+ ],
+ "r15:naPushrodV8": [
+  434.192,
+  434.192,
+  434.192,
+  436.723
+ ],
+ "r15:turboI4": [
+  209.46,
+  213.105,
+  214.371,
+  215.934
+ ],
+ "r15:turboI6": [
+  344.697,
+  344.697,
+  344.697,
+  346.428
+ ],
+ "r15:scV8": [
+  778.908,
+  778.908,
+  778.908,
+  783.303
+ ],
+ "r15:ls3_91to93": 0,
+ "r16:k20e85": {
+  "hpPct": 6.714,
+  "bsfcRatio": 1.419,
+  "retGas": 3.75
+ },
+ "r16:methanol": {
+  "hpM": 257.861,
+  "hpE": 231.933,
+  "bsfcRatio": 1.982
+ },
+ "r16:turboE85": {
+  "hpPct": 7.597,
+  "retGas": 21.25,
+  "retE85": 7.582
+ },
+ "r17:retard": {
+  "k20cr13gas91": {
+   "pfi": 8.75,
+   "di": 7.813
+  },
+  "ea888boost16": {
+   "pfi": 22.813,
+   "di": 21.25
+  }
+ },
+ "r17:ve": {
+  "naI4": 0.382,
+  "naPushrodV8": 0.372
+ },
+ "r18:naI4": [
+  {
+   "l": 0.7,
+   "tq": 193.139,
+   "bsfc": 379.883,
+   "egt": 795.781,
+   "ret": 2.813
+  },
+  {
+   "l": 0.75,
+   "tq": 201.554,
+   "bsfc": 338.544,
+   "egt": 806.264,
+   "ret": 3.125
+  },
+  {
+   "l": 0.8,
+   "tq": 207.084,
+   "bsfc": 308.182,
+   "egt": 822.773,
+   "ret": 3.438
+  },
+  {
+   "l": 0.84,
+   "tq": 209.417,
+   "bsfc": 289.907,
+   "egt": 841.091,
+   "ret": 3.75
+  },
+  {
+   "l": 0.87,
+   "tq": 209.943,
+   "bsfc": 279.083,
+   "egt": 858.122,
+   "ret": 3.75
+  },
+  {
+   "l": 0.9,
+   "tq": 209.418,
+   "bsfc": 270.424,
+   "egt": 878.156,
+   "ret": 4.063
+  },
+  {
+   "l": 0.94,
+   "tq": 207.086,
+   "bsfc": 261.932,
+   "egt": 909.778,
+   "ret": 4.688
+  },
+  {
+   "l": 1,
+   "tq": 200.094,
+   "bsfc": 255.273,
+   "egt": 968.25,
+   "ret": 5
+  },
+  {
+   "l": 1.05,
+   "tq": 189.818,
+   "bsfc": 257.179,
+   "egt": 925.412,
+   "ret": 4.688
+  }
+ ],
+ "r18:naPushrodV8": [
+  {
+   "l": 0.7,
+   "tq": 516.745,
+   "bsfc": 388.915,
+   "egt": 817.885,
+   "ret": 0
+  },
+  {
+   "l": 0.75,
+   "tq": 539.721,
+   "bsfc": 346.647,
+   "egt": 829.485,
+   "ret": 0
+  },
+  {
+   "l": 0.8,
+   "tq": 554.974,
+   "bsfc": 315.539,
+   "egt": 846.721,
+   "ret": 0
+  },
+  {
+   "l": 0.84,
+   "tq": 561.569,
+   "bsfc": 296.775,
+   "egt": 865.349,
+   "ret": 0
+  },
+  {
+   "l": 0.87,
+   "tq": 563.228,
+   "bsfc": 285.637,
+   "egt": 882.455,
+   "ret": 0
+  },
+  {
+   "l": 0.9,
+   "tq": 562.059,
+   "bsfc": 276.703,
+   "egt": 902.432,
+   "ret": 0
+  },
+  {
+   "l": 0.94,
+   "tq": 556.092,
+   "bsfc": 267.896,
+   "egt": 933.766,
+   "ret": 0
+  },
+  {
+   "l": 1,
+   "tq": 537.69,
+   "bsfc": 260.852,
+   "egt": 991.35,
+   "ret": 0.625
+  },
+  {
+   "l": 1.05,
+   "tq": 509.557,
+   "bsfc": 262.676,
+   "egt": 948.3,
+   "ret": 0.313
+  }
+ ],
+ "r19:k20": {
+  "ret80": 7.957,
+  "ret92": 9.063
+ },
+ "r19:ea888": {
+  "ret78": 16.734,
+  "ret88": 21.25
+ },
+ "r20:turboI4": {
+  "dT": 41.143,
+  "slopePctPerC": -0.184,
+  "retCool": 17.188,
+  "retHot": 22.188
+ },
+ "r20:turboI6": {
+  "dT": 36.04,
+  "slopePctPerC": -0.164,
+  "retCool": 5.625,
+  "retHot": 8.125
+ },
+ "r21:sp26": [
+  {
+   "severity": "info",
+   "code": "piston-speed",
+   "message": "High mean piston speed 26 m/s at redline (high-performance territory)."
+  }
+ ],
+ "r21:stroke": {
+  "sp80": 22.4,
+  "sp96": 26.88,
+  "rel80": 99,
+  "rel96": 85
+ },
+ "r22:cast45k": {
+  "rpm": 8293,
+  "accel": 44995.276,
+  "mechLimit": 6450,
+  "warnings": [
+   "info:piston-speed",
+   "critical:rotating-assembly",
+   "critical:valve-float"
+  ]
+ },
+ "r23:naI4": {
+  "vf": 11077,
+  "hpAt": 221.737,
+  "hpOver": 221.737,
+  "pkRpmOver": 10000,
+  "warn": true
+ },
+ "r23:naPushrodV8": {
+  "vf": 7165,
+  "hpAt": 434.192,
+  "hpOver": 434.168,
+  "pkRpmOver": 6000,
+  "warn": true
+ },
+ "r24:etaM": [
+  {
+   "id": "honda-k20a-dc5",
+   "atTq": 0.858,
+   "atPk": 0.806,
+   "pkRpm": 8400
+  },
+  {
+   "id": "honda-f20c-ap1",
+   "atTq": 0.882,
+   "atPk": 0.786,
+   "pkRpm": 9000
+  },
+  {
+   "id": "toyota-4age-20v-blacktop",
+   "atTq": 0.867,
+   "atPk": 0.832,
+   "pkRpm": 8000
+  },
+  {
+   "id": "gm-ls3",
+   "atTq": 0.86,
+   "atPk": 0.824,
+   "pkRpm": 6000
+  },
+  {
+   "id": "gm-ls7",
+   "atTq": 0.854,
+   "atPk": 0.812,
+   "pkRpm": 6000
+  },
+  {
+   "id": "ford-coyote-gen3",
+   "atTq": 0.867,
+   "atPk": 0.809,
+   "pkRpm": 7500
+  },
+  {
+   "id": "bmw-s54-e46m3",
+   "atTq": 0.87,
+   "atPk": 0.812,
+   "pkRpm": 8000
+  },
+  {
+   "id": "toyota-1gr-fe",
+   "atTq": 0.873,
+   "atPk": 0.829,
+   "pkRpm": 6000
+  },
+  {
+   "id": "porsche-9a1-40-gt3",
+   "atTq": 0.87,
+   "atPk": 0.811,
+   "pkRpm": 9000
+  },
+  {
+   "id": "ferrari-f136-458",
+   "atTq": 0.864,
+   "atPk": 0.808,
+   "pkRpm": 9000
+  },
+  {
+   "id": "audi-52-v10-r8plus",
+   "atTq": 0.866,
+   "atPk": 0.784,
+   "pkRpm": 8700
+  },
+  {
+   "id": "ferrari-f140fc-f12",
+   "atTq": 0.86,
+   "atPk": 0.825,
+   "pkRpm": 8700
+  },
+  {
+   "id": "mazda-skyactiv-g25",
+   "atTq": 0.877,
+   "atPk": 0.821,
+   "pkRpm": 6500
+  },
+  {
+   "id": "chevy-350-zz4",
+   "atTq": 0.875,
+   "atPk": 0.83,
+   "pkRpm": 5500
+  }
+ ],
+ "r25:cyl": [
+  {
+   "n": 4,
+   "mass": 140.285,
+   "mech": 8735,
+   "sp": 22.977
+  },
+  {
+   "n": 6,
+   "mass": 157.441,
+   "mech": 9667,
+   "sp": 20.073
+  },
+  {
+   "n": 8,
+   "mass": 165.162,
+   "mech": 10387,
+   "sp": 18.237
+  }
+ ]
+}
