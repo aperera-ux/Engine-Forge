@@ -62,6 +62,7 @@ export function sanitize(c: EngineConfig): EngineConfig {
       type: s.type === 'roots' || s.type === 'centrifugal' ? s.type : 'twin-screw',
       targetBoostBar: clamp(num(s.targetBoostBar, 0.5), 0, 4),
       intercoolerEffectiveness: clamp(num(s.intercoolerEffectiveness, 0.6), 0, 1),
+      referenceRpm: typeof s.referenceRpm === 'number' && Number.isFinite(s.referenceRpm) ? clamp(s.referenceRpm, 1000, 20000) : undefined,
     },
     intakeRunnerMm: clamp(num(c.intakeRunnerMm, 300), 0, 1500),
     throttleMm: clamp(num(c.throttleMm, 60), 10, 400),

@@ -57,7 +57,7 @@ Each rule can be tested by perturbing one field of a reference config, with ever
 1. **More boost means more power**, monotonically, until knock retard, compressor choke (η_c collapse) or the EGT limit stops it. Going from 0.5 to 1.0 bar on a turbo engine should add 25–40% peak power. On 93 pump fuel, a 2.0 at CR 9.5 should show rising knock retard beyond about 1.5 bar. On E85, that same engine should go well beyond 2 bar.
 2. **A bigger compressor inducer or turbine A/R moves full-boost rpm up and peak power up** at high boost. A smaller one gives earlier spool and more low-rpm torque, but a power ceiling and higher back pressure at high rpm.
 3. **Twin-scroll gives earlier spool** (about 10–15% lower full-boost rpm) and about the same peak.
-4. **A better intercooler raises power and lowers knock retard.** Taking effectiveness from 0 to 0.75 at 1 bar should be worth roughly +8–15% power and −30 to −50 °C of charge temperature.
+4. **A better intercooler raises power and lowers knock retard.** Taking effectiveness from 0 to 0.75 at 1 bar should be worth roughly +8–15% power and −60 to −90 °C of charge temperature. *(Revised after audit: was −30 to −50 °C. That band is inconsistent with ε = 0.75 at 1 bar. A compressor at η 0.65–0.75 delivers T₂ ≈ 110–135 °C at 25 °C ambient, so ΔT = −ε·(T₂ − T_amb) ≈ −65…−85 K.)*
 5. **Positive-displacement superchargers give near-flat boost and strong low-rpm torque. Centrifugal boost rises roughly as rpm².** At equal boost at redline, centrifugal makes less mid-range torque. Supercharger drive loss grows with boost: about 10–15% of gross power.
 6. **An NA engine at sea-level ambient has MAP ≤ 1.0 bar**, with tuning peaks shown as VE only. It never reports positive boost.
 
@@ -80,7 +80,7 @@ Each rule can be tested by perturbing one field of a reference config, with ever
 20. **Higher charge temperature means less density and more knock**, roughly −1% power per +3 °C on knock-limited turbo engines.
 
 ### Mechanical
-21. **Mean piston speed:** warn above 25 m/s, critical above 27. Longer stroke at fixed rpm means a higher Sp, so reliability falls.
+21. **Mean piston speed:** info above 22 m/s, warn above 27, critical above 30. *(Revised after audit, lead arbitration: was warn > 25 / critical > 27. Stock production engines reach ~27 m/s, e.g. F20C 25.2 and Audi 5.2 V10 26.9.)* Longer stroke at fixed rpm means a higher Sp, so reliability falls.
 22. **Peak piston acceleration** = rω²(1 + r/l). A longer rod lowers it slightly. Cast parts must warn above about 40 km/s².
 23. **Raising redline above the valve-float rpm** must not add power beyond the float point. Power falls, and a 'valve-float' warning appears.
 24. **FMEP rises with rpm**, roughly quadratically in Sp. Mechanical efficiency is 0.80–0.90 at peak torque and 0.72–0.85 at peak power, down to about 0.70 at 9000+ rpm.

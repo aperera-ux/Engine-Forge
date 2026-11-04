@@ -261,13 +261,11 @@ describe('Rule 4: intercooler', () => {
       expect(row.gainPct).toBeLessThanOrEqual(15);
       expect(maxRetard(yes)).toBeLessThanOrEqual(maxRetard(no) + 0.1);
     });
-    // The doc's −30…−50 °C band is inconsistent with ε = 0.75 at 1 bar: an η_c≈0.7 compressor
-    // at PR≈2 delivers ≈ +90 K over ambient, so ε·ΔT ≈ −65…−70 K. Kept as a documented
-    // doc-vs-physics conflict (expected to fail), plus the physics-consistent check below.
-    it.fails(`${k} @1 bar: charge temp −30…−50 °C (doc band; physically inconsistent — expected to fail)`, () => {
+    // Doc band revised after audit (was −30…−50 °C, inconsistent with ε = 0.75 at 1 bar).
+    it(`${k} @1 bar: charge temp −60…−90 °C (doc band, revised after audit)`, () => {
       const { dT } = pair();
-      expect(dT).toBeLessThanOrEqual(-30);
-      expect(dT).toBeGreaterThanOrEqual(-50);
+      expect(dT).toBeLessThanOrEqual(-60);
+      expect(dT).toBeGreaterThanOrEqual(-90);
     });
     it(`${k} @1 bar: charge-temp drop = ε·(T_comp − T_amb) (physics-consistent, ±15%)`, () => {
       const { no, dT } = pair();
@@ -750,17 +748,24 @@ describe('Rule 21: mean piston speed thresholds', () => {
     const b = base('naI4');
     return sim(mutate(b, (c) => (c.redlineRpm = Math.round((sp * 60) / (2 * (c.strokeMm / 1000))))));
   };
-  it('Sp 23.5 m/s → no piston-speed warn/critical', () => {
-    expect(hasCode(atSp(23.5), 'piston-speed')).toBe(false);
+  // Thresholds revised after audit (lead arbitration): info > 22, warn > 27, critical > 30 m/s,
+  // because stock production engines reach ~27 m/s (F20C 25.2, R8 V10 26.9).
+  it('Sp 21 m/s → no piston-speed message at all', () => {
+    expect(hasCode(atSp(21), 'piston-speed', ['info', 'warn', 'critical'])).toBe(false);
   });
-  it('Sp 26 m/s → piston-speed warn, not critical', () => {
+  it('Sp 26 m/s → piston-speed info only (production-limit territory)', () => {
     const r = atSp(26);
     R.rec('r21:sp26', r.warnings.filter((w) => w.code === 'piston-speed'));
+    expect(hasCode(r, 'piston-speed', ['info'])).toBe(true);
+    expect(hasCode(r, 'piston-speed')).toBe(false);
+  });
+  it('Sp 28.5 m/s → piston-speed warn, not critical', () => {
+    const r = atSp(28.5);
     expect(hasCode(r, 'piston-speed', ['warn'])).toBe(true);
     expect(hasCode(r, 'piston-speed', ['critical'])).toBe(false);
   });
-  it('Sp 28 m/s → piston-speed critical', () => {
-    expect(hasCode(atSp(28), 'piston-speed', ['critical'])).toBe(true);
+  it('Sp 31 m/s → piston-speed critical', () => {
+    expect(hasCode(atSp(31), 'piston-speed', ['critical'])).toBe(true);
   });
   it('longer stroke at fixed rpm → higher Sp and lower reliability', () => {
     const b = base('naI4');

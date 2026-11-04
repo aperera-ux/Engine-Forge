@@ -46,8 +46,12 @@ export function runCycle(inp: CycleInputs): CycleOut {
   let work = 0;
   let ki = 0;
   let xbPrev = 0;
-  const msPerDeg = 1000 / (6 * inp.rpm);
-  const lnOnFac = Math.log(CAL.knockTauScale * 17.68 * Math.pow(inp.octane / 100, 3.402));
+  // Knock time base: end-gas residence time shrinks ∝ 1/rpm, but turbulent
+  // flame speed and end-gas temperature both rise with speed, so knock
+  // tolerance improves only weakly with rpm: effective time ∝ rpm^(β−1).
+  const msPerDeg = (1000 / (6 * inp.rpm)) * Math.pow(inp.rpm / 3000, CAL.knockRpmExp);
+  // τ is referenced to 40 atm so the pressure exponent can be recalibrated without moving the overall level.
+  const lnOnFac = Math.log(CAL.knockTauScale * 17.68 * Math.pow(inp.octane / 100, 3.402)) + (CAL.knockPressureExp - 1.7) * Math.log(40);
   // End-gas loses heat to the walls during compression: more time at low rpm.
   const kU = ((GAMMA_UNBURNED - 1) / GAMMA_UNBURNED) * (1 - CAL.endGasHeatLoss * (1000 / Math.max(300, inp.rpm)));
   const lnP0 = Math.log(p0);
@@ -79,7 +83,7 @@ export function runCycle(inp: CycleInputs): CycleOut {
       // Douaud–Eyzat: τ = 17.68 (ON/100)^3.402 p^-1.7 exp(3800/T), end gas compressed isentropically.
       const lnP = Math.log(p);
       const tU = inp.tIvc * Math.exp(kU * (lnP - lnP0));
-      ki += msPerDeg * Math.exp(-(lnOnFac - 1.7 * (lnP - lnAtm) + 3800 / tU));
+      ki += msPerDeg * Math.exp(-(lnOnFac - CAL.knockPressureExp * (lnP - lnAtm) + 3800 / tU));
     } else if (!inp.wantKnock && xb >= 0.99999 && th1 > 120) {
       // Remaining expansion only matters for work; finish polytropically.
       for (let j = i + 1; j < 360; j++) {
@@ -139,7 +143,10 @@ export function indicatedEfficiency(c: EngineConfig, rpm: number, burnDeg: numbe
   const h = CAL.heatLoss * Math.pow(3000 / Math.max(400, rpm), CAL.heatLossRpmExp) * Math.pow(86 / c.boreMm, 0.25) * Math.pow(cr / 11, 0.3);
   const gHeat = (1 - h) / (1 - CAL.heatLoss);
   const gBurn = 1 - 0.0015 * (burnDeg - 50);
-  return ideal * gHeat * gBurn * fuelOf(c).etaFactor;
+  // Heat transfer and crevice losses grow with CR (surface/volume at TDC):
+  // the indicated-efficiency benefit saturates around CR 14–16 (Heywood §5.7).
+  const gCr = 1 - CAL.crPenalty * Math.max(0, cr - 10) ** 2;
+  return ideal * gHeat * gBurn * gCr * fuelOf(c).etaFactor;
 }
 
 /** Fraction of released fuel energy lost to the walls/coolant (EGT balance). */
@@ -177,24 +184,37 @@ export function knockLimitedSpark(
     return { sparkBtdc: mbt, retard: 0, workRatio: 1, pMaxBar: atMbt.pMaxPa / 1e5, knockIntegralMbt: atMbt.knockIntegral };
   }
   const maxRetard = Math.min(40, mbt + 15);
-  let lo = 0;
-  let hi = maxRetard;
-  const last = runCycle({ ...base, thetaStart: start(mbt - hi), wantKnock: true });
-  let best = last;
-  if (last.knockIntegral > 1) {
-    lo = hi;
-  } else {
-    for (let i = 0; i < 7; i++) {
-      const mid = 0.5 * (lo + hi);
-      const r = runCycle({ ...base, thetaStart: start(mbt - mid), wantKnock: true });
-      if (r.knockIntegral > 1) lo = mid;
-      else {
-        hi = mid;
-        best = r;
+  const ki = (r: number) => runCycle({ ...base, thetaStart: start(mbt - r), wantKnock: true });
+  let retard = maxRetard;
+  let best = ki(maxRetard);
+  if (best.knockIntegral <= 1) {
+    // Illinois (modified regula falsi) on ln(KI) — ln KI is nearly linear in
+    // retard, so this converges to ~0.01° in a few cycles and keeps curves smooth.
+    let a = 0;
+    let fa = Math.log(atMbt.knockIntegral);
+    let b = maxRetard;
+    let fb = Math.log(Math.max(1e-12, best.knockIntegral));
+    let side = 0;
+    for (let i = 0; i < 12 && b - a > 0.02; i++) {
+      const r = (a * fb - b * fa) / (fb - fa);
+      const out = ki(r);
+      const fr = Math.log(Math.max(1e-12, out.knockIntegral));
+      if (fr > 0) {
+        a = r;
+        fa = fr;
+        if (side === -1) fb /= 2;
+        side = -1;
+      } else {
+        b = r;
+        fb = fr;
+        best = out;
+        if (side === 1) fa /= 2;
+        side = 1;
       }
+      if (Math.abs(fr) < 1e-3) break;
     }
+    retard = b;
   }
-  const retard = lo >= maxRetard ? maxRetard : hi;
   return {
     sparkBtdc: mbt - retard,
     retard,

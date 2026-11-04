@@ -96,7 +96,13 @@ export const CAL = {
   /** Ignition / flame-development delay, crank deg. */
   delayDeg: 10,
   /** Douaud–Eyzat induction-time multiplier (global knock calibration). */
-  knockTauScale: 3.0,
+  knockTauScale: 1.5,
+  /** Knock time-base exponent β: 0 = wall-clock time (∝1/rpm), 1 = crank-angle based. */
+  knockRpmExp: 0.6,
+  /** Pressure exponent of the induction-time correlation (Douaud–Eyzat 1.7). */
+  knockPressureExp: 1.7,
+  /** CR-dependent heat-transfer/crevice penalty on indicated efficiency, per CR² above 10. */
+  crPenalty: 0.0015,
   /** Torque loss coefficient per deg² of retard from MBT. */
   sparkLossK: 0.0006,
   /** Relative reduction of the end-gas compression exponent at 1000 rpm (wall heat loss). */
@@ -118,16 +124,25 @@ export const CAL = {
   valvetrainFmep: { pushrod: 0.12, sohc: 0.1, dohc: 0.12 } as Record<'pushrod' | 'sohc' | 'dohc', number>,
   // ── turbo ──
   /** Compressor choke flow per inducer area, kg/s per mm². */
-  compChokePerMm2: 1.15e-4,
+  compChokePerMm2: 1.35e-4,
   compEtaPeak: 0.74,
   turbineEta: 0.68,
   /** Turbine effective flow area per (A/R · inducer² mm²), m². */
   turbineAreaPerARmm2: 3.5e-7,
   /** (turbine nozzle + open wastegate) / turbine nozzle effective area. */
   wastegateAreaFactor: 1.5,
+  /** Fraction of the header-type exhaust loss that a turbo manifold adds ahead of the turbine. */
+  turboManifoldLossFrac: 0.5,
   /** Compressor top-speed line: max PR and the flow fraction where it starts rolling off. */
-  compPrMax: 3.2,
-  compSpeedLineKnee: 0.6,
+  compPrMax: 3.8,
+  compPrMaxPerMm: 0.01,
+  compSpeedLineKnee: 0.75,
+  /** Turbine frame size exponent on inducer diameter (turbine area ∝ A/R · D^exp). */
+  turbineFrameExp: 1.0,
+  /** Extra low-flow turbine efficiency from twin-scroll pulse separation. */
+  twinScrollPulse: 0.25,
+  /** Supercharger pulley sizing: crank rpm where targetBoostBar is reached (default). */
+  scReferenceRpm: 6000,
   /** Turbine-inlet (exhaust manifold) pressure limit enforced by boost control, bar abs. */
   turbineInletMaxBar: 4.5,
 };

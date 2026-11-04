@@ -77,8 +77,13 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   const tExhPort = egtGuessK;
   let lastVe: VeResult | null = null;
   let lastTFresh = T_AMB_K;
+  // Turbo exhaust manifold between ports and turbine: friction/dynamic-head loss
+  // by manifold type (log manifolds are compact but restrictive at high flow).
+  let lastMExh = 0;
+  const manifoldLoss = (mExh: number) => (turbo ? CAL.turboManifoldLossFrac * (exhaustBackPressure(c, mExh, tExhPort) - P_AMB_PA) : 0);
 
-  const flowAt = (pUp: number, tUp: number, pExhCyl: number): FlowAt => {
+  const flowAt = (pUp: number, tUp: number, pExhTurb: number): FlowAt => {
+    const pExhCyl = pExhTurb + manifoldLoss(lastMExh);
     const tFresh = Math.max(200, tUp + chargeWallHeating(rpm, c.itb) - ctx.evapVe);
     // VE depends only weakly on the throttle drop (via pe/pi): one evaluation.
     const ve = computeVe(g, c, ctx.profiles, {
@@ -95,7 +100,8 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
     lastVe = ve;
     lastTFresh = tFresh;
     const mAir = demandPerPa * pMan;
-    return { mAir, mExh: mAir * (1 + 1 / afrAct), pMan, tExh: turbo ? tExhPort - 40 : tExhPort };
+    lastMExh = mAir * (1 + 1 / afrAct);
+    return { mAir, mExh: lastMExh, pMan, tExh: turbo ? tExhPort - 40 : tExhPort };
   };
 
   let boost: BoostState | null = null;
@@ -106,7 +112,7 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
     boost = solveTurbo(c, flowAt, pExhGuess);
     // Re-evaluate at the converged state so lastVe matches.
     flow = flowAt(boost.pUp, boost.tCharge, boost.pExhCyl);
-    pExhCyl = boost.pExhCyl;
+    pExhCyl = boost.pExhCyl + manifoldLoss(flow.mExh);
     tCharge = boost.tCharge;
   } else if (c.induction === 'supercharger') {
     boost = solveSupercharger(c, rpm, flowAt, (m, t) => exhaustBackPressure(c, m, t), pExhGuess);
@@ -132,8 +138,14 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   const ovlSeat = Math.max(0, ve.overlap + 40);
   const pRatio = pExhCyl / pMan;
   const scavBlow = pRatio < 1 ? Math.exp(-CAL.scavengeK * (1 / pRatio - 1) * (ovlSeat / 40)) : 1;
-  const xr = Math.min(0.3, Math.max(0.015, (1 / cr) * Math.pow(pRatio, 1 / 1.3) * scav * scavBlow * (1 + Math.max(0, ve.overlap) / 100)));
-  const tIvc = lastTFresh + xr * (950 - lastTFresh) * 0.8 - (ctx.evapKnock - ctx.evapVe);
+  // Residual mass fraction (Heywood eq. 6.x): clearance volume at exhaust
+  // pressure and residual temperature, relative to the trapped charge.
+  const tRes = Math.max(600, 0.85 * egtGuessK);
+  const xr = Math.min(
+    0.3,
+    Math.max(0.01, (1 / cr) * Math.pow(pRatio, 1 / 1.3) * (lastTFresh / tRes) * scav * scavBlow * (1 + Math.max(0, ve.overlap) / 60)),
+  );
+  const tIvc = lastTFresh + xr * (tRes - lastTFresh) - (ctx.evapKnock - ctx.evapVe);
   const mAirCyl = flow.mAir / (cyclesPerS * c.cylinders);
   const mTrap = mAirCyl * (1 + 1 / afrAct) / (1 - xr);
   const pBdc = (mTrap * R_AIR * tIvc) / g.vol[0];
@@ -158,7 +170,8 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   const powerKw = (torqueNm * rpm * 2 * Math.PI) / 60 / 1000;
   const fuelKgS = flow.mAir / afrAct;
   const egtK = exhaustTemp(c, tIvc, (wInd / mAirCyl), rpm);
-  const bsfc = powerKw > 0.5 ? Math.min(3000, (fuelKgS * 3.6e6) / powerKw) : 0;
+  // BSFC is meaningless near zero brake power: report 0 (no value) below 5 kW.
+  const bsfc = powerKw >= 5 ? (fuelKgS * 3.6e6) / powerKw : 0;
   const bte = fuelKgS > 0 ? Math.min(0.6, (powerKw * 1000) / (fuelKgS * fuel.lhv)) : 0;
 
   const point: DynoPoint = {
@@ -186,7 +199,8 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
     exhaustPressureBar: pExhCyl / 1e5,
     pmepBar: pmep,
   };
-  return { point, boost, egtK, pExhCyl };
+  // Warm start for the next rpm: turbine-inlet pressure for turbos, else exhaust pressure.
+  return { point, boost, egtK, pExhCyl: boost && turbo ? boost.pExhCyl : pExhCyl };
 }
 
 export function simulate(config: EngineConfig): SimResult {

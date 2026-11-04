@@ -218,7 +218,9 @@ export function computeVe(g: Geometry, c: EngineConfig, profiles: PreparedProfil
 
   // Valve float: control of the valve is lost, VE collapses.
   const xf = inp.rpm / inp.valveFloatRpm - 1;
-  const fFloat = xf > 0 ? Math.max(0.15, Math.exp(-((xf / 0.07) ** 2))) : 1;
+  // Past float the valves bounce and close late: steep but bounded loss
+  // (≈50 % by 15 % over float, floor 45 %).
+  const fFloat = xf > 0 ? Math.max(0.45, 1 - 0.5 * Math.pow(Math.min(1, xf / 0.15), 1.5)) : 1;
 
   let base = CAL.veBase[c.valvetrain];
   if (c.valvesPerCylinder === 2) base -= CAL.ve2ValvePenalty;
