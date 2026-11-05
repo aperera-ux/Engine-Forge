@@ -9,13 +9,18 @@ import type { OptimizeOutput } from './compute';
 import { useVehicleSim } from './sim';
 import { speedConv } from './VehicleCharts';
 
-/** Median |error| over the 9 reference cars with SIMULATED engine curves (research/vehicle_sources.md). */
+/**
+ * Round-2 validation with SIMULATED engine curves (research/vehicle_sources.md, "Round-2 results").
+ * Bands use the worse of train (n=9) and fresh holdout (n=4) median |error|, to stay conservative.
+ */
 export const VALIDATION = {
-  n: 9,
-  zeroTo60Pct: 6.9,
-  zeroTo60WorstPct: 15.1,
-  quarterMilePct: 2.1,
-  trapPct: 2.7,
+  nTrain: 9,
+  nHoldout: 4,
+  zeroTo60Pct: 8.9,
+  zeroTo60WorstPct: 17.5,
+  quarterMilePct: 2.7,
+  trapPct: 2.2,
+  topSpeedPct: 2.9,
 };
 
 type Level = 'ok' | 'warn' | 'bad' | undefined;
@@ -76,8 +81,8 @@ function Kpis() {
         />
       </div>
       <div className="kpi-top" data-testid="kpi-top-speed">
-        <Tile label="Top speed" pill="plausibility estimate" value={fmt(topShown)} unit={S.label} sub={topWhy} title="Steady-state force balance on a level road. Not validated against measured top speeds." />
-        <div className="kpi-top-note">Not validated: no reference top speeds were checked, and the drag model is simple (constant Cd, no lift, no wind).</div>
+        <Tile label="Top speed" pill="plausibility estimate" value={fmt(topShown)} unit={S.label} sub={topWhy} title="Steady-state force balance on a level road, compared only against manufacturer claims." />
+        <div className="kpi-top-note">Checked only against manufacturer claims, with estimated Cd·A. The drag model is simple (constant Cd, no lift, no wind).</div>
       </div>
       <div className="kpi-grid">
         <Tile label="60-130 mph" value={sec(a.t60to130mph, 1)} unit="s" title="Rolling acceleration, no launch involved: usually the better-behaved number" />
@@ -138,9 +143,8 @@ function Optimizer() {
           {busy ? 'Optimising…' : 'Optimize gearing'}
         </button>
         <div className="veh-warn" data-testid="optimizer-note" role="note">
-          <b>Read with care.</b> The vehicle model has no wheelspin model yet: launch grip is a fixed fraction of peak friction, so
-          the optimiser is free to pick very short gearing. Expect results that sit at the edge of the search range; treat them as
-          a direction, not a recommendation.
+          <b>Read with care.</b> The launch is a clutch (or converter) held at a fixed rpm, and bogging is not penalised, so 0-60
+          gains from shorter gearing are optimistic. Treat results as a direction, not a recommendation, and check the edge warning below.
         </div>
         {optError && <div className="veh-warn bad">Optimiser failed: {optError}</div>}
         {opt && flags && (
@@ -169,7 +173,7 @@ function Optimizer() {
               <div className="veh-warn bad" data-testid="edge-warning">
                 At the edge of the search range
                 {flags.fd ? ` (final drive ${flags.fd === 'low' ? 'minimum' : 'maximum'})` : ''}
-                {flags.gears ? ` (${flags.gears} gear ratio${flags.gears > 1 ? 's' : ''} pinned)` : ''}: the true optimum may lie beyond it, or be an artefact of the missing wheelspin model.
+                {flags.gears ? ` (${flags.gears} gear ratio${flags.gears > 1 ? 's' : ''} pinned)` : ''}: the true optimum may lie beyond it, or be an artefact of the simplified launch model.
               </div>
             )}
             <div className="veh-opt-btns">
@@ -248,19 +252,19 @@ function Accuracy() {
       </header>
       <ul>
         <li>
-          <b>Quarter mile:</b> median error {VALIDATION.quarterMilePct} % (ET), {VALIDATION.trapPct} % (trap) against {VALIDATION.n} published car tests, with engine curves from this simulator.
+          <b>Quarter mile:</b> median error {VALIDATION.quarterMilePct} % (ET), {VALIDATION.trapPct} % (trap) (worse of {VALIDATION.nTrain} fitted and {VALIDATION.nHoldout} held-out cars), with engine curves from this simulator.
         </li>
         <li>
-          <b>0-60 / 0-100 km/h:</b> median error {VALIDATION.zeroTo60Pct} %, worst car {VALIDATION.zeroTo60WorstPct} % off. Launch is the weak spot: there is no wheelspin or clutch-drop model, and magazines scatter 5-10 % among themselves.
+          <b>0-60 / 0-100 km/h:</b> median error {VALIDATION.zeroTo60Pct} %, worst car {VALIDATION.zeroTo60WorstPct} % off. Launch is the weak spot: the tyre slip model is simple, there is no per-car launch technique (launch control, clutch dump), and magazines scatter 5-10 % among themselves.
         </li>
         <li>
-          <b>Top speed:</b> a plausibility estimate only. It has not been checked against measured top speeds.
+          <b>Top speed:</b> a plausibility estimate. Median error {VALIDATION.topSpeedPct} % against manufacturer claims for drag-limited cars, but every Cd·A is an estimate, so the agreement is partly luck.
         </li>
         <li>
-          Level road, no wind, {`20 °C`} sea-level air unless changed. Global parameters were fitted on 6 of the 9 cars; 3 were held out.
+          Level road, no wind, {`20 °C`} sea-level air unless changed. Global parameters were fitted on {VALIDATION.nTrain} cars; {VALIDATION.nHoldout} were held out and run once. AWD is not validated.
         </li>
       </ul>
-      <div className="veh-acc-s">Method and sources: research/vehicle_sources.md. Reference magazine figures are partly from secondary reposts.</div>
+      <div className="veh-acc-s">Method and sources: research/vehicle_sources.md. Most reference figures are recalled or from secondary sources, not yet checked against the original magazine test sheets.</div>
     </section>
   );
 }

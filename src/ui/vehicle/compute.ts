@@ -46,7 +46,6 @@ export interface SimOutput {
   gears: GearForce[];
   roadLoad: { kph: number[]; n: number[] };
   /** Tyre-grip limits, N (launch uses the fitted launch-utilisation factor). */
-  gripLaunchN: number;
   gripFullN: number;
   redlineRpm: number;
   /** Speed at redline in each gear, km/h. */
@@ -154,7 +153,6 @@ export function simulateVehicle(req: SimRequest): SimOutput {
     top,
     gears,
     roadLoad: { kph: roadKph, n: roadN },
-    gripLaunchN: tractionCap(R, R.mu * R.g.launchTractionUtilization),
     gripFullN: tractionCap(R, R.mu),
     redlineRpm,
     redlineKph,
