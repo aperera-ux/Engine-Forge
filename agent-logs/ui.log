@@ -1,1 +1,2 @@
 2026-11-05T01:35:32Z UI: light theme tokens (index.css), logo.svg/favicon, charts recolored; screenshots in tests/e2e-ui/screenshots
+2026-11-05T01:40:34Z UI: polish pass, e2e garage/interactions/round2 pass, tsc+build ok
