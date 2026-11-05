@@ -50,7 +50,7 @@ export const CAL = {
   /** Base volumetric efficiency (re. manifold density, before tuning gains). */
   veBase: { pushrod: 0.99, sohc: 0.99, dohc: 1.01 } as Record<'pushrod' | 'sohc' | 'dohc', number>,
   /** VE penalty for 2-valve heads (shrouding, single port). */
-  ve2ValvePenalty: 0.02,
+  ve2ValvePenalty: 0,
   /** Taylor inlet Mach index at which choking begins to bite. */
   zChoke: 0.85,
   zChokeExp: 4,
@@ -68,9 +68,9 @@ export const CAL = {
   /** Inertia-ram VE gain near the cam's tuned speed, × push-back volume fraction. */
   ramGain: 0.35,
   /** Intake cam-phaser authority used at WOT, ± crank deg about the nominal centerline. */
-  vvtRangeDeg: 24,
+  vvtRangeDeg: 22,
   /** Variable-lift low-speed lobe: duration reduction (deg) and lift ratio. */
-  lowLobeDurDelta: 45,
+  lowLobeDurDelta: 32,
   lowLobeLiftRatio: 0.65,
   /** Intake runner tuning amplitude (plenum / ITB). */
   runnerAmp: 0.09,
@@ -90,7 +90,7 @@ export const CAL = {
   /** Ratio between adjacent rpm nodes of the breathing table (fixed log lattice). */
   gxRpmNodeRatio: 1.16,
   /** Global scale on the gas-exchange VE (port losses, in-cylinder heat pick-up not resolved). */
-  gxVeScale: 0.97,
+  gxVeScale: 0.9425,
   /** Lift-profile shape exponent: L = Lmax·(1 − x²)^n over the seat duration. */
   liftShapeExp: 2,
   /** Valve curtain discharge coefficient and port-throat discharge coefficients (re. valve head area). */
@@ -100,13 +100,13 @@ export const CAL = {
   /** Runner cross-section / total intake-valve head area. */
   runnerAreaRatio: 0.9,
   /** Port length added to the runner / primary acoustic length, × bore. */
-  intakePortLenBore: 1.2,
+  intakePortLenBore: 1.4,
   exhaustPortLenBore: 1.0,
   /** Magnitude of the (inverting) open-end reflection at the plenum / bellmouth. */
-  intakeReflect: 0.92,
+  intakeReflect: 0.948,
   intakeReflectItb: 0.85,
   /** Magnitude of the (inverting) reflection at the collector, by exhaust type. */
-  exhReflect: { log: 0.15, shorty: 0.3, 'long-tube': 0.37, 'tuned-equal': 0.4 } as Record<string, number>,
+  exhReflect: { log: 0.15, shorty: 0.7, 'long-tube': 0.45, 'tuned-equal': 0.35 } as Record<string, number>,
   /** Fraction of another cylinder's blowdown pulse that reaches this valve through a shared (log/turbine) manifold. */
   logPulseTransmit: 0.35,
   /** Runner entry + friction loss, multiples of runner dynamic head. */
@@ -116,9 +116,9 @@ export const CAL = {
   gxExhaustTempK: 1250,
   gxEvoTempFactor: 1.3,
   /** Time constant separating the mean (fully reflected) from the pulsating part of returning waves, ms. */
-  waveMeanTauMs: 6,
+  waveMeanTauMs: 9.3,
   /** Fraction of the closed-valve wave ringing carried into the next cycle (plenum/collector interaction damps it). */
-  gxRingCarry: 0,
+  gxRingCarry: 0.65,
   /** Use the gas-exchange cycle's pumping work (true) or the mean-pressure + Mach-index correlation. */
   gxPumpingFromCycle: true,
   // ── combustion ──
@@ -139,7 +139,7 @@ export const CAL = {
   /** Ignition / flame-development delay, crank deg. */
   delayDeg: 10,
   /** Douaud–Eyzat induction-time multiplier (global knock calibration). */
-  knockTauScale: 1.3,
+  knockTauScale: 1.33,
   /** Knock time-base exponent β: 0 = wall-clock time (∝1/rpm), 1 = crank-angle based. */
   knockRpmExp: 0.6,
   /** Pressure exponent of the induction-time correlation (Douaud–Eyzat 1.7). */
@@ -151,7 +151,7 @@ export const CAL = {
   /** Exponent on (1 − residual fraction) in the auto-ignition delay: burned-gas dilution slows end-gas chemistry. */
   knockDilutionExp: 1.0,
   /** ECU cam-phasing objective: maximise VE − weight × residual fraction (residual costs burn rate / knock margin). */
-  ecuResidualWeight: 0.5,
+  ecuResidualWeight: 0.8,
   /** Knock-aware boost control: max spark retard the ECU accepts before trimming boost, deg. */
   ecuMaxRetardDeg: 10,
   /** Torque-management correction steps per rpm point (each re-solves the boost loop). */
@@ -165,7 +165,7 @@ export const CAL = {
   /** Residual blow-through rate when intake pressure exceeds exhaust pressure. */
   scavengeK: 1,
   /** Octane-index weighting K in OI = RON − K·S. */
-  octaneK: 0.25,
+  octaneK: 0,
   /** Reduction of K per bar of boost (Kalghatgi: K < 0 under boosted conditions). */
   octaneKPerBar: 1.0,
   /** Fraction of fuel heat of vaporisation that cools the charge (PFI / DI). */
@@ -174,10 +174,10 @@ export const CAL = {
   /** Fraction of fuel energy actually released as pressure in the 1-zone model. */
   pressureHeatFrac: 0.78,
   // ── friction (Chen–Flynn, bar, m/s) ──
-  fA: 0.36,
+  fA: 0.243,
   fB: 0.004,
   fC: 0.045,
-  fD: 0.0006,
+  fD: 0.0005,
   valvetrainFmep: { pushrod: 0.12, sohc: 0.1, dohc: 0.12 } as Record<'pushrod' | 'sohc' | 'dohc', number>,
   // ── turbo ──
   /** Compressor choke flow per inducer area, kg/s per mm². */
