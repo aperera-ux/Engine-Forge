@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { EngineConfig, SimResult } from '../sim/types';
 import { DEFAULT_CONFIG } from '../sim/defaults';
+import { parseCalibration, simulateCalibrated, type Calibration } from '../calibrate/types';
 import { simulate } from '../sim/engine';
 import { PRESETS } from '../sim/presets';
 import { oemLimitOptions } from '../sim/customBuild';
@@ -25,6 +26,7 @@ export const MAX_SNAPSHOTS = 3;
 export const GARAGE_SLOTS = 3;
 const LS_CONFIG = 'engine-forge:config:v1';
 const LS_GARAGE = 'engine-forge:garage:v1';
+const LS_CALIBRATION = 'engine-forge:calibration:v1';
 
 export interface SavedEngine {
   name: string;
@@ -36,6 +38,8 @@ export interface SavedEngine {
   displacementL: number;
   /** Vehicle design saved with the build. Absent on saves made before Vehicle mode existed. */
   vehicle?: VehicleDesign;
+  /** Calibration to a measured dyno curve. Absent on saves made before Calibrate existed. */
+  calibration?: Calibration;
 }
 export type GarageSlot = SavedEngine | null;
 const LS_PREFS = 'engine-forge:prefs:v1';
@@ -49,6 +53,12 @@ export interface UIState {
   showUnlimited: boolean;
   setShowUnlimited: (b: boolean) => void;
   result: SimResult;
+  /** Active calibration to a measured dyno curve (null = uncalibrated model). */
+  calibration: Calibration | null;
+  /** Apply a fitted calibration: the build becomes the fitted build and the result carries its corrections. */
+  applyCalibration: (cal: Calibration) => void;
+  /** Drop the calibration and restore the build as it was before it was applied. */
+  revertCalibration: () => void;
   simError: string | null;
   simMs: number;
   rpm: number;
@@ -75,7 +85,8 @@ export interface UIState {
   setCam: (patch: Partial<EngineConfig['cam']>) => void;
   setTurbo: (patch: Partial<EngineConfig['turbo']>) => void;
   setSupercharger: (patch: Partial<EngineConfig['supercharger']>) => void;
-  loadConfig: (cfg: EngineConfig) => void;
+  /** Load a whole engine. A saved calibration comes with it; otherwise the build is uncalibrated. */
+  loadConfig: (cfg: EngineConfig, cal?: Calibration | null) => void;
   setRpm: (rpm: number) => void;
   setLoad: (load: number) => void;
   setRunning: (running: boolean) => void;
@@ -129,9 +140,15 @@ export function presetByName(name: string): EngineConfig | null {
   return PRESETS.find((p) => p.name === name) ?? null;
 }
 
-function runSim(config: EngineConfig, base: EngineConfig | null, wantUnlimited: boolean, prev?: SimResult): { result: SimResult; simError: string | null; simMs: number } {
+function runSim(config: EngineConfig, base: EngineConfig | null, wantUnlimited: boolean, prev?: SimResult, cal?: Calibration | null): { result: SimResult; simError: string | null; simMs: number } {
   const t0 = performance.now();
   try {
+    if (cal) {
+      // Calibrated: the OEM-limit policy was fixed when the fit was made (the fitted build differs from the stock preset).
+      const result = simulateCalibrated(config, cal);
+      if (!result || !Array.isArray(result.curve) || result.curve.length === 0) throw new Error('empty curve');
+      return { result, simError: null, simMs: performance.now() - t0 };
+    }
     const opts = oemLimitOptions(config, base ?? undefined);
     // The hardware-only curve costs a 2nd solve (~2x on turbo presets, measured ~25 ms vs ~12 ms), so it is
     // only requested while the overlay toggle is on AND a limit is actually in force.
@@ -188,6 +205,8 @@ export function parseSavedEngine(e: unknown): SavedEngine | null {
     displacementL: Number(r.displacementL) || 0,
   };
   if (r.vehicle && typeof r.vehicle === 'object') out.vehicle = mergeDesign(r.vehicle);
+  const cal = parseCalibration(r.calibration, mergeConfig);
+  if (cal) out.calibration = cal;
   return out;
 }
 
@@ -241,9 +260,22 @@ function initialPrefs(): { units: Units; viewMode: ViewMode; panelCollapsed: boo
   }
 }
 
+function initialCalibration(): Calibration | null {
+  if (typeof window === 'undefined' || configFromHash()) return null;
+  try {
+    const raw = localStorage.getItem(LS_CALIBRATION);
+    if (!raw) return null;
+    const cal = parseCalibration(JSON.parse(raw), mergeConfig);
+    return cal;
+  } catch {
+    return null;
+  }
+}
+
 const cfg0 = initialConfig();
-const base0 = presetByName(cfg0.name);
-const sim0 = runSim(cfg0, base0, false);
+const cal0 = initialCalibration();
+const base0 = cal0 ? presetByName(cal0.baseConfig.name) : presetByName(cfg0.name);
+const sim0 = runSim(cfg0, base0, false, undefined, cal0);
 const prefs0 = initialPrefs();
 
 let snapCounter = 0;
@@ -251,7 +283,7 @@ let snapCounter = 0;
 export const useStore = create<UIState>()((set, get) => {
   const apply = (config: EngineConfig, base: EngineConfig | null = get().basePreset) => {
     const norm = normalizeConfig(config);
-    const r = runSim(norm, base, get().showUnlimited, get().result);
+    const r = runSim(norm, base, get().showUnlimited, get().result, get().calibration);
     const rpm = Math.min(Math.max(get().rpm, norm.idleRpm), norm.redlineRpm);
     set({ config: norm, basePreset: base, ...r, rpm });
   };
@@ -264,6 +296,19 @@ export const useStore = create<UIState>()((set, get) => {
       if (showUnlimited) apply(get().config); // re-solve once with the hardware-only curve
     },
     ...sim0,
+    calibration: cal0,
+    applyCalibration: (cal) => {
+      const cfg = normalizeConfig(structuredClone(cal.fittedConfig));
+      const r = runSim(cfg, get().basePreset, false, get().result, cal);
+      set({ calibration: cal, config: cfg, ...r });
+    },
+    revertCalibration: () => {
+      const cal = get().calibration;
+      if (!cal) return;
+      const cfg = normalizeConfig(structuredClone(cal.baseConfig));
+      const r = runSim(cfg, get().basePreset, get().showUnlimited, get().result, null);
+      set({ calibration: null, config: cfg, ...r });
+    },
     rpm: Math.round(Math.max(cfg0.idleRpm, cfg0.redlineRpm * 0.45)),
     load: 0.35,
     running: true,
@@ -290,7 +335,11 @@ export const useStore = create<UIState>()((set, get) => {
     setTurbo: (patch) => apply({ ...get().config, turbo: { ...get().config.turbo, ...patch } }),
     setSupercharger: (patch) =>
       apply({ ...get().config, supercharger: { ...get().config.supercharger, ...patch } }),
-    loadConfig: (cfg) => apply(mergeConfig(structuredClone(cfg)), presetByName(cfg.name)),
+    loadConfig: (cfg, cal = null) => {
+      set({ calibration: cal });
+      // A calibrated save keeps its stock-preset reference (the saved build is no longer the stock hardware).
+      apply(mergeConfig(structuredClone(cfg)), presetByName(cal ? cal.baseConfig.name : cfg.name));
+    },
     setRpm: (rpm) => {
       const { idleRpm, redlineRpm } = get().config;
       set({ rpm: Math.min(Math.max(rpm, idleRpm), redlineRpm) });
@@ -330,6 +379,7 @@ export const useStore = create<UIState>()((set, get) => {
         peakTorqueNm: result.peakTorqueNm,
         displacementL: result.displacementL,
         vehicle: structuredClone(get().vehicle),
+        ...(get().calibration ? { calibration: structuredClone(get().calibration as Calibration) } : {}),
       };
       const next = garage.slice();
       next[i] = saved;
@@ -341,7 +391,7 @@ export const useStore = create<UIState>()((set, get) => {
     loadFromGarage: (slot) => {
       const e = get().garage[slot];
       if (!e) return;
-      get().loadConfig({ ...e.config, name: e.name });
+      get().loadConfig({ ...e.config, name: e.name }, e.calibration ?? null);
       // Old saves carry no vehicle: keep the current design rather than resetting it.
       if (e.vehicle) get().loadVehicle(e.vehicle);
     },
@@ -384,6 +434,14 @@ if (typeof window !== 'undefined') {
         // Keep the URL in sync without polluting history, but only if it is already a share link.
         if (location.hash.includes('cfg=')) history.replaceState(null, '', configToHash(s.config));
       }, 250);
+    }
+    if (s.calibration !== prev.calibration) {
+      try {
+        if (s.calibration) localStorage.setItem(LS_CALIBRATION, JSON.stringify(s.calibration));
+        else localStorage.removeItem(LS_CALIBRATION);
+      } catch {
+        /* quota */
+      }
     }
     if (s.garage !== prev.garage) {
       try {

@@ -17,8 +17,9 @@ import { Derived, Section, Segmented, Select, Slider, Toggle } from './controls'
 import { exhaustBiggerThanIntake, pistonSpeedLevel, seedSupercharger, seedTurbo, valveFit, valveSplit } from './checks';
 import { fmt, show } from './units';
 import { Icon } from './icons';
+import { CalibrateTab } from './CalibratePanel';
 
-type Tab = 'block' | 'heads' | 'induction' | 'exhaust' | 'fuel' | 'materials';
+type Tab = 'block' | 'heads' | 'induction' | 'exhaust' | 'fuel' | 'materials' | 'calibrate';
 const TABS: { id: Tab; label: string; icon: Parameters<typeof Icon>[0]['name'] }[] = [
   { id: 'block', label: 'Block', icon: 'block' },
   { id: 'heads', label: 'Heads', icon: 'cam' },
@@ -26,6 +27,7 @@ const TABS: { id: Tab; label: string; icon: Parameters<typeof Icon>[0]['name'] }
   { id: 'exhaust', label: 'Exhaust', icon: 'exhaust' },
   { id: 'fuel', label: 'Tune', icon: 'fuel' },
   { id: 'materials', label: 'Build', icon: 'materials' },
+  { id: 'calibrate', label: 'Calibrate', icon: 'calibrate' },
 ];
 
 export function ConfigPanel() {
@@ -91,6 +93,7 @@ export function ConfigPanel() {
         {tab === 'exhaust' && <ExhaustTab />}
         {tab === 'fuel' && <FuelTab />}
         {tab === 'materials' && <MaterialsTab />}
+        {tab === 'calibrate' && <CalibrateTab />}
       </div>
     </aside>
   );
@@ -104,6 +107,7 @@ const TAB_CODES: Record<Tab, string[]> = {
   exhaust: ['exhaust', 'header', 'egt'],
   fuel: ['knock', 'lambda', 'fuel', 'detonation', 'rev', 'redline'],
   materials: ['block', 'crank', 'reliab', 'cylinder-pressure', 'pressure'],
+  calibrate: [],
 };
 
 function BlockTab() {

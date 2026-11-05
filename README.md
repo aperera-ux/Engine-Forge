@@ -25,6 +25,7 @@ npm run build      # production build in dist/
 - **Keys**: `D` dyno pull · `Space` run/pause · `S` snapshot · `⌘S` save to garage · `1/2/3` view mode.
 - **Garage** saves up to 3 custom engines in this browser: load, overwrite, rename, clear (`⌘S` / `Ctrl+S` quick-save).
 - **Snapshot** keeps up to 3 dyno curves (this session) and overlays them on the dyno chart with Δhp/Δtorque.
+- **Calibrate** tab: import a measured dyno curve (CSV / TSV / paste; rpm + torque and/or power, Nm or lb-ft, kW / hp / PS, header optional, decimal commas, wheel data with a drivetrain-loss input, SAE J1349 / DIN note). A bounded fit of a few uncertain parameters (VE scale, friction scale, intake tuning length, cam timing, boost target, ECU torque limit) runs in a Web Worker and reports RMS before / after, which parameters hit their bounds, and an ill-conditioning warning. A fit still above 5 % RMS is labelled poor. Apply / Revert; the calibration is saved with Garage builds. Samples are in `public/samples/`. Details: `src/calibrate/`.
 - **Share** link encodes the full config in the URL. **Build sheet** copies a text spec.
 - Sound (speaker icon) synthesizes exhaust pulses from the real firing order.
 

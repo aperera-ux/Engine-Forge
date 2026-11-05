@@ -1,0 +1,21 @@
+# Engine Forge sample dyno file. Engine: gm-ls3
+# Source: Chevrolet Performance LS3 crate engine sell sheet P/N 19540155 (same chart as 2017 catalog p.200), DYNO CHART
+# URL: https://www.crateenginedepot.com/Pdfs/19435098_Information.pdf
+# Published curve digitised in src/sim/validation/dynoCurves.ts (oem-chart, correction standard: SAE J1349).
+# Engine (crank) figures, SAE J1349. Preset: "GM LS3 6.2 - Corvette C6".
+# Columns: rpm, torque in lb-ft, power in hp.
+RPM,Torque (lb-ft),Power (hp)
+3000,369.5,211.0
+3250,370.3,229.0
+3500,383.5,256.0
+3750,397.5,284.0
+4000,404.9,308.0
+4250,417.5,338.0
+4500,424.1,363.0
+4750,418.2,378.0
+5000,414.5,395.0
+5250,406.4,406.0
+5500,395.3,414.0
+5750,382.1,418.0
+6000,371.7,425.0
+6250,347.4,413.0

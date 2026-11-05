@@ -7,8 +7,13 @@ const FUEL: Record<string, string> = {
   gas87: '87 AKI', gas91: '91 AKI', gas93: '93 AKI', race100: '100+ race', e85: 'E85', methanol: 'Methanol',
 };
 
+/** "1,600–4,800" for a plateau, else the single peak rpm. */
+function rpmText(range: [number, number] | undefined, rpm: number): string {
+  return range && range[1] - range[0] > 1 ? `${fmt(range[0])}–${fmt(range[1])}` : fmt(rpm);
+}
+
 /** Plain-text spec sheet suitable for pasting into a forum post / notes. */
-export function buildSheet(r: SimResult, shareLink?: string): string {
+export function buildSheet(r: SimResult, shareLink?: string, calNote?: string): string {
   const c = r.config;
   const v = valveSplit(c.valvesPerCylinder);
   const ind =
@@ -24,8 +29,9 @@ export function buildSheet(r: SimResult, shareLink?: string): string {
     `${c.name}`,
     `${'─'.repeat(52)}`,
     `OUTPUT`,
-    row('Peak power', `${fmt(r.peakHp)} hp / ${fmt(r.peakPowerKw)} kW @ ${fmt(r.peakPowerRpm)} rpm`),
-    row('Peak torque', `${fmt(r.peakTorqueLbFt)} lb·ft / ${fmt(r.peakTorqueNm)} N·m @ ${fmt(r.peakTorqueRpm)} rpm`),
+    row('Peak power', `${fmt(r.peakHp)} hp / ${fmt(r.peakPowerKw)} kW @ ${rpmText(r.peakPowerRpmRange, r.peakPowerRpm)} rpm`),
+    row('Peak torque', `${fmt(r.peakTorqueLbFt)} lb·ft / ${fmt(r.peakTorqueNm)} N·m @ ${rpmText(r.peakTorqueRpmRange, r.peakTorqueRpm)} rpm`),
+    ...(calNote ? [row('Calibration', calNote)] : []),
     row('Specific output', `${fmt(r.specificOutputHpL, 1)} hp/L`),
     row('Mass / power-wt', `${fmt(r.massKg)} kg · ${fmt(r.hpPerKg, 2)} hp/kg`),
     row('Reliability', `${fmt(r.reliabilityScore)}/100`),
