@@ -1,5 +1,55 @@
 # Vehicle mode: reference cars, sources and validation notes
 
+# ROUND 3: primary-source attempt (2026-11-05)
+
+## What was and was not obtained
+
+Approved route: `curl` with a normal browser User-Agent (no personal data in headers), >= 2 s between requests, raw HTML kept outside the repo.
+Outcome, stated plainly:
+
+- caranddriver.com and motortrend.com served a JavaScript "Client Challenge" page (about 3 kB, no content) after the first few requests;
+  Wayback Machine first returned a "suspected abusive bot traffic" block, later HTTP 429 when rate was too high for it. I did NOT try to defeat any
+  of these (no headless browser, no URL guessing for hidden files; an attempt to guess further C/D spec-PDF URLs was refused by the permission layer and abandoned).
+- What worked: Wayback copies of two C/D road-test pages, which link the printed C/D spec/test sheet as a PDF on a public asset host.
+  Those sheets (manufacturer specs plus C/D instrumented results in one page) are the only NEW primary data in this round.
+- No OEM press-kit pages (ratios, Cd) were retrieved for any car.
+
+Primary-sourced cars (C/D sheet, accessed 2026-11-05; URLs are stored in `sources` in `referenceCars.ts`):
+
+| car | values now primary | notes |
+|---|---|---|
+| Z06 2006 | 0-60 3.6, 1/4 11.7 @ 125, curb 3147 lb, F/R 50.9/49.1, Cd 0.34 x 22.3 ft2 = 7.6 ft2, gear ratios 2.66/1.78/1.30/1.00/0.74/0.50, final 3.42, tyres F 275/35ZR18 R 325/30ZR19, top 198 (mfr claim, drag limited) | 12 values |
+| CTS-V 2009 | 0-60 4.3, 1/4 12.6 @ 116 (was 117), curb 4292 lb (was 4227), F/R 53.4/46.6, wheelbase 113.4 in, Cd 0.36 x 24.6 ft2 = 8.9 ft2, ratios 2.66/1.78/1.30/1.00/0.80/0.63, final 3.73, tyres 255/40ZR19 F, 285/35ZR19 R, top 191 (mfr claim), 60-130 about 11.9 s from the printed time chart, redline 6200 | 12 values |
+
+Corrections this exposed (each earlier value was "recalled" or copied): Z06 ratios were wrong in all gears (2.97/2.07/1.43/1.0/0.71/0.57 -> C/D 2.66/1.78/1.30/1.00/0.74/0.50),
+Z06 Cd*A 0.53 -> 0.706 m2, CTS-V ratios 5th/6th (0.74/0.50 were the Z06 values) -> 0.80/0.63, CTS-V Cd*A 0.79 -> 0.83 m2. Still estimated on both: CG height only.
+The other 14 cars are unchanged: still recalled, estimated or secondary (see per-car `sources` / `recalled` / `estimated`). Z06 and CTS-V are both TRAIN cars.
+CTS-V 5-60 street start 4.6 s and the 4.6 s Edmunds figure are different quantities from the 0-60 4.3 s.
+
+## Split and protocol
+
+Split unchanged (9 train / 4 fresh holdout / 3 seen); no holdout or seen reference value was touched. No AWD car was added: no sourced AWD data could be
+obtained, so AWD (STI, secondary data, seen only) remains effectively unvalidated.
+Refit on TRAIN only (published curves, eta capped at the physical 0.92): grid optimum mu 1.35, spin 0.17 (loss 0.07955) versus the current mu 1.30, spin 0.14
+(loss 0.07999), a 0.5 % loss change: judged noise, globals NOT changed. The unconstrained eta again ran to 0.95 (outside the physical range).
+
+## Round-3 errors, median |error| %, before (round 2 data) -> after (primary data for Z06 and CTS-V, same globals)
+
+| curves | set | 0-60 | 1/4 ET | trap | top speed |
+|---|---|---|---|---|---|
+| published | train (9) | 7.9 -> 7.9 | 1.8 -> 1.8 | 0.8 -> 0.8 | 2.9 -> 2.0 |
+| published | fresh holdout (4) | 2.6 -> 2.6 | 1.0 -> 1.0 | 1.3 -> 1.3 | 0.6 -> 0.6 |
+| published | seen (3) | 4.3 -> 4.3 | 1.0 -> 1.0 | 1.1 -> 1.1 | - |
+| simulated | train (9) | 8.9 -> 8.4 | 1.5 -> 1.5 | 1.1 -> 1.1 | 2.9 -> 2.9 |
+| simulated | fresh holdout (4) | 5.7 -> 5.7 | 2.7 -> 2.7 | 2.2 -> 2.2 | 1.9 -> 1.9 |
+| simulated | seen (3) | 7.5 -> 7.5 | 2.1 -> 2.1 | 1.4 -> 1.4 | - |
+
+Per car (published): Z06 0-60 -0.4 -> +2.0 %, top +6.3 -> -1.4 %; CTS-V 0-60 -11.3 -> -9.3 %, ET -4.6 -> -3.8 %, top -3.0 -> -1.5 %. Using the correct ratios and Cd*A,
+the top-speed agreement for these two is now a real check rather than luck. The UI (`VALIDATION` in `VehicleSide.tsx`) uses the worse of train and holdout with simulated curves:
+0-60 8.4 %, ET 2.7 %, trap 2.2 %, top 2.9 %, worst-car 0-60 18.8 % (S2000, sim).
+
+---
+
 # ROUND 2 (supersedes the Results/Split sections below where they conflict)
 
 ## Data provenance: what could and could not be sourced

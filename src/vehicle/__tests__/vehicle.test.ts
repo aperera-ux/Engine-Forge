@@ -156,3 +156,28 @@ describe('gearing optimizer', () => {
     for (let i = 1; i < o2.gearRatios.length; i++) expect(o2.gearRatios[i - 1] / o2.gearRatios[i]).toBeGreaterThanOrEqual(1.05 - 1e-9);
   });
 });
+
+describe('round-3 public API', () => {
+  it('index exports the physics helpers and default optimiser ranges', async () => {
+    const api = await import('../index');
+    for (const k of ['resolve', 'resistance', 'rpmFromSpeed', 'speedFromRpm', 'msToKph', 'tractionCap'] as const) expect(typeof api[k]).toBe('function');
+    expect(api.DEFAULT_FINAL_DRIVE_RANGE).toEqual([0.7, 1.4]);
+    expect(api.DEFAULT_RATIO_SCALE_RANGE).toEqual([0.85, 1.15]);
+    expect(api.msToKph(10)).toBeCloseTo(36, 9);
+  });
+  it('traction-limited flag and time: grippy RWD launch is limited, low-power run is not', () => {
+    const hot = runAcceleration(withSpec({ tireClass: 'all-season', tireWidthMm: 215 }), base, { sampleDt: 0.01 });
+    expect(hot.tractionLimited).toBe(true);
+    expect(hot.tractionLimitedS).toBeGreaterThan(0.2);
+    expect(hot.tractionLimitedTo60S).toBeLessThanOrEqual(hot.tractionLimitedS + 1e-9);
+    expect(hot.tractionLimitedUntilMph!).toBeGreaterThan(0);
+    const ser = hot.series!;
+    const dt = ser.t[1] - ser.t[0];
+    const n = ser.tractionLimited.reduce((a, b) => a + b, 0);
+    expect(Math.abs(n * dt - hot.tractionLimitedS)).toBeLessThan(0.1);
+    const weak = runAcceleration(car.spec, scaled(base, 0.15), { sampleDt: 0 });
+    expect(weak.tractionLimited).toBe(false);
+    expect(weak.tractionLimitedS).toBe(0);
+    expect(weak.tractionLimitedUntilMph).toBeNull();
+  });
+});

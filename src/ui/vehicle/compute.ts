@@ -2,9 +2,7 @@
  * Pure vehicle jobs. Runs identically inside the Web Worker and (fallback) on the main thread.
  * Everything in/out is structured-cloneable.
  */
-import { optimizeGearing, runAcceleration, topSpeed, tractionCap, type AccelResult, type Objective, type RunOptions, type TopSpeed, type TorqueCurve, type VehicleSpec } from '../../vehicle';
-import { resistance, resolve, rpmFromSpeed, speedFromRpm, msToKph } from '../../vehicle/physics';
-import { torqueAt } from '../../vehicle/torqueCurve';
+import { msToKph, optimizeGearing, resistance, resolve, rpmFromSpeed, runAcceleration, speedFromRpm, topSpeed, torqueAt, tractionCap, type AccelResult, type Objective, type RunOptions, type TopSpeed, type TorqueCurve, type VehicleSpec } from '../../vehicle';
 
 export interface RunConditions {
   ambient: { tempC: number; pressureKPa: number };

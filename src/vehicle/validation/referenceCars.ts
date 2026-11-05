@@ -31,6 +31,11 @@ import type { VehicleSpec } from '../types';
 import { tireRollingRadiusM } from '../tire';
 
 const LB = 0.45359237;
+const IN = 0.0254;
+const FT2 = 0.09290304;
+/** Primary sources (C/D spec/test sheets as PDFs linked from the C/D road-test pages; fetched 2026-11-05 via Wayback copies of those pages). */
+const C_D_Z06 = 'https://s3.amazonaws.com/amv-prod-cad-assets/files/chevrolet-corvette-z062006-chevrolet-corvette-z06-specs.pdf (linked from caranddriver.com/reviews/chevrolet-corvette-z06-road-test), accessed 2026-11-05';
+const C_D_CTSV = 'https://s3.amazonaws.com/amv-prod-cad-assets/files/2009-cadillac-cts-v.pdf (linked from caranddriver.com/reviews/2009-cadillac-cts-v-road-test-review), accessed 2026-11-05';
 
 export interface MeasuredResult {
   /** Seconds, rollout-deducted unless `rollout` is false. */
@@ -70,26 +75,36 @@ export const REFERENCE_CARS: ReferenceCar[] = [
     split: 'train',
     spec: {
       name: '2006 Corvette Z06',
-      curbMassKg: 3132 * LB,
+      curbMassKg: 3147 * LB, // C/D spec sheet (round 3)
       cgHeightM: 0.47,
       wheelbaseM: 2.685,
-      frontWeightFraction: 0.51,
+      frontWeightFraction: 0.509, // C/D 50.9/49.1
       layout: 'RWD',
       tireRadiusM: tireRollingRadiusM('325/30R19'),
       tireWidthMm: 325,
       tireClass: 'max-performance',
-      cdA: 0.28 * 1.9,
+      cdA: 7.6 * FT2, // C/D: Cd 0.34 x 22.3 ft2 = 7.6 ft2
       transmission: {
         type: 'manual',
-        gearRatios: [2.97, 2.07, 1.43, 1.0, 0.71, 0.57],
+        gearRatios: [2.66, 1.78, 1.3, 1.0, 0.74, 0.5], // C/D spec sheet (the pre-round-3 values were recalled and wrong)
         finalDrive: 3.42,
       },
     },
-    measured: { zeroTo60: 3.6, quarterMileS: 11.7, quarterMileTrapMph: 125, rollout: true, source: 'Car and Driver, Oct 2005 (secondary quote)' },
-    refConfidence: 'medium',
-    estimated: ['cgHeightM', 'cdA', 'frontWeightFraction', 'gearRatios[4..5]'],
-    notes: 'C/D curb weight 3,132 lb vs 3,147 lb listed elsewhere.',
-    topSpeed: { mph: 198, kind: 'drag-limited', source: 'GM published (Z06 2006), recalled' },
+    measured: { zeroTo60: 3.6, quarterMileS: 11.7, quarterMileTrapMph: 125, rollout: true, source: 'Car and Driver 2006 Corvette Z06 road test sheet (primary, retrieved 2026-11-05)' },
+    refConfidence: 'high',
+    estimated: ['cgHeightM'],
+    sources: {
+      measured: C_D_Z06,
+      curbMassKg: C_D_Z06,
+      frontWeightFraction: C_D_Z06,
+      cdA: C_D_Z06,
+      gearRatios: C_D_Z06,
+      finalDrive: C_D_Z06,
+      tires: C_D_Z06,
+      topSpeed: C_D_Z06,
+    },
+    notes: 'Round 3: all values except CG height are from the C/D spec/test sheet for the 2006 Z06 (PDF linked from the C/D road-test page, retrieved 2026-11-05 via Wayback). Earlier recalled ratios (2.97/2.07/1.43/1.0/0.71/0.57) were wrong; curb weight 3,147 lb (3,132 lb was a secondary quote).',
+    topSpeed: { mph: 198, kind: 'drag-limited', source: 'C/D sheet: 198 mph drag limited, mfr claim' },
   },
   {
     id: 'corvette-zr1-2009',
@@ -126,26 +141,37 @@ export const REFERENCE_CARS: ReferenceCar[] = [
     split: 'train',
     spec: {
       name: '2009 CTS-V',
-      curbMassKg: 4227 * LB,
+      curbMassKg: 4292 * LB, // C/D
       cgHeightM: 0.53,
-      wheelbaseM: 2.91,
-      frontWeightFraction: 0.52,
+      wheelbaseM: 113.4 * IN, // C/D
+      frontWeightFraction: 0.534, // C/D 53.4/46.6
       layout: 'RWD',
       tireRadiusM: tireRollingRadiusM('285/35R19'),
       tireWidthMm: 285,
       tireClass: 'max-performance',
-      cdA: 0.36 * 2.2,
+      cdA: 8.9 * FT2, // C/D: Cd 0.36 x 24.6 ft2 = 8.9 ft2
       transmission: {
         type: 'manual',
-        gearRatios: [2.66, 1.78, 1.3, 1.0, 0.74, 0.5],
+        gearRatios: [2.66, 1.78, 1.3, 1.0, 0.8, 0.63], // C/D (top two were wrong before round 3)
         finalDrive: 3.73,
       },
     },
-    measured: { zeroTo60: 4.3, quarterMileS: 12.6, quarterMileTrapMph: 117, rollout: true, source: 'Car and Driver 2009 CTS-V manual (fastestlaps.com quoting C/D)' },
-    refConfidence: 'medium',
-    estimated: ['cgHeightM', 'cdA', 'frontWeightFraction'],
-    notes: 'Edmunds manual: 4.6 s / 12.5 s @ 115.3 mph. Spread between outlets ~7 % on 0-60.',
-    topSpeed: { mph: 191, kind: 'drag-limited', source: 'GM published 191 mph, recalled' },
+    measured: { zeroTo60: 4.3, quarterMileS: 12.6, quarterMileTrapMph: 116, rollout: true, source: 'Car and Driver Nov 2008 CTS-V road test sheet (primary, retrieved 2026-11-05)' },
+    refConfidence: 'high',
+    estimated: ['cgHeightM'],
+    sources: {
+      measured: C_D_CTSV,
+      curbMassKg: C_D_CTSV,
+      wheelbaseM: C_D_CTSV,
+      frontWeightFraction: C_D_CTSV,
+      cdA: C_D_CTSV,
+      gearRatios: C_D_CTSV,
+      finalDrive: C_D_CTSV,
+      tires: C_D_CTSV,
+      topSpeed: C_D_CTSV,
+    },
+    notes: 'Round 3: all values except CG height are from the C/D road-test sheet (4.3 s, 12.6 s @ 116 mph, 5-60 4.6 s, 60-130 about 11.9 s from the printed time chart). Edmunds manual: 4.6 s / 12.5 s @ 115.3 mph (secondary).',
+    topSpeed: { mph: 191, kind: 'drag-limited', source: 'C/D sheet: 191 mph drag ltd, mfr claim' },
   },
   {
     id: 'bmw-m3-e92-2008',

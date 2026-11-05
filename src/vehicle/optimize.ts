@@ -1,6 +1,10 @@
 import { runAcceleration } from './accelerate';
 import type { RunOptions, TorqueCurve, VehicleSpec } from './types';
 
+/** Default optimiser search ranges (multiples of the current value). Used by the UI to detect optima on a range edge. */
+export const DEFAULT_FINAL_DRIVE_RANGE: readonly [number, number] = [0.7, 1.4];
+export const DEFAULT_RATIO_SCALE_RANGE: readonly [number, number] = [0.85, 1.15];
+
 export type Objective = '0-60' | '0-100kph' | 'quarter-mile' | '60-130';
 
 export interface OptimizeOptions {
@@ -9,9 +13,9 @@ export interface OptimizeOptions {
   finalDrive?: boolean;
   /** Also search individual gear ratios (coordinate descent). Default false. */
   gearRatios?: boolean;
-  /** Final-drive search range as a multiple of the current value. Default [0.7, 1.4]. */
+  /** Final-drive search range as a multiple of the current value. Default DEFAULT_FINAL_DRIVE_RANGE. */
   finalDriveRange?: [number, number];
-  /** Per-gear scale limits relative to the original ratio. Default [0.85, 1.15]. */
+  /** Per-gear scale limits relative to the original ratio. Default DEFAULT_RATIO_SCALE_RANGE. */
   ratioScaleRange?: [number, number];
   /** Minimum ratio step between adjacent gears (r_n / r_{n+1}). Default 1.05. */
   minStep?: number;
@@ -61,8 +65,8 @@ const withTransmission = (spec: VehicleSpec, fd: number, ratios: number[]): Vehi
  */
 export function optimizeGearing(spec: VehicleSpec, engine: TorqueCurve, o: OptimizeOptions): OptimizeResult {
   const run = o.run ?? {};
-  const [fLo, fHi] = o.finalDriveRange ?? [0.7, 1.4];
-  const [sLo, sHi] = o.ratioScaleRange ?? [0.85, 1.15];
+  const [fLo, fHi] = o.finalDriveRange ?? DEFAULT_FINAL_DRIVE_RANGE;
+  const [sLo, sHi] = o.ratioScaleRange ?? DEFAULT_RATIO_SCALE_RANGE;
   const minStep = o.minStep ?? 1.05;
   let evals = 0;
   const f = (fd: number, ratios: number[]) => {
