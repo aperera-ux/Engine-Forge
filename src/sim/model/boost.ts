@@ -13,6 +13,13 @@ export interface FlowAt {
   mExh: number;
   pMan: number;
   tExh: number;
+  /**
+   * Pressure the boost controller regulates, Pa: the manifold pressure with the
+   * throttle wide open. Equals pMan except when the ECU closes the throttle for
+   * torque control (engine.ts › limitThrottle); the wastegate then keeps
+   * regulating boost upstream of the throttle instead of spooling up against it.
+   */
+  pCtl?: number;
 }
 
 /** Engine airflow for a given post-intercooler pressure/temperature and exhaust pressure. */
@@ -213,7 +220,7 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number, hin
       Math.min(
         (r.ptc - r.pc) / Math.max(r.pc, 100),
         (compressorMaxPr(r.phi, t.compressorInducerMm) - r.pr) / r.pr,
-        (pTarget - r.flow.pMan) / pTarget,
+        (pTarget - (r.flow.pCtl ?? r.flow.pMan)) / pTarget,
         (p3Max - Math.min(r.p3c, r.p3wg)) / p3Max,
       );
     // Root of the margin on [lo, hi]; reuses illinois' last evaluation when it is the root.
@@ -335,7 +342,7 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number, hin
       hint.phi = res.phi;
     }
   }
-  const atTarget = res.flow.pMan >= pTarget - 0.03e5;
+  const atTarget = (res.flow.pCtl ?? res.flow.pMan) >= pTarget - 0.03e5;
   const spoolLimited = !atTarget && res.ptc < res.pc * 1.05;
   // Genuinely past choke: flow pinned at the speed line with collapsed efficiency.
   const choke = res.phi > 0.97 && res.eta < 0.58;
