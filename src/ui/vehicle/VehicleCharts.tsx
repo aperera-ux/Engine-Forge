@@ -76,13 +76,18 @@ function seriesPoints(out: SimOutput): SeriesPoint[] {
   return pts;
 }
 
+function timeAxis(tEnd: number) {
+  const step = tEnd <= 8 ? 1 : tEnd <= 20 ? 2 : 5;
+  return { max: Math.ceil(tEnd / step) * step, step };
+}
+
 // ---- 1. speed vs time ---------------------------------------------------------
 const SpeedTime = memo(function SpeedTime({ out, units, w, h }: { out: SimOutput; units: Units; w: number; h: number }) {
   const S = speedConv(units);
   const { rows, ymax, tmax } = useMemo(() => {
     const pts = seriesPoints(out);
     const rows = pts.map((p) => ({ t: p.t, s: S.to(p.v) }));
-    return { rows, ymax: niceMax(Math.max(...rows.map((r) => r.s), 1)), tmax: niceMax(rows[rows.length - 1]?.t ?? 1, 6) };
+    return { rows, ymax: niceMax(Math.max(...rows.map((r) => r.s), 1)), tmax: timeAxis(rows[rows.length - 1]?.t ?? 1) };
   }, [out, units]);
   const mark60 = units === 'metric' ? 100 : 60;
   const markT = units === 'metric' ? out.accel.t0to100kph : out.accel.t0to60mph;
@@ -90,7 +95,7 @@ const SpeedTime = memo(function SpeedTime({ out, units, w, h }: { out: SimOutput
   return (
     <ComposedChart width={w} height={h} data={rows} margin={M}>
       <CartesianGrid stroke={C.grid} vertical={false} />
-      <XAxis dataKey="t" type="number" domain={[0, tmax.max]} ticks={ticksFor(0, tmax.max, tmax.step)} tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: C.grid }} tickFormatter={(v: number) => `${fmt(v, tmax.step < 1 ? 1 : 0)}`} height={24} label={{ value: 's', position: 'insideBottomRight', offset: 0, fill: C.axis, fontSize: 10 }} />
+      <XAxis dataKey="t" type="number" domain={[0, tmax.max]} ticks={ticksFor(0, tmax.max, tmax.step)} tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: C.grid }} tickFormatter={(v: number) => `${fmt(v, tmax.step < 1 ? 1 : 0)}`} height={24} />
       <YAxis width={YW} domain={[0, ymax.max]} ticks={ticksFor(0, ymax.max, ymax.step)} tick={AXIS_TICK} tickLine={false} axisLine={false} label={{ value: S.label, position: 'insideTopLeft', offset: 0, dy: -12, dx: 8, fill: C.torque, fontSize: 10 }} />
       <Tooltip
         isAnimationActive={false}
@@ -137,7 +142,7 @@ const Sawtooth = memo(function Sawtooth({ out, units, w, h, nGears }: { out: Sim
   return (
     <ComposedChart width={w} height={h} data={rows} margin={M}>
       <CartesianGrid stroke={C.grid} vertical={false} />
-      <XAxis dataKey="x" type="number" domain={[0, xmax.max]} ticks={ticksFor(0, xmax.max, xmax.step)} tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: C.grid }} height={24} label={{ value: S.label, position: 'insideBottomRight', offset: 0, fill: C.axis, fontSize: 10 }} />
+      <XAxis dataKey="x" type="number" domain={[0, xmax.max]} ticks={ticksFor(0, xmax.max, xmax.step)} tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: C.grid }} height={24} />
       <YAxis width={YW} domain={[0, ymax.max]} ticks={ticksFor(0, ymax.max, ymax.step)} tick={AXIS_TICK} tickLine={false} axisLine={false} label={{ value: 'rpm', position: 'insideTopLeft', offset: 0, dy: -12, dx: 8, fill: C.axis, fontSize: 10 }} />
       <Tooltip
         isAnimationActive={false}
@@ -203,7 +208,7 @@ const Tractive = memo(function Tractive({ out, units, w, h }: { out: SimOutput; 
   return (
     <ComposedChart width={w} height={h} data={rows} margin={M}>
       <CartesianGrid stroke={C.grid} vertical={false} />
-      <XAxis dataKey="x" type="number" domain={[0, xmax.max]} ticks={ticksFor(0, xmax.max, xmax.step)} tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: C.grid }} height={24} label={{ value: S.label, position: 'insideBottomRight', offset: 0, fill: C.axis, fontSize: 10 }} />
+      <XAxis dataKey="x" type="number" domain={[0, xmax.max]} ticks={ticksFor(0, xmax.max, xmax.step)} tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: C.grid }} height={24} />
       <YAxis width={YW + 6} domain={[0, ymax.max]} ticks={ticksFor(0, ymax.max, ymax.step)} tick={AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={(v: number) => fmt(v)} label={{ value: F.label, position: 'insideTopLeft', offset: 0, dy: -12, dx: 8, fill: C.axis, fontSize: 10 }} />
       <Tooltip
         isAnimationActive={false}
@@ -269,15 +274,15 @@ export function VehicleCharts() {
   const gripOver = out.gripFullN > 0 && F.to(out.gripFullN) > Math.max(...out.gears.flatMap((g) => g.n.map((n) => F.to(n)))) * 1.02;
   return (
     <div className="veh-center" data-testid="vehicle-charts">
-      <ChartCard testId="chart-speed-time" title={`Speed vs time (${S.label})`} stale={stale} legend={<span className="lg"><i style={{ background: C.torque }} />Speed</span>}>
+      <ChartCard testId="chart-speed-time" title="Speed vs time (s)" stale={stale} legend={<span className="lg"><i style={{ background: C.torque }} />Speed</span>}>
         {(w, h) => <SpeedTime out={out} units={units} w={w} h={h} />}
       </ChartCard>
-      <ChartCard testId="chart-sawtooth" title="Gear sawtooth: rpm vs speed" stale={stale} legend={<GearLegend n={nG} />}>
+      <ChartCard testId="chart-sawtooth" title={`Sawtooth: rpm vs ${S.label}`} stale={stale} legend={<GearLegend n={nG} />}>
         {(w, h) => <Sawtooth out={out} units={units} w={w} h={h} nGears={nG} />}
       </ChartCard>
       <ChartCard
         testId="chart-tractive"
-        title="Tractive effort per gear vs road load"
+        title={`Tractive effort vs road load (x: ${S.label})`}
         stale={stale}
         legend={
           <>

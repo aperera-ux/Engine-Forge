@@ -97,7 +97,7 @@ export function mergeDesign(raw: unknown): VehicleDesign {
     layout,
     tireRadiusM: num(s.tireRadiusM, D.spec.tireRadiusM, 0.2, 0.5),
     tireClass: pick(s.tireClass, ['all-season', 'summer-performance', 'max-performance', 'semi-slick'] as const, D.spec.tireClass),
-    tireWidthMm: num(s.tireWidthMm, 245, 125, 405),
+    tireWidthMm: num(s.tireWidthMm, s.tireRadiusM ? 245 : (D.spec.tireWidthMm ?? 245), 125, 405),
     cdA: num(s.cdA, D.spec.cdA, 0.1, 2),
     transmission: {
       type,
@@ -118,7 +118,7 @@ export function mergeDesign(raw: unknown): VehicleDesign {
   const amb = (r.ambient && typeof r.ambient === 'object' ? r.ambient : {}) as Partial<VehicleDesign['ambient']>;
   return {
     spec,
-    tireCode: typeof r.tireCode === 'string' ? r.tireCode.slice(0, 16) : '',
+    tireCode: typeof r.tireCode === 'string' ? r.tireCode.slice(0, 16) : r.spec ? '' : D.tireCode,
     frontalAreaM2: num(r.frontalAreaM2, D.frontalAreaM2, 0.8, 4),
     shiftStrategy: pick(r.shiftStrategy, ['optimal', 'redline'] as const, 'optimal'),
     shiftRpmFraction: num(r.shiftRpmFraction, 1, 0.7, 1),
