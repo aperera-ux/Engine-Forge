@@ -186,8 +186,10 @@ export function runCycle(inp: CycleInputs, pre?: CyclePrefix): CycleOut {
       const lnP = Math.log(p);
       const tU = tIvc * Math.exp(kU * (lnP - lnP0));
       ki += msPerDeg * Math.exp(-(lnOnFac - knockPressureExp * (lnP - lnAtm) + 3800 / tU));
-    } else if (!needWork && xb >= 0.99999 && i + 1 >= iExp) {
-      // Burn complete and only expansion left: p falls monotonically, pMax is final.
+    } else if (!needWork && i + 1 >= iExp && (p + ((GAMMA_CYL - 1) * (1 - xb) * q) / v1) * (1 + 1e-12) <= pMax) {
+      // Knock integral complete (xb ≥ 0.95) and only expansion left: every later
+      // step has polyStep ≤ 1 and a volume ≥ v1, so the pressure can never exceed
+      // p + (γ−1)·(remaining heat)/v1 < pMax. pMax and KI are final.
       return { pMaxPa: pMax, work: NaN, knockIntegral: ki };
     } else if (!wantKnock && xb >= 0.99999 && th1 > 120) {
       // Remaining expansion only matters for work; finish polytropically.
