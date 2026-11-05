@@ -143,7 +143,7 @@ const StaticMini = memo(function StaticMini({ rows, dom, def, w, h, lo, hi, dec 
       />
       <Tooltip
         isAnimationActive={false}
-        cursor={{ stroke: 'rgba(255,255,255,0.15)' }}
+        cursor={{ stroke: 'rgba(15,23,42,0.25)' }}
         content={({ active, payload, label }) =>
           active && payload?.length ? (
             <div className="chart-tip sm">

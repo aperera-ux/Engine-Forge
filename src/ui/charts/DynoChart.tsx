@@ -104,7 +104,7 @@ const StaticChart = memo(function StaticChart({ data, snapshots, w, h, pu, tu }:
         domain={[data.lo, data.hi]}
         tick={AXIS_TICK}
         tickLine={false}
-        axisLine={{ stroke: 'rgba(255,255,255,0.12)' }}
+        axisLine={{ stroke: '#cfd5de' }}
         height={XH}
         tickFormatter={(v: number) => (v >= 1000 ? `${(v / 1000).toFixed(v % 1000 ? 1 : 0)}k` : `${v}`)}
         ticks={rpmTicks(data.lo, data.hi)}
@@ -132,7 +132,7 @@ const StaticChart = memo(function StaticChart({ data, snapshots, w, h, pu, tu }:
       />
       <Tooltip
         content={<DynoTooltip snapshots={snapshots} pu={pu} tu={tu} />}
-        cursor={{ stroke: 'rgba(255,255,255,0.18)', strokeWidth: 1 }}
+        cursor={{ stroke: 'rgba(15,23,42,0.3)', strokeWidth: 1 }}
         isAnimationActive={false}
       />
       {snapshots.map((s) => (
@@ -141,8 +141,8 @@ const StaticChart = memo(function StaticChart({ data, snapshots, w, h, pu, tu }:
       {snapshots.map((s) => (
         <Line key={`t_${s.id}`} yAxisId="t" dataKey={`t_${s.id}`} stroke={SNAP_COLORS[s.slot]} strokeOpacity={0.55} strokeWidth={1.5} strokeDasharray="2 4" dot={false} activeDot={false} isAnimationActive={false} connectNulls={false} />
       ))}
-      <Line yAxisId="t" dataKey="t" name="Torque" stroke={C.torque} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#121316' }} isAnimationActive={false} />
-      <Line yAxisId="p" dataKey="p" name="Power" stroke={C.power} strokeWidth={2.25} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#121316' }} isAnimationActive={false} />
+      <Line yAxisId="t" dataKey="t" name="Torque" stroke={C.torque} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#ffffff' }} isAnimationActive={false} />
+      <Line yAxisId="p" dataKey="p" name="Power" stroke={C.power} strokeWidth={2.25} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#ffffff' }} isAnimationActive={false} />
     </LineChart>
   );
 });
@@ -236,12 +236,12 @@ function CursorOverlay({ data, w, h, result, units }: { data: Data; w: number; h
       {dyno && <rect x={x0} y={y0} width={Math.max(0, cx - x0)} height={y1 - y0} className="sweep-bg" />}
       <g className="peak">
         <line x1={pk.x} x2={pk.x} y1={pk.y + 6} y2={y1} stroke={C.power} strokeOpacity={0.35} strokeDasharray="2 3" />
-        <circle cx={pk.x} cy={pk.y} r={4} fill="#121316" stroke={C.power} strokeWidth={2} />
+        <circle cx={pk.x} cy={pk.y} r={4} fill="#ffffff" stroke={C.power} strokeWidth={2} />
         <text x={Math.min(pk.x, x1 - 4)} y={pk.y - 8} textAnchor={pk.x > x1 - 60 ? 'end' : 'middle'} className="peak-label">
           {fmt(P(result.peakPowerKw))} @ {fmt(result.peakPowerRpm)}
         </text>
         <line x1={tk.x} x2={tk.x} y1={tk.y + 6} y2={y1} stroke={C.torque} strokeOpacity={0.35} strokeDasharray="2 3" />
-        <circle cx={tk.x} cy={tk.y} r={4} fill="#121316" stroke={C.torque} strokeWidth={2} />
+        <circle cx={tk.x} cy={tk.y} r={4} fill="#ffffff" stroke={C.torque} strokeWidth={2} />
         <text x={Math.max(tk.x, x0 + 4)} y={tk.y - 8} textAnchor={tk.x < x0 + 60 ? 'start' : 'middle'} className="peak-label">
           {fmt(T(result.peakTorqueNm))} @ {fmt(result.peakTorqueRpm)}
         </text>

@@ -178,13 +178,7 @@ export function Header() {
   return (
     <header className="topbar">
       <div className="brand">
-        <svg className="logo" viewBox="0 0 32 32" width="26" height="26" aria-hidden>
-          <path d="M16 3l11 6.5v13L16 29 5 22.5v-13z" fill="none" stroke="currentColor" strokeWidth="1.6" />
-          <path d="M11 12h10M11 16h7M11 20h10" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-        <span className="wordmark">
-          ENGINE<b>FORGE</b>
-        </span>
+        <img className="brand-logo" src="/logo.svg" alt="Engine Forge" width={146} height={26} draggable={false} onDragStart={(e) => e.preventDefault()} />
       </div>
       <div className="divider" />
       <PresetPicker />
