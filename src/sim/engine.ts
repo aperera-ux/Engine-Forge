@@ -205,6 +205,36 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   return { point, boost, egtK, pExhCyl: boost && turbo ? boost.pExhCyl : pExhCyl };
 }
 
+/**
+ * Breathing (gas-exchange) tables cached per configuration. The table is a
+ * pure function of the sanitised config and the global calibration CAL, so
+ * the key is both serialised: any change to either rebuilds it. Repeated
+ * simulations of one config (OEM-limit toggle, unlimited curve, UI edits of
+ * other fields cancelled/redone, benchmarks) reuse it. Small LRU.
+ */
+const BREATHING_CACHE = new Map<string, BreathingModel>();
+const BREATHING_CACHE_MAX = 12;
+let breathingCacheEnabled = true;
+/** Test/benchmark hook: disable (and clear) the breathing-table cache. */
+export function setBreathingCache(on: boolean): void {
+  breathingCacheEnabled = on;
+  BREATHING_CACHE.clear();
+}
+function breathingFor(c: EngineConfig, build: () => BreathingModel): BreathingModel {
+  if (!breathingCacheEnabled) return build();
+  const key = JSON.stringify(c) + '\u0000' + JSON.stringify(CAL);
+  const hit = BREATHING_CACHE.get(key);
+  if (hit) {
+    BREATHING_CACHE.delete(key);
+    BREATHING_CACHE.set(key, hit);
+    return hit;
+  }
+  const bm = build();
+  BREATHING_CACHE.set(key, bm);
+  if (BREATHING_CACHE.size > BREATHING_CACHE_MAX) BREATHING_CACHE.delete(BREATHING_CACHE.keys().next().value as string);
+  return bm;
+}
+
 export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult {
   const applyOem = opts.applyOemLimits !== false;
   const c = sanitize(config);
@@ -215,16 +245,18 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
   const ctx: PointCtx = {
     c,
     g,
-    breathing: new BreathingModel(g, c, {
-      rpmLo: Math.min(...grid),
-      rpmHi: c.redlineRpm,
-      exhaustWaveFactor: c.induction === 'turbo' ? (c.turbo.twinScroll ? 0.5 : 0.3) : 1,
-      peOverPiAt: (rpm) => {
-        // NA: mean exhaust back pressure at a typical trapped flow (VE ≈ 0.95).
-        const mExh = 0.95 * RHO_AMB * g.vdTotal * (rpm / 120) * (1 + 1 / (fuelOf(c).afr * c.lambda));
-        return exhaustBackPressure(c, mExh, 1100) / (0.97 * P_AMB_PA);
-      },
-    }),
+    breathing: breathingFor(c, () =>
+      new BreathingModel(g, c, {
+        rpmLo: Math.min(...grid),
+        rpmHi: c.redlineRpm,
+        exhaustWaveFactor: c.induction === 'turbo' ? (c.turbo.twinScroll ? 0.5 : 0.3) : 1,
+        peOverPiAt: (rpm) => {
+          // NA: mean exhaust back pressure at a typical trapped flow (VE ≈ 0.95).
+          const mExh = 0.95 * RHO_AMB * g.vdTotal * (rpm / 120) * (1 + 1 / (fuelOf(c).afr * c.lambda));
+          return exhaustBackPressure(c, mExh, 1100) / (0.97 * P_AMB_PA);
+        },
+      }),
+    ),
     vFloat,
     cdAThrottle: CAL.throttleCd * (Math.PI / 4) * (c.throttleMm / 1000) ** 2,
     evapVe: evapCooling(c, c.directInjection ? 0.22 : 0.1),

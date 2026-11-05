@@ -81,6 +81,9 @@ export function newCyclePrefix(): CyclePrefix {
   return { n: -1, p: new Float64Array(361), work: new Float64Array(361), ki: new Float64Array(361), pMax: new Float64Array(361) };
 }
 
+/** Scratch prefix for knockLimitedSpark (synchronous, not re-entrant: reset per call). */
+const SPARK_PREFIX = newCyclePrefix();
+
 export function runCycle(inp: CycleInputs, pre?: CyclePrefix): CycleOut {
   const { vol, polyStep } = inp.g;
   const needWork = inp.needWork !== false;
@@ -290,7 +293,8 @@ export function knockLimitedSpark(
   const mbt = mbtSpark(burnDeg);
   const start = (adv: number) => -adv + CAL.delayDeg;
   // All cycles of the retard search share one compression prefix (same charge state).
-  const pre = newCyclePrefix();
+  const pre = SPARK_PREFIX;
+  pre.n = -1;
   const atMbt = runCycle({ ...base, thetaStart: start(mbt), wantKnock: true, needWork: false }, pre);
   if (atMbt.knockIntegral <= 1) {
     return { sparkBtdc: mbt, retard: 0, workRatio: 1, pMaxBar: atMbt.pMaxPa / 1e5, knockIntegralMbt: atMbt.knockIntegral };

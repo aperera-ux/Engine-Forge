@@ -10,11 +10,12 @@
  * check fails if any numeric leaf deviates by more than TOL (relative, with a
  * tiny absolute floor for values that are ~0) or any non-numeric leaf differs.
  * SIM_TIMES=<file> also writes per-config median timings (JSON).
+ * SIM_COLD=1 disables the per-config breathing-table cache (cold timings).
  */
 import { describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { simulate } from '../../engine';
+import { setBreathingCache, simulate } from '../../engine';
 import { PRESETS } from '../../presets';
 import { EXTENDED_REFERENCE_ENGINES } from '../../validation/referenceEngines';
 import type { EngineConfig, SimOptions } from '../../types';
@@ -69,6 +70,7 @@ function median(c: EngineConfig, o: SimOptions, n: number): number {
 
 describe.runIf(!!MODE)('simulate regression snapshot', () => {
   it(`mode ${MODE}`, () => {
+    if (process.env.SIM_COLD) setBreathingCache(false);
     if (MODE === 'write' || MODE === 'check') {
       const cur: Record<string, unknown> = {};
       for (const c of configs) for (const [m, o] of MODES) cur[`${c.name} [${m}]`] = snap(c, o);
@@ -100,6 +102,7 @@ describe.runIf(!!MODE)('simulate regression snapshot', () => {
       }
       const v = Object.values(times).sort((x, y) => x - y);
       console.log(`max ${v[v.length - 1].toFixed(2)} ms, median ${v[Math.floor(v.length / 2)].toFixed(2)} ms over ${v.length} configs`);
+      setBreathingCache(true);
       if (process.env.SIM_TIMES) fs.writeFileSync(process.env.SIM_TIMES, JSON.stringify(times, null, 1));
     }
   });
