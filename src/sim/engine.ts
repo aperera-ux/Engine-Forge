@@ -74,7 +74,7 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
 
   const flowAt = (pUp: number, tUp: number, pExhTurb: number): FlowAt => {
     const pExhCyl = pExhTurb + manifoldLoss(lastMExh);
-    const tFresh = Math.max(200, tUp + chargeWallHeating(rpm, c.itb) - ctx.evapVe);
+    const tFresh = Math.max(200, tUp + chargeWallHeating(rpm, c.itb, tUp) - ctx.evapVe);
     // VE depends only weakly on the throttle drop (via pe/pi): one evaluation.
     // The ECU's cam choice (VVT phase / variable lift) is made inside the lookup.
     const ve = ctx.breathing.lookup({

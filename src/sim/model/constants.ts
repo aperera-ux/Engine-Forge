@@ -70,7 +70,7 @@ export const CAL = {
   /** Intake cam-phaser authority used at WOT, ± crank deg about the nominal centerline. */
   vvtRangeDeg: 22,
   /** Variable-lift low-speed lobe: duration reduction (deg) and lift ratio. */
-  lowLobeDurDelta: 32,
+  lowLobeDurDelta: 45,
   lowLobeLiftRatio: 0.65,
   /** Intake runner tuning amplitude (plenum / ITB). */
   runnerAmp: 0.09,
@@ -89,26 +89,33 @@ export const CAL = {
   gxSteps: 150,
   /** Ratio between adjacent rpm nodes of the breathing table (fixed log lattice). */
   gxRpmNodeRatio: 1.16,
+  /** Neighbour weight of the binomial smear of wave-tuning features along log-rpm (0 = none, 0.25 = [¼ ½ ¼]). */
+  gxRpmSmear: 0,
   /** Global scale on the gas-exchange VE (port losses, in-cylinder heat pick-up not resolved). */
-  gxVeScale: 0.9425,
+  gxVeScale: 1.0325,
   /** Lift-profile shape exponent: L = Lmax·(1 − x²)^n over the seat duration. */
-  liftShapeExp: 2,
+  liftShapeExp: 2.15,
   /** Valve curtain discharge coefficient and port-throat discharge coefficients (re. valve head area). */
-  valveCurtainCd: 0.7,
-  intakeThroatCd: 0.75,
-  exhaustThroatCd: 0.72,
+  valveCurtainCd: 0.78,
+  intakeThroatCd: 0.86,
+  exhaustThroatCd: 0.8,
   /** Runner cross-section / total intake-valve head area. */
-  runnerAreaRatio: 0.9,
+  runnerAreaRatio: 0.975,
   /** Port length added to the runner / primary acoustic length, × bore. */
   intakePortLenBore: 1.4,
   exhaustPortLenBore: 1.0,
   /** Magnitude of the (inverting) open-end reflection at the plenum / bellmouth. */
-  intakeReflect: 0.948,
+  intakeReflect: 0.941,
   intakeReflectItb: 0.85,
   /** Magnitude of the (inverting) reflection at the collector, by exhaust type. */
-  exhReflect: { log: 0.15, shorty: 0.7, 'long-tube': 0.45, 'tuned-equal': 0.35 } as Record<string, number>,
+  exhReflect: { log: 0.15, shorty: 0.45, 'long-tube': 0.45, 'tuned-equal': 0.45 } as Record<string, number>,
   /** Fraction of another cylinder's blowdown pulse that reaches this valve through a shared (log/turbine) manifold. */
-  logPulseTransmit: 0.35,
+  sharedPulseTransmit: { log: 0.35, shorty: 0.06, 'long-tube': 0.04, 'tuned-equal': 0.0 } as Record<string, number>,
+  /** Turbine housings / manifold volume attenuate the cross-talk relative to an NA log manifold. */
+  turboPulseTransmitFactor: 0.6,
+  /** Intake port/valve wall temperature for charge heating, K, and heating effectiveness at 3000 rpm. */
+  intakeWallTempK: 420,
+  chargeHeatEff: 0.206,
   /** Runner entry + friction loss, multiples of runner dynamic head. */
   runnerLoss: 0.6,
   runnerLossItb: 0.3,
@@ -116,9 +123,9 @@ export const CAL = {
   gxExhaustTempK: 1250,
   gxEvoTempFactor: 1.3,
   /** Time constant separating the mean (fully reflected) from the pulsating part of returning waves, ms. */
-  waveMeanTauMs: 9.3,
+  waveMeanTauMs: 11.3,
   /** Fraction of the closed-valve wave ringing carried into the next cycle (plenum/collector interaction damps it). */
-  gxRingCarry: 0.65,
+  gxRingCarry: 0,
   /** Use the gas-exchange cycle's pumping work (true) or the mean-pressure + Mach-index correlation. */
   gxPumpingFromCycle: true,
   // ── combustion ──
@@ -151,7 +158,9 @@ export const CAL = {
   /** Exponent on (1 − residual fraction) in the auto-ignition delay: burned-gas dilution slows end-gas chemistry. */
   knockDilutionExp: 1.0,
   /** ECU cam-phasing objective: maximise VE − weight × residual fraction (residual costs burn rate / knock margin). */
-  ecuResidualWeight: 0.8,
+  ecuResidualWeight: 0,
+  /** ECU torque model for cam selection: indicated MEP per unit of trapped-charge VE, bar (per bar MAP). */
+  ecuImepPerVe: 14,
   /** Knock-aware boost control: max spark retard the ECU accepts before trimming boost, deg. */
   ecuMaxRetardDeg: 10,
   /** Torque-management correction steps per rpm point (each re-solves the boost loop). */
@@ -159,7 +168,7 @@ export const CAL = {
   /** Secant evaluations of the knock-aware boost trim per rpm point (fixed count: continuous result). */
   ecuKnockIters: 2,
   /** Fraction of the excess retard (beyond ecuMaxRetardDeg) the ECU still accepts. */
-  ecuRetardSoft: 0.5,
+  ecuRetardSoft: 0.7,
   /** Relative reduction of the end-gas compression exponent at 1000 rpm (wall heat loss). */
   endGasHeatLoss: 0.0,
   /** Residual blow-through rate when intake pressure exceeds exhaust pressure. */
@@ -174,10 +183,10 @@ export const CAL = {
   /** Fraction of fuel energy actually released as pressure in the 1-zone model. */
   pressureHeatFrac: 0.78,
   // ── friction (Chen–Flynn, bar, m/s) ──
-  fA: 0.243,
+  fA: 0.323,
   fB: 0.004,
   fC: 0.045,
-  fD: 0.0005,
+  fD: 0.0006,
   valvetrainFmep: { pushrod: 0.12, sohc: 0.1, dohc: 0.12 } as Record<'pushrod' | 'sohc' | 'dohc', number>,
   // ── turbo ──
   /** Compressor choke flow per inducer area, kg/s per mm². */

@@ -115,7 +115,9 @@ export function prepareGxEngine(g: Geometry, c: EngineConfig, exhaustWaveFactor:
   const turbo = c.induction === 'turbo';
   let groups = banks;
   if (turbo) groups = Math.max(banks, c.turbo.count) * (c.turbo.twinScroll ? 2 : 1);
-  const nShared = c.exhaust === 'log' || turbo ? Math.max(1, Math.round(c.cylinders / groups)) : 1;
+  // Cylinders whose blowdown pulses reach this valve through a common
+  // manifold / collector (per bank; twin-scroll and twin turbos split it).
+  const nShared = Math.max(1, Math.round(c.cylinders / groups));
   const boosted = c.induction !== 'na';
   return {
     vdCyl: g.vdCyl,
@@ -127,7 +129,9 @@ export function prepareGxEngine(g: Geometry, c: EngineConfig, exhaustWaveFactor:
     rIntake: -(c.itb ? CAL.intakeReflectItb : CAL.intakeReflect),
     rExhaust: -(CAL.exhReflect[c.exhaust] ?? 0.5) * exhaustWaveFactor,
     nShared,
-    tShared: c.exhaust === 'log' ? CAL.logPulseTransmit : turbo ? CAL.logPulseTransmit * 0.6 : 0,
+    // Transmission of the other cylinders' pulses: strongest for a log / shared
+    // turbine manifold, weak for headers that merge far downstream.
+    tShared: (CAL.sharedPulseTransmit[c.exhaust] ?? 0) * (turbo ? CAL.turboPulseTransmitFactor : 1),
     runnerLoss: c.itb ? CAL.runnerLossItb : CAL.runnerLoss,
     tMan: boosted ? 320 : 305,
     tExh: CAL.gxExhaustTempK,
@@ -286,7 +290,9 @@ export function runGasExchange(st: GxStatic, e: GxEngine, rpm: number, peOverPi:
         const pUp = p0 + 2 * fI;
         const dI = pUp - p;
         const rhoUp = dI >= 0 ? rho0 : rhoC;
-        const kI = 1 / (2 * rhoUp * aIv * aIv) + kRun;
+        // Compressibility: nozzle expansibility Y ≈ 1 − 0.62·(1 − p_down/p_up) (exact to ~1 % down to choke).
+        const yI = 1 - 0.62 * (1 - Math.max(0.53, dI >= 0 ? p / Math.max(1, pUp) : pUp / p));
+        const kI = 1 / (2 * rhoUp * aIv * aIv * yI * yI) + kRun;
         const s = Math.sqrt(zI * zI + 4 * kI * Math.abs(dI));
         mi = (2 * dI) / (zI + s);
         dmi = -1 / s;
@@ -304,7 +310,8 @@ export function runGasExchange(st: GxStatic, e: GxEngine, rpm: number, peOverPi:
         const pDn = pe + 2 * fE;
         const dE = p - pDn;
         const rhoUp = dE >= 0 ? rhoC : rhoX;
-        const kE = 1 / (2 * rhoUp * aEv * aEv);
+        const yE = 1 - 0.62 * (1 - Math.max(0.54, dE >= 0 ? pDn / p : p / Math.max(1, pDn)));
+        const kE = 1 / (2 * rhoUp * aEv * aEv * yE * yE);
         const s = Math.sqrt(zE * zE + 4 * kE * Math.abs(dE));
         me = (2 * dE) / (zE + s);
         dme = 1 / s;

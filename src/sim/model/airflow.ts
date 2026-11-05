@@ -216,6 +216,24 @@ export class BreathingModel {
         }
       }
     }
+    // Wave-tuning smear: cylinder-to-cylinder runner/primary differences,
+    // plenum cross-talk and cycle-to-cycle variation spread each tuning peak
+    // over a band of rpm. Light binomial smoothing along log-rpm (weight
+    // CAL.gxRpmSmear on each neighbour).
+    const w = CAL.gxRpmSmear;
+    if (w > 0 && k > 2) {
+      const tmp = new Float64Array(k);
+      for (const a of [this.ve, this.xr, this.pm]) {
+        for (let off = 0; off < size; off += k) {
+          for (let i = 0; i < k; i++) {
+            const lo = a[off + Math.max(0, i - 1)];
+            const hi = a[off + Math.min(k - 1, i + 1)];
+            tmp[i] = (1 - 2 * w) * a[off + i] + w * (lo + hi);
+          }
+          for (let i = 0; i < k; i++) a[off + i] = tmp[i];
+        }
+      }
+    }
   }
 
   /** Catmull–Rom in log rpm on one table row starting at `off`. */
@@ -291,9 +309,13 @@ export class BreathingModel {
         const x0 = at(1, l, 1);
         const xp = at(1, l, 2);
         // ECU objective (trapped charge, residual penalised), parabolic in phase.
-        const ym = vm - w * xm;
-        const y0 = v0 - w * x0;
-        const yp = vp - w * xp;
+        const kp = 1 / CAL.ecuImepPerVe;
+        const pmm = at(2, l, 0);
+        const pm0 = at(2, l, 1);
+        const pmp = at(2, l, 2);
+        const ym = vm - w * xm - kp * pmm;
+        const y0 = v0 - w * x0 - kp * pm0;
+        const yp = vp - w * xp - kp * pmp;
         const a2 = (yp + ym - 2 * y0) / (2 * r * r);
         const b1 = (yp - ym) / (2 * r);
         ph = a2 < 0 ? Math.min(r, Math.max(-r, -b1 / (2 * a2))) : yp >= ym ? r : -r;
@@ -304,9 +326,11 @@ export class BreathingModel {
         const wp = 0.5 * x * (x + 1);
         ve = wm * vm + w0 * v0 + wp * vp;
         xr = wm * xm + w0 * x0 + wp * xp;
-        pm = wm * at(2, l, 0) + w0 * at(2, l, 1) + wp * at(2, l, 2);
+        pm = wm * pmm + w0 * pm0 + wp * pmp;
       }
-      if (ve - CAL.ecuResidualWeight * xr > best.ve - CAL.ecuResidualWeight * best.xr) best = { ve, xr, pm, l, s: ph };
+      // ECU torque model: brake MEP ∝ trapped charge × (imep per unit VE) − pumping.
+      const obj = (v: number, x: number, q: number) => v - CAL.ecuResidualWeight * x - q / CAL.ecuImepPerVe;
+      if (best.ve < 0 || obj(ve, xr, pm) > obj(best.ve, best.xr, best.pm)) best = { ve, xr, pm, l, s: ph };
     }
     // Analytic correction from the tabulated to the actual pressure ratio.
     if (Math.abs(pr - prRef) > 1e-6) {
@@ -364,9 +388,15 @@ export function solveThrottle(cdA: number, pUp: number, tUp: number, demandPerPa
   return illinois((pm) => demandPerPa * pm - orificeFlow(cdA, pUp, tUp, pm), 0.1 * pUp, pUp, 40, 1e-8);
 }
 
-/** Wall heating of the fresh charge, K (more time at low rpm; plenum adds). */
-export function chargeWallHeating(rpm: number, itb: boolean): number {
-  return (itb ? 9 : 15) * Math.pow(3000 / Math.max(300, rpm), 0.4);
+/**
+ * Wall heating of the fresh charge, K: heat transfer from the ports/valves at
+ * CAL.intakeWallTempK, proportional to the wall–charge temperature difference
+ * (an already hot, un-intercooled charge picks up little); more residence time
+ * at low rpm; a plenum adds surface (ITBs less).
+ */
+export function chargeWallHeating(rpm: number, itb: boolean, tCharge = 301): number {
+  const eff = CAL.chargeHeatEff * (itb ? 0.6 : 1) * Math.pow(3000 / Math.max(300, rpm), 0.4);
+  return eff * Math.max(0, CAL.intakeWallTempK - tCharge);
 }
 
 /** Exhaust-side mean pressure for an NA/supercharged engine, Pa. */
