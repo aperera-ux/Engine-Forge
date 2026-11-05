@@ -52,6 +52,12 @@ export function runAcceleration(spec: VehicleSpec, engine: TorqueCurve, opts: Ru
   let phase: 'launch' | 'drive' | 'shift' = launchRpm > 0 ? 'launch' : 'drive';
   let shiftLeft = 0;
   let tLaunch = 0;
+  // grip-limited bookkeeping (time counted from the start of the run, incl. rollout)
+  let tGrip = 0;
+  let tGrip60 = 0;
+  let gripSeen = false;
+  let vGripRelease = 0; // speed when grip LAST stopped limiting
+  let prevGrip = false;
 
   // event times
   let tStart: number | null = rollout ? null : 0;
@@ -162,6 +168,12 @@ export function runAcceleration(spec: VehicleSpec, engine: TorqueCurve, opts: Ru
     }
 
     const a = (Ftr - Fres) / meff;
+    if (gripLimited) {
+      gripSeen = true;
+      tGrip += dt;
+      if (v < V60) tGrip60 += dt;
+    } else if (prevGrip) vGripRelease = v;
+    prevGrip = gripLimited;
     // sample
     if (ser && t >= nextSample && ns < cap) {
       ser.t[ns] = t;
@@ -239,6 +251,10 @@ export function runAcceleration(spec: VehicleSpec, engine: TorqueCurve, opts: Ru
     rollout,
     t0to60mph: rel(t60),
     t0to100kph: rel(t100k),
+    tractionLimited: gripSeen,
+    tractionLimitedS: tGrip,
+    tractionLimitedTo60S: tGrip60,
+    tractionLimitedUntilMph: gripSeen ? msToMph(prevGrip ? v : vGripRelease) : null,
     t60to130mph: t60 !== null && t130 !== null ? t130 - t60 : null,
     eighthMileS: rel(tEighth),
     eighthMileTrapMph: vEighth === null ? null : msToMph(vEighth),

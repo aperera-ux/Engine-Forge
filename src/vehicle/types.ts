@@ -133,6 +133,14 @@ export interface AccelResult {
   t0to60mph: number | null;
   t0to100kph: number | null;
   t60to130mph: number | null;
+  /** true if the driven tyres were grip-limited (peak or spinning) at any point of the run. */
+  tractionLimited: boolean;
+  /** Total time (s) the tractive force was grip-limited, from the start of the run to its end (shift gaps are not grip-limited). */
+  tractionLimitedS: number;
+  /** Part of tractionLimitedS spent below 60 mph. */
+  tractionLimitedTo60S: number;
+  /** Speed (mph) at which grip stopped limiting for the last time; null if never limited. */
+  tractionLimitedUntilMph: number | null;
   eighthMileS: number | null;
   eighthMileTrapMph: number | null;
   quarterMileS: number | null;

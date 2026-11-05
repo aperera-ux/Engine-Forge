@@ -1,6 +1,6 @@
 /** Right column of Vehicle mode: KPI tiles, gearing optimiser, accuracy notes. */
 import { useEffect, useState } from 'react';
-import type { Objective } from '../../vehicle';
+import { DEFAULT_FINAL_DRIVE_RANGE, DEFAULT_RATIO_SCALE_RANGE, type Objective } from '../../vehicle';
 import { REFERENCE_CARS } from '../../vehicle/validation/referenceCars';
 import { Select, Toggle } from '../controls';
 import { useStore } from '../store';
@@ -25,7 +25,7 @@ export const VALIDATION = {
 
 type Level = 'ok' | 'warn' | 'bad' | undefined;
 
-function Tile({ label, value, unit, sub, alt, level, title, testId, pill }: { label: string; value: string; unit?: string; sub?: string; alt?: string; level?: Level; title?: string; testId?: string; pill?: string }) {
+function Tile({ label, value, unit, sub, alt, level, title, testId, pill, note }: { label: string; value: string; unit?: string; sub?: string; alt?: string; level?: Level; title?: string; testId?: string; pill?: string; note?: string }) {
   return (
     <div className={`kpi ${level ?? ''}`} data-testid={testId} title={title}>
       <span className="kpi-lrow">
@@ -37,6 +37,11 @@ function Tile({ label, value, unit, sub, alt, level, title, testId, pill }: { la
         {unit && <small>{unit}</small>}
       </span>
       {sub && <span className="kpi-s">{sub}</span>}
+      {note && (
+        <span className="kpi-s" data-testid={testId ? `${testId}-grip` : undefined}>
+          {note}
+        </span>
+      )}
     </div>
   );
 }
@@ -60,8 +65,19 @@ function Kpis() {
       : out.top.limitedBy === 'limiter'
         ? 'electronic speed limiter'
         : `drag-limited in gear ${out.top.gear}`;
+  const gripS = a.tractionLimitedTo60S;
+  const gripNote = a.tractionLimited && gripS >= 0.05 ? `grip-limited for ${gripS.toFixed(1)} s${a.tractionLimitedUntilMph != null ? ` (until ${fmt(S.label === 'mph' ? a.tractionLimitedUntilMph : a.tractionLimitedUntilMph * 1.609344)} ${S.label})` : ''}` : undefined;
   const t60 = (
-    <Tile label="0-60 mph" value={sec(a.t0to60mph)} unit="s" sub={band(a.t0to60mph, VALIDATION.zeroTo60Pct)} testId="kpi-0-60" level={undefined} />
+    <Tile
+      label="0-60 mph"
+      value={sec(a.t0to60mph)}
+      unit="s"
+      sub={band(a.t0to60mph, VALIDATION.zeroTo60Pct)}
+      note={gripNote}
+      title={gripNote ? `Tyres are the limit for the first ${gripS.toFixed(2)} s of the run to 60 mph: more power will not help until grip stops limiting.` : 'Power-limited from the start: the tyres can transmit the engine torque.'}
+      testId="kpi-0-60"
+      level={undefined}
+    />
   );
   const t100 = <Tile label="0-100 km/h" value={sec(a.t0to100kph)} unit="s" sub={band(a.t0to100kph, VALIDATION.zeroTo60Pct)} testId="kpi-0-100" />;
   return (
@@ -104,8 +120,8 @@ const OBJECTIVES: { value: Objective; label: string }[] = [
   { value: 'quarter-mile', label: 'Minimise quarter-mile ET' },
   { value: '60-130', label: 'Minimise 60-130 mph' },
 ];
-const FD_RANGE: [number, number] = [0.7, 1.4];
-const RATIO_RANGE: [number, number] = [0.85, 1.15];
+const FD_RANGE = DEFAULT_FINAL_DRIVE_RANGE;
+const RATIO_RANGE = DEFAULT_RATIO_SCALE_RANGE;
 const near = (x: number, edge: number) => Math.abs(x - edge) < 0.006;
 
 function edgeFlags(o: OptimizeOutput) {
@@ -137,8 +153,8 @@ function Optimizer() {
       </header>
       <div className="veh-opt-body">
         <Select label="Objective" value={objective} options={OBJECTIVES} onChange={setObjective} />
-        <Toggle label="Search final drive" desc="0.7x to 1.4x of current" value={fd} onChange={setFd} />
-        <Toggle label="Search each gear ratio" desc="0.85x to 1.15x, keeps ratio steps >= 1.05" value={gr} onChange={setGr} />
+        <Toggle label="Search final drive" desc={`${FD_RANGE[0]}x to ${FD_RANGE[1]}x of current`} value={fd} onChange={setFd} />
+        <Toggle label="Search each gear ratio" desc={`${RATIO_RANGE[0]}x to ${RATIO_RANGE[1]}x, keeps ratio steps >= 1.05`} value={gr} onChange={setGr} />
         <button className="btn primary veh-opt-btn" disabled={busy || (!fd && !gr)} onClick={() => run({ objective, finalDrive: fd, gearRatios: gr })} data-testid="optimize-btn">
           {busy ? 'Optimising…' : 'Optimize gearing'}
         </button>
