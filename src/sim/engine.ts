@@ -154,7 +154,7 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   const egtLimK = CAL.ecuEgtLimitC + 273.15;
   if (CAL.ecuEgtLimitC > 0 && egtAt(lam) > egtLimK) {
     const lamMin = Math.min(c.lambda, CAL.ecuLambdaMin);
-    lam = egtAt(lamMin) > egtLimK ? lamMin : illinois((x) => egtAt(x) - egtLimK, lamMin, c.lambda, 20, 1e-5);
+    lam = egtAt(lamMin) > egtLimK ? lamMin : illinois((x) => egtAt(x) - egtLimK, lamMin, c.lambda, 20, 1e-5, undefined, undefined, true);
   }
   const lamF = lambdaPowerFactor(lam);
   const wInd = eta * lamF * spark.workRatio * eStoich; // J/cyl-cycle

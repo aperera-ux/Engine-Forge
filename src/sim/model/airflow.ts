@@ -6,7 +6,7 @@
  * index is kept as a diagnostic.
  */
 import type { EngineConfig } from '../types';
-import { CAL, CP_AIR, GAMMA_AIR, P_AMB_PA, R_AIR, R_EXH } from './constants';
+import { CAL, CP_AIR, GAMMA_AIR, GAMMA_EXH, P_AMB_PA, R_AIR, R_EXH } from './constants';
 import type { Geometry } from './geometry';
 import { prepareGxEngine, prepareGxStatic, runGasExchange } from './gasExchange';
 import { illinois } from './solve';
@@ -394,10 +394,14 @@ function lowLobe(base: CamProfile): CamProfile {
   };
 }
 
+/** Critical (choking) pressure ratio and 1/γ for the two gases used, precomputed. */
+const CRIT_AIR = Math.pow(2 / (GAMMA_AIR + 1), GAMMA_AIR / (GAMMA_AIR - 1));
+const CRIT_EXH = Math.pow(2 / (GAMMA_EXH + 1), GAMMA_EXH / (GAMMA_EXH - 1));
+
 /** Compressible orifice mass flow, kg/s. */
 export function orificeFlow(cdA: number, pUp: number, tUp: number, pDown: number, gamma = GAMMA_AIR, R = R_AIR): number {
   const pr = Math.min(1, Math.max(0, pDown / pUp));
-  const crit = Math.pow(2 / (gamma + 1), gamma / (gamma - 1));
+  const crit = gamma === GAMMA_AIR ? CRIT_AIR : gamma === GAMMA_EXH ? CRIT_EXH : Math.pow(2 / (gamma + 1), gamma / (gamma - 1));
   const prE = Math.max(pr, crit);
   const psi = Math.sqrt(((2 * gamma) / (gamma - 1)) * (Math.pow(prE, 2 / gamma) - Math.pow(prE, (gamma + 1) / gamma)));
   return (cdA * pUp * psi) / Math.sqrt(R * tUp);
@@ -415,8 +419,8 @@ export function solveThrottle(cdA: number, pUp: number, tUp: number, demandPerPa
   const dp0 = (m0 * m0) / (2 * rho * cdA * cdA);
   const lo = Math.max(0.1 * pUp, pUp - 2.5 * dp0);
   const fLo = f(lo);
-  if (lo > 0.1 * pUp && fLo < 0) return illinois(f, lo, pUp, 40, 1e-8, fLo);
-  return illinois(f, 0.1 * pUp, pUp, 40, 1e-8);
+  if (lo > 0.1 * pUp && fLo < 0) return illinois(f, lo, pUp, 40, 1e-8, fLo, undefined, true);
+  return illinois(f, 0.1 * pUp, pUp, 40, 1e-8, undefined, undefined, true);
 }
 
 /**
