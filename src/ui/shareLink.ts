@@ -41,8 +41,6 @@ export function downsampleCurve(m: { rpm: number[]; torqueNm: number[] }, max = 
   return { rpm: idx.map((i) => Math.round(m.rpm[i])), torqueNm: idx.map((i) => Math.round(m.torqueNm[i] * 10) / 10) };
 }
 
-const r4 = (x: number) => Math.round(x * 1e4) / 1e4;
-
 interface CalPayload {
   v: 1;
   val: Record<string, number>;
@@ -74,7 +72,7 @@ export function encodeCalibration(cal: Calibration): string {
   const val: Record<string, number> = {};
   for (const id of ALL_PARAM_IDS) {
     const v = cal.values[id];
-    if (typeof v === 'number' && Number.isFinite(v)) val[id] = r4(v);
+    if (typeof v === 'number' && Number.isFinite(v)) val[id] = v; // full precision: the fitted config is re-derived from these, and must match the link's cfg exactly
   }
   const preset = presetMatching(cal.baseConfig);
   const payload: CalPayload = {

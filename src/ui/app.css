@@ -3403,3 +3403,108 @@ input[type='search'] {
   color: var(--warn);
   line-height: 1.35;
 }
+
+/* ---------- demo polish: top bar never overlaps, diagnostics get room ---------- */
+.topbar > * {
+  flex-shrink: 0;
+}
+.topbar > .preset {
+  flex: 0 1 auto;
+  min-width: 150px;
+  max-width: 340px;
+}
+.preset-btn {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+}
+.topbar > .spacer {
+  flex: 1 1 0;
+  min-width: 0;
+}
+@media (max-width: 1340px) {
+  .topbar {
+    gap: 8px;
+    padding-right: 10px;
+  }
+  .hdr-cal {
+    padding: 3px 7px;
+  }
+}
+/* A list with something in it keeps room for about three items; KPIs scroll above it instead. */
+.side .warnings.has-items {
+  min-height: clamp(150px, 30%, 230px);
+}
+
+/* Snapshots in the top bar and in the dyno legend shrink instead of overflowing. */
+.topbar > .snaps {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.snaps .snap-chip {
+  min-width: 0;
+  max-width: 150px;
+  flex: 0 1 auto;
+}
+.snaps .snap-name {
+  min-width: 0;
+}
+.snaps .btn {
+  flex: none;
+}
+@media (max-width: 1340px) {
+  .snaps .snap-chip {
+    max-width: 92px;
+  }
+}
+.dyno-card {
+  container-type: inline-size;
+}
+.dyno-card .panel-title {
+  flex: none;
+}
+.dyno-card .legend {
+  flex: 1 1 0;
+  justify-content: flex-end;
+}
+.dyno-card .legend .lg:not(.snap) {
+  flex: none;
+}
+.dyno-card .lg.snap {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.dyno-card .lg.snap .ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@container (max-width: 640px) {
+  .dyno-card .lg-d {
+    display: none;
+  }
+  .dyno-card .lg.snap .ellipsis {
+    max-width: 72px;
+  }
+}
+.side .warnings.has-items {
+  min-height: clamp(190px, 38%, 260px);
+}
+@media (max-width: 1340px) {
+  .topbar > .preset {
+    max-width: 236px;
+  }
+}
+@container (max-width: 520px) {
+  .dyno-card .lg.snap {
+    padding-left: 8px;
+  }
+  .dyno-card .lg.snap .ellipsis {
+    display: none;
+  }
+}
+.gar-spec.gar-cal {
+  white-space: normal;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}

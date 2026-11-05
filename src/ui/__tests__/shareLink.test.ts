@@ -5,6 +5,7 @@ import { mergeConfig } from '../store';
 import {
   MAX_CAL_CHARS,
   MAX_LINK_POINTS,
+  b64urlDecode,
   b64urlEncode,
   calibrationNote,
   configToHash,
@@ -63,6 +64,11 @@ describe('share link: calibration round trip', () => {
     expect(d.calibration.measured.rpm).toHaveLength(12);
     expect(d.note).toBeNull();
   });
+  it('full-precision fitted values: an unedited link is never reported stale', () => {
+    const cal = buildCalibration({ fit: { ...fit, values: { runnerScale: 1.0834729183, camShiftDeg: 3.14159265, boostScale: 1.0213456 } } as unknown as FitOk, base, applyOemLimits: true, sourceName: 'x', basis: 'crank', drivetrainLossPct: 15, standard: 'sae-j1349', measured: { rpm: [1000, 2000], torqueNm: [1, 2] } });
+    const h = parseHash(configToHash(cal.fittedConfig, cal), mergeConfig)!;
+    expect(isCalibrationStale(h.config, h.cal!.calibration)).toBe(false);
+  });
   it('an edited build opens stale', () => {
     const cal = makeCal(20);
     const edited = { ...cal.fittedConfig, compressionRatio: cal.fittedConfig.compressionRatio + 1 };
@@ -104,7 +110,7 @@ describe('share link: calibration round trip', () => {
   });
   it('out-of-range values are clamped', () => {
     const cal = makeCal(10);
-    const p = JSON.parse(Buffer.from(encodeCalibration(cal).replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString());
+    const p = JSON.parse(b64urlDecode(encodeCalibration(cal)));
     p.val.veScale = 9;
     const d = decodeCalibration(b64urlEncode(JSON.stringify(p)), mergeConfig)!;
     expect(d.calibration.values.veScale).toBe(1.15);
