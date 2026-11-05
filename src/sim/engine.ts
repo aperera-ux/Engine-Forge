@@ -88,7 +88,14 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
       valveFloatRpm: ctx.vFloat,
     });
     const demandPerPa = (((ve.ve * tUp) / tFresh) * g.vdTotal * cyclesPerS) / (R_AIR * tUp);
-    const pMan = solveThrottle(ctx.cdAThrottle, pUp, tUp, demandPerPa);
+    let pUpEff = pUp;
+    if (c.induction === 'na' && c.intakeSystem !== 'open' && CAL.intakeSysZeta > 0) {
+      // Production airbox / filter / duct: total-pressure loss ζ·ṁ²/(2ρA²), A = throttle-body area.
+      const m0 = demandPerPa * solveThrottle(ctx.cdAThrottle, pUp, tUp, demandPerPa);
+      const aDuct = (Math.PI / 4) * (c.throttleMm / 1000) ** 2;
+      pUpEff = pUp - (CAL.intakeSysZeta * m0 * m0 * R_AIR * tUp) / (2 * pUp * aDuct * aDuct);
+    }
+    const pMan = solveThrottle(ctx.cdAThrottle, pUpEff, tUp, demandPerPa);
     lastVe = ve;
     lastTFresh = tFresh;
     const mAir = demandPerPa * pMan;

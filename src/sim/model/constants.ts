@@ -96,19 +96,21 @@ export const CAL = {
   /** Lift-profile shape exponent: L = Lmax·(1 − x²)^n over the seat duration. */
   liftShapeExp: 1.85,
   /** Valve curtain discharge coefficient and port-throat discharge coefficients (re. valve head area). */
+  /** Airbox + filter + duct loss coefficient (dynamic head through a duct the size of the throttle body), 'stock' intake. */
+  intakeSysZeta: 2.5,
   valveCurtainCd: 0.78,
   /** p-norm exponent of the curtain/throat series combination (see gasExchange.valveArea). */
   valveSeriesExp: 4,
-  intakeThroatCd: 0.685,
+  intakeThroatCd: 0.785,
   exhaustThroatCd: 0.665,
   /** Runner cross-section / total intake-valve head area. */
   runnerAreaRatio: 0.975,
   /** Port length added to the runner / primary acoustic length, × bore. */
-  intakePortLenBore: 1.4,
+  intakePortLenBore: 1.2,
   exhaustPortLenBore: 0.7,
   /** Magnitude of the (inverting) open-end reflection at the plenum / bellmouth. */
   intakeReflect: 0.9785,
-  intakeReflectItb: 0.85,
+  intakeReflectItb: 0.75,
   /** Magnitude of the (inverting) reflection at the collector, by exhaust type. */
   exhReflect: { log: 0.15, shorty: 0.4, 'long-tube': 0.4, 'tuned-equal': 0.4 } as Record<string, number>,
   /** Fraction of another cylinder's blowdown pulse that reaches this valve through a shared (log/turbine) manifold. */
@@ -120,10 +122,10 @@ export const CAL = {
   chargeHeatEff: 0.256,
   /** Runner entry + friction loss, multiples of runner dynamic head. */
   runnerLoss: 0.6,
-  runnerLossItb: 0.3,
+  runnerLossItb: 1.2,
   /** Nominal exhaust gas temperature for wave speed, K; cylinder temperature at EVO / that. */
   gxExhaustTempK: 1250,
-  gxEvoTempFactor: 1.3,
+  gxEvoTempFactor: 1.2,
   /** Time constant separating the mean (fully reflected) from the pulsating part of returning waves, ms. */
   waveMeanTauMs: 11.3,
   /** ... or this fraction of the cycle period (120/rpm s), whichever is shorter. */
@@ -189,9 +191,9 @@ export const CAL = {
   /** Fraction of fuel energy actually released as pressure in the 1-zone model. */
   pressureHeatFrac: 0.78,
   // ── friction (Chen–Flynn, bar, m/s) ──
-  fA: 0.423,
+  fA: 0.323,
   fB: 0.004,
-  fC: 0.045,
+  fC: 0.04,
   fD: 0.0006,
   valvetrainFmep: { pushrod: 0.12, sohc: 0.1, dohc: 0.12 } as Record<'pushrod' | 'sohc' | 'dohc', number>,
   // ── turbo ──

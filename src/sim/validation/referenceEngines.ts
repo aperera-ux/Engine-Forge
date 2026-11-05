@@ -1847,3 +1847,13 @@ for (const e of [...REFERENCE_ENGINES, ...EXTENDED_REFERENCE_ENGINES]) {
   // UI / tests can show it as an input and switch it off (see customBuild.ts).
   if (ecu.torqueLimitNm !== undefined || ecu.powerLimitKw !== undefined) e.config.ecu = { ...ecu, limitSource: 'published-rating' };
 }
+
+/**
+ * physics agent v4 - rating basis: a bare-engine dyno test (Chevrolet
+ * Performance crate engine charts: carburettor / open throttle body, test
+ * headers) has no production airbox, so those configs use intakeSystem 'open'.
+ * Vehicle-application ratings (SAE J1349 on a production intake) use the default.
+ */
+for (const e of [...REFERENCE_ENGINES, ...EXTENDED_REFERENCE_ENGINES]) {
+  if (/Chevrolet Performance/.test(e.source ?? '')) e.config.intakeSystem = 'open';
+}

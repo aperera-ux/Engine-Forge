@@ -101,6 +101,15 @@ export interface EcuConfig {
 }
 
 export interface EngineConfig {
+  /**
+   * Intake system the power is measured / modelled with (optional).
+   *  - 'stock' (default): production airbox, filter and ducting (~3 % total-pressure
+   *    loss at rated flow; loss grows with flow squared).
+   *  - 'open': bare-engine dyno (crate-engine test: carburettor or open
+   *    throttle body, no airbox).
+   * NA engines only; boosted engines' inlet loss is inside the compressor map.
+   */
+  intakeSystem?: 'stock' | 'open';
   name: string;
   layout: Layout;
   /** 1–16. Allowed counts depend on layout (see layout.ts SUPPORTED_CYLINDERS). */

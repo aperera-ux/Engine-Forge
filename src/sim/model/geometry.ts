@@ -67,6 +67,7 @@ export function sanitize(c: EngineConfig): EngineConfig {
     intakeRunnerMm: clamp(num(c.intakeRunnerMm, 300), 0, 1500),
     throttleMm: clamp(num(c.throttleMm, 60), 10, 400),
     itb: !!c.itb,
+    intakeSystem: c.intakeSystem === 'open' ? 'open' : 'stock',
     exhaust: ['log', 'shorty', 'long-tube', 'tuned-equal'].includes(c.exhaust) ? c.exhaust : 'shorty',
     headerPrimaryMm: clamp(num(c.headerPrimaryMm, 600), 50, 3000),
     headerDiameterMm: clamp(num(c.headerDiameterMm, 40), 10, 150),
