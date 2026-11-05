@@ -547,3 +547,50 @@ Mean |error| vs published figures, limits on / off:
 - These are not errors against a hardware-capability measurement. Published curves are ECU-limited, so they cannot measure what the hardware could do.
 - The off numbers are an upper bound: the hardware under a safe tune at its configured boost target. For comparison, stage-1 tunes of these engines typically gain 10–20% torque.
 - The `turbo.targetBoostBar` values on the extended engines are estimates and now carry the full uncertainty.
+
+### Limits-off turbo score, final (boosted engines that carry a published-rating limit)
+| Set | n | Peak torque |err|, on → off | Peak hp |err|, on → off | Curve torque RMS, on → off |
+|---|---|---|---|---|
+| TRAIN | 10 | 0.9% → 11.8% | 2.5% → 11.1% | 3.8% → 12.0% |
+| HOLDOUT | 3 | 2.8% → 20.0% | 10.8% → 17.8% | 8.6% → 16.2% |
+
+- On the holdout, N74 V12 is the outlier: +39% peak torque with the limits off.
+- Audi 2.7T S4 is +30% peak hp with the limits on or off.
+
+## 13. Physics v4, round 3: what changed physically
+
+1. **Valve flow knee.**
+   - Curtain and throat areas used to be combined as a root-sum-square (p = 2). Measured valve flow (Cd versus l/d) is closer to a rounded min().
+   - The combination is now a p-norm with `CAL.valveSeriesExp` = 4, and the port Cd values are retuned to realistic ones (0.79 intake, 0.67 exhaust).
+   - Why it matters: 2-valve heads with long cams sit at l/d ≈ 0.24, right on the knee. 4-valve heads are port-limited, so they are barely affected.
+   - Effect: 2-valve high-rpm breathing rises about 10%. This was the main cause of the GM pushrod high-rpm deficit.
+   - Not the cause (tested, all under 3%): exhaust primary diameter, exhaust type, runner length, exhaust valve size.
+2. **Production intake loss (`EngineConfig.intakeSystem`, 'stock' by default).**
+   - NA engines with a production airbox lose ζ·ṁ²/(2ρA²) of total pressure across a duct the size of the throttle body.
+   - Chevrolet Performance crate-engine dyno charts are bare-engine tests, tagged 'open'.
+   - Effect: roughly 3–5% less top-end power on production NA engines. Vehicle ratings are measured with the production intake. This lowered the high-rpm bias of the BMW V10/V12 and Audi V8 engines.
+3. **ITB inlet reflection** is lowered from 0.85 to 0.75, with higher runner loss.
+4. **Valve float** now loses power more gradually (45% at 25% over the float speed, previously 50% at 20%).
+5. **ECU component protection** (boosted): boost is cut when EGT exceeds 1090 °C or peak cylinder pressure exceeds 220 bar. It is a fixed-iteration bisection, so the result is continuous in the inputs.
+6. **Tuning-rpm tolerance averaging** (`waveRpmSpread` = 0.02): the wave tables are averaged over ±2% of rpm, for cylinder-to-cylinder and cycle-to-cycle spread of the acoustic length.
+   - It is kept small. At 4% it smeared the boost onset of the EA113.
+   - It does not fix the sanity-rule failures below.
+
+### Open items, with causes
+- **GM crate engines** (LS376/480, LS376/525, ZZ6 and similar) are still 5–10% low across the board.
+  - It is a bias, not a high-rpm shape error.
+  - The curves have unknown rating bases: J1349, J1995 or unknown. Hardware that is the same except for cams gains too little: LS3 → LS376/525 gives +9% in the sim, against +22% published. Part of the published gain is head porting, which the config cannot express.
+  - The sim has no net/gross rating switch.
+- **Rules 7, 8 and "bigger cam":**
+  - The torque curve of a 2-valve V8 is flat-topped, so its argmax is ill-conditioned.
+  - Low-rpm torque is too insensitive to duration, because charge reversion is damped by the near-lossless intake wave.
+  - Tolerance averaging does not fix this.
+- **Fuzz:**
+  - Boosted BMEP > 30 bar: 25 configs.
+  - EGT outside 500–1100 °C: 78 configs. Most are the model's 1227 °C clamp on absurd CR/boost/cam combinations.
+  - 101 NA curves have adjacent-point jumps.
+- **ui_regressions:**
+  - LS3 at 8500 rpm: BSFC ≈ 630 g/kWh, over the 600 limit.
+  - The twin-51 mm turbo holds 0.88 bar, below 0.9.
+  - EA888 knock retard Δ² = −2.6° at 5800 rpm.
+- **Audio:** 2 tests are still red (induction spool lag and turbo whine).
