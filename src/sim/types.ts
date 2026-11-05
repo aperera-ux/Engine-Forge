@@ -371,6 +371,16 @@ export interface SimResult {
   /** 0–100 reliability score; 100 = stock-like margins. */
   reliabilityScore: number;
   warnings: SimWarning[];
+  /**
+   * Additive (physics agent, §18): curve points whose solve did not converge
+   * (absent when every point converged, the normal case). 'operating-point':
+   * the exhaust-state fixed point stopped at its cap and the point is the
+   * lowest-residual iterate (residuals given); 'ecu': an ECU target solve
+   * (torque limit, knock trim, protection) stopped at its iteration cap, so the
+   * point satisfies its constraint but is not tight against it. A
+   * 'solver-unconverged' warning is added as well.
+   */
+  solverUnconverged?: { rpm: number; kind: 'operating-point' | 'ecu'; egtResidualK?: number; pExhResidualRel?: number }[];
   /** Optional (physics agent, v4): prediction uncertainty band and extrapolation score. */
   uncertainty?: SimUncertainty;
 }

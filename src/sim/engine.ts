@@ -13,7 +13,7 @@ import { computeLayout } from './layout';
 import { CAL, HP_W, LBFT_PER_NM, P_AMB_PA, R_AIR, RHO_AMB, T_AMB_K } from './model/constants';
 import { computeGeometry, maxPistonAccel, meanPistonSpeed, sanitize, type Geometry } from './model/geometry';
 import { BreathingModel, chargeWallHeating, exhaustBackPressure, solveThrottle, type VeResult } from './model/airflow';
-import { solveSupercharger, solveTurbo, type BoostState, type FlowAt, type TurboHint } from './model/boost';
+import { solveSupercharger, solveTurbo, type BoostState, type FlowAt, type SpoolControl, type TurboHint } from './model/boost';
 import {
   burnDuration,
   evapCooling,
@@ -50,6 +50,8 @@ interface PointCtx {
    * the boost target (NA engines, or boost already at zero).
    */
   pManCap: number;
+  /** Turbo spool-branch control at this rpm (spoolCeiling): PR cap, or a forced PR for the scan; null = none. */
+  spool: SpoolControl | null;
   /**
    * Warm starts shared by all evaluations of one simulate() call (knock retard,
    * compressor PR / flow fraction, fixed-point Jacobian). They change only the
@@ -75,6 +77,8 @@ interface PointOut {
   /** The EGT / exhaust-pressure guesses the point was evaluated at (= egtK / pExhCyl at a fixed point). */
   egtIn: number;
   pExhIn: number;
+  /** solvePoint: true when the exhaust-state fixed point converged (false = best residual returned). */
+  converged?: boolean;
 }
 
 function rpmGrid(c: EngineConfig): number[] {
@@ -102,8 +106,8 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   let lastMExh = 0;
   const manifoldLoss = (mExh: number) => (turbo ? CAL.turboManifoldLossFrac * (exhaustBackPressure(c, mExh, tExhPort) - P_AMB_PA) : 0);
 
-  const flowAt = (pUp: number, tUp: number, pExhTurb: number): FlowAt => {
-    const pExhCyl = pExhTurb + manifoldLoss(lastMExh);
+  const flowAt1 = (pUp: number, tUp: number, pExhTurb: number, mLoss: number): FlowAt => {
+    const pExhCyl = pExhTurb + manifoldLoss(mLoss);
     const tFresh = Math.max(200, tUp + chargeWallHeating(rpm, c.itb, tUp) - ctx.evapVe);
     // VE depends only weakly on the throttle drop (via pe/pi): one evaluation.
     // The ECU's cam choice (VVT phase / variable lift) is made inside the lookup.
@@ -135,15 +139,23 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
     lastMExh = mAir * (1 + 1 / afrAct);
     return { mAir, mExh: lastMExh, pMan, tExh: turbo ? tExhPort - 40 : tExhPort, pCtl: pManWot };
   };
+  // The manifold loss is evaluated at the exhaust flow mAirLoss·(1 + 1/AFR)
+  // the caller passes (solveTurbo: the flow implied by its compressor
+  // flow-fraction iterate φ, which converges with φ). It was lagged by one
+  // flowAt call, which made the result depend on the call history inside
+  // solveTurbo (up to ~1e3 Pa at 5800 rpm on the B58), so the exhaust-state
+  // fixed point could stall without converging.
+  const flowAt = (pUp: number, tUp: number, pExhTurb: number, mAirLoss?: number): FlowAt =>
+    flowAt1(pUp, tUp, pExhTurb, turbo ? (mAirLoss ?? lastMExh / (1 + 1 / afrAct)) * (1 + 1 / afrAct) : 0);
 
   let boost: BoostState | null = null;
   let flow: FlowAt;
   let pExhCyl: number;
   let tCharge = T_AMB_K;
   if (turbo) {
-    boost = solveTurbo(c, flowAt, pExhGuess, ctx.hints.turbo);
+    boost = solveTurbo(c, flowAt, pExhGuess, ctx.hints.turbo, ctx.spool);
     // Re-evaluate at the converged state so lastVe matches.
-    flow = flowAt(boost.pUp, boost.tCharge, boost.pExhCyl);
+    flow = flowAt(boost.pUp, boost.tCharge, boost.pExhCyl, boost.flow.mAir);
     pExhCyl = boost.pExhCyl + manifoldLoss(flow.mExh);
     tCharge = boost.tCharge;
   } else if (c.induction === 'supercharger') {
@@ -240,7 +252,7 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
 }
 
 /** Fixed-point iteration counts of the last simulate() call (diagnostics / tests). */
-export const pointSolveStats = { solves: 0, evals: 0, maxIters: 0, unconverged: 0, maxEgtResK: 0, maxPExhResRel: 0, ecuUnconverged: 0 };
+export const pointSolveStats = { solves: 0, evals: 0, maxIters: 0, unconverged: 0, maxEgtResK: 0, maxPExhResRel: 0, ecuUnconverged: 0, spoolEvals: 0, spoolCapped: 0, spoolUnconverged: 0 };
 
 /**
  * Self-consistent operating point. evalPoint takes the exhaust state x =
@@ -265,9 +277,9 @@ export const pointSolveStats = { solves: 0, evals: 0, maxIters: 0, unconverged: 
  * within those tolerances, ≈ 1e-6 relative in torque.
  */
 const PEXH_SCALE = 100;
-function solvePoint(ctx: PointCtx, rpm: number, egt0: number, p0: number): PointOut {
-  const tolE = CAL.pointEgtTolK;
-  const tolP = CAL.pointPExhTolRel;
+function solvePoint(ctx: PointCtx, rpm: number, egt0: number, p0: number, tolScale = 1): PointOut {
+  const tolE = CAL.pointEgtTolK * tolScale;
+  const tolP = CAL.pointPExhTolRel * tolScale;
   // Search box: evalPoint clamps EGT to [450, 1500] K; exhaust state 0.5–30 bar.
   const pMin = (0.5 * P_AMB_PA) / PEXH_SCALE;
   const pMax = 30e5 / PEXH_SCALE;
@@ -323,12 +335,16 @@ function solvePoint(ctx: PointCtx, rpm: number, egt0: number, p0: number): Point
     const stalled = it >= 16 && bestN > 0.99 * bestHist[it - 13];
     if (conv || stalled || it >= CAL.pointMaxIters) {
       pointSolveStats.evals += it;
-      pointSolveStats.maxIters = Math.max(pointSolveStats.maxIters, it);
-      if (!conv) pointSolveStats.unconverged++;
       ctx.hints.jac = conv ? [j00, j01, j10, j11] : null;
       const out = conv ? r : best;
-      pointSolveStats.maxEgtResK = Math.max(pointSolveStats.maxEgtResK, Math.abs(out.egtK - out.egtIn));
-      pointSolveStats.maxPExhResRel = Math.max(pointSolveStats.maxPExhResRel, Math.abs(out.pExhCyl - out.pExhIn) / out.pExhIn);
+      out.converged = conv;
+      // Spool-scan points (forced PR) are not operating points: stats for those are kept by spoolCeiling.
+      if (ctx.spool?.prForce === undefined) {
+        pointSolveStats.maxIters = Math.max(pointSolveStats.maxIters, it);
+        if (!conv) pointSolveStats.unconverged++;
+        pointSolveStats.maxEgtResK = Math.max(pointSolveStats.maxEgtResK, Math.abs(out.egtK - out.egtIn));
+        pointSolveStats.maxPExhResRel = Math.max(pointSolveStats.maxPExhResRel, Math.abs(out.pExhCyl - out.pExhIn) / out.pExhIn);
+      }
       return out;
     }
     // Cap the step at 150 K / 30 % of the pressure.
@@ -477,6 +493,7 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     veScale: cal.veScale,
     fricScale: cal.fricScale,
     pManCap: Infinity,
+    spool: null,
     hints: { spark: { retard: -1, slope: NaN, pSlope: 0 }, turbo: { pr: NaN, phi: 0.5, slope: NaN }, jac: null },
   };
 
@@ -707,12 +724,121 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     if (!lo) return hi.rr;
     return bracketRoot(evalP, lo, hi, tol, CAL.ecuTorqueMaxIters).rr;
   };
+  /**
+   * Spool branch (turbo). With the wastegate shut, turbine power and
+   * compressor power both depend on the compressor PR through the engine
+   * flow, back-pressure and EGT; their coupled balance m(PR) = (P_t − P_c)/P_c,
+   * each point a converged exhaust-state fixed point at that PR, can have
+   * several roots at low rpm (positive spool feedback through VE and EGT). A
+   * turbo spooling up from rest at WOT accelerates while m > 0 and stops at
+   * the LOWEST root, unless the boost target (wastegate opens), the speed line
+   * or the exhaust-pressure limit stops it first. That root does not depend on
+   * the boost target (the gate is shut below it), so it is found once per rpm
+   * and imposed on every operating point at that rpm as a PR cap (SpoolControl.prCap).
+   * Without it the per-point solve picks a root at the FROZEN exhaust state of
+   * each iterate, which is discontinuous in that state near a fold of m: the
+   * fixed point then fails to converge or lands on either branch depending on
+   * the warm start (B58 at 1000 rpm with VE ×1.05: 30 unconverged solves).
+   *
+   * Scan: m at PR = SPOOL_GRID^k (fixed grid, so the result does not depend on
+   * the warm start), k = 1, 2, …, until m ≤ 0 (root bracketed → Illinois), the
+   * scheduled target is reached, the speed line is passed or PR exceeds the
+   * solver's ceiling. Dips between grid nodes: at every sampled local minimum
+   * of m below SPOOL_DIP, m is minimised by golden section; a negative minimum
+   * brackets the lowest root on its left. Returns Infinity when no root exists
+   * below the target (the common case) and the minimum sampled margin, which
+   * gates the scan off for the rest of the curve once it is large.
+   */
+  const SPOOL_GRID = 1.08;
+  const SPOOL_DIP = 0.12;
+  const SPOOL_SAFE = 0.5;
+  /** PR up to which m > 0 is established at a lower rpm (m rises with rpm at fixed PR), and the scan's warm state. */
+  let spoolOk = 1;
+  let spoolWarm: [number, number] | null = null;
+  /** Lowest sampled m of the last scan that found no root. */
+  let spoolMinM = -Infinity;
+  const spoolHints: PointHints = { spark: { retard: -1, slope: NaN, pSlope: 0 }, turbo: { pr: NaN, phi: 0.5, slope: NaN }, jac: null };
+  const spoolCeiling = (rpm: number, tgt: number): number => {
+    const sctx: PointCtx = { ...ctx, c: { ...c, turbo: { ...c.turbo, targetBoostBar: tgt } }, spool: { prForce: 1 }, hints: spoolHints };
+    const pT = P_AMB_PA + tgt * 1e5;
+    const prTop = Math.max(1.0001, (pT / P_AMB_PA) * 1.35);
+    let [e, p] = spoolWarm ?? firstGuess(rpm);
+    type S = { pr: number; m: number; o: PointOut };
+    // tolScale < 1 for the root refinement: m carries the fixed-point
+    // tolerance as noise (∂m/∂EGT ≈ 1/EGT, so 0.01 K → 1e-5 in m), which the
+    // root would turn into PR noise of order 1e-5 / (∂m/∂PR).
+    const at = (pr: number, tolScale = 1): S => {
+      sctx.spool = { prForce: pr };
+      const o = solvePoint(sctx, rpm, e, p, tolScale);
+      if (o.converged) {
+        e = o.egtIn;
+        p = o.pExhIn;
+      } else pointSolveStats.spoolUnconverged++; // the scan then stops (spoolCeiling returns NaN)
+      pointSolveStats.spoolEvals++;
+      return { pr, m: o.boost?.spoolMargin ?? 1, o };
+    };
+    const rootIn = (lo: S, hi: S): number => illinois((x) => at(x, 0.01).m, lo.pr, hi.pr, 40, 1e-9, lo.m, hi.m, false, 1e-8);
+    const smp: S[] = [];
+    // Grid nodes strictly above spoolOk (a fixed grid: the result does not depend on warm starts).
+    for (let k = Math.floor(Math.log(spoolOk) / Math.log(SPOOL_GRID) + 1e-9) + 1; ; k++) {
+      const s = at(Math.min(prTop, SPOOL_GRID ** k));
+      if (!s.o.converged) return NaN; // no margin information: leave the per-point turbine term in charge
+      if (s.m <= 0) {
+        const lo = smp.length ? smp[smp.length - 1] : at(spoolOk);
+        if (lo.m <= 0 || !lo.o.converged) return spoolOk; // root at the established bound itself (or no information below)
+        return rootIn(lo, s);
+      }
+      smp.push(s);
+      spoolWarm = [e, p];
+      const pc = s.o.boost?.flow.pCtl ?? s.o.boost?.flow.pMan ?? 0;
+      if (pc >= pT || (s.o.boost?.speedMargin ?? 1) < 0 || s.pr >= prTop) break;
+    }
+    // Narrow dips between grid nodes: minimise m (golden section) around every
+    // sampled interior local minimum below SPOOL_DIP.
+    for (let i = 1; i < smp.length - 1; i++) {
+      if (!(smp[i].m < SPOOL_DIP && smp[i].m <= smp[i - 1].m && smp[i].m <= smp[i + 1].m)) continue;
+      const g = (Math.sqrt(5) - 1) / 2;
+      let a = smp[i - 1];
+      let b = smp[i + 1];
+      let x1 = at(b.pr - g * (b.pr - a.pr));
+      let x2 = at(a.pr + g * (b.pr - a.pr));
+      for (let it = 0; it < 30 && b.pr - a.pr > 1e-5 * b.pr && Math.min(x1.m, x2.m) > 0; it++) {
+        if (x1.m < x2.m) {
+          b = x2;
+          x2 = x1;
+          x1 = at(b.pr - g * (b.pr - a.pr));
+        } else {
+          a = x1;
+          x1 = x2;
+          x2 = at(a.pr + g * (b.pr - a.pr));
+        }
+      }
+      const lo = x1.m < x2.m ? x1 : x2;
+      if (lo.m <= 0) return rootIn(smp[i - 1], lo);
+    }
+    if (smp.length) spoolOk = Math.max(spoolOk, smp[smp.length - 1].pr);
+    spoolMinM = Math.min(...smp.map((x) => x.m));
+    return Infinity;
+  };
   /** Torque-limited boost targets of the previous rpm points (warm start). */
   const limT: { rpm: number; t: number }[] = [];
   let knockSens = 0.03;
   let shortfall: { ratio: number; rpm: number; reason: string; reachedAnywhere: boolean } | null = null;
+  let spoolScan = c.induction === 'turbo';
+  const unconverged: NonNullable<SimResult['solverUnconverged']> = [];
   for (const rpm of grid) {
     hist = [];
+    const ecuUnc0 = pointSolveStats.ecuUnconverged;
+    if (!spoolScan) ctx.spool = null;
+    else {
+      spoolMinM = -Infinity;
+      const cap = spoolCeiling(rpm, boostTargetAt(rpm));
+      ctx.spool = cap === cap ? { prCap: cap } : null;
+      if (cap < Infinity) {
+        pointSolveStats.spoolCapped++;
+        spoolOk = Math.max(spoolOk, cap);
+      } else if (spoolMinM >= SPOOL_SAFE) spoolScan = false;
+    }
     // Each operating point is a converged fixed point in EGT / exhaust
     // pressure (solvePoint); the previous rpm's state is only the warm start.
     const tgt0 = c.induction === 'turbo' ? boostTargetAt(rpm) : c.supercharger.targetBoostBar;
@@ -845,6 +971,9 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     }
     egt = r.egtK;
     pExh = r.pExhCyl;
+    // Flag, never hide, a point whose solve did not converge.
+    if (r.converged === false) unconverged.push({ rpm, kind: 'operating-point', egtResidualK: r.egtK - r.egtIn, pExhResidualRel: (r.pExhCyl - r.pExhIn) / r.pExhIn });
+    else if (pointSolveStats.ecuUnconverged > ecuUnc0) unconverged.push({ rpm, kind: 'ecu' });
     curve.push(r.point);
     limitedBy.push(thrLimited || r.boost?.limit === 'torque' ? (tqLimNm > 0 && torqueLimit === tqLimNm ? 'torque' : 'power') : null);
     const b = r.boost;
@@ -899,6 +1028,12 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
       ? { ...shortfall, reachedAnywhere: Math.max(...curve.map((p) => p.boostBar)) >= 0.8 * c.turbo.targetBoostBar }
       : null,
   });
+  if (unconverged.length)
+    warnings.push({
+      severity: 'warn',
+      code: 'solver-unconverged',
+      message: `The operating-point solve did not converge at ${unconverged.map((u) => u.rpm).join(', ')} rpm (${unconverged.some((u) => u.kind === 'operating-point') ? 'exhaust-state fixed point' : 'ECU target solve stopped at its iteration cap; the constraint holds'}). Those points are the best iterate found and are less accurate than the rest of the curve.`,
+    });
 
   return {
     config,
@@ -941,6 +1076,7 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     balance: computeBalance(c, lay),
     reliabilityScore,
     warnings,
+    ...(unconverged.length ? { solverUnconverged: unconverged } : {}),
     uncertainty: computeUncertainty(c, curve, pkRpm, tqRpm, tqRange),
   };
 }

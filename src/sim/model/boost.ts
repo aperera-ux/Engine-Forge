@@ -22,8 +22,12 @@ export interface FlowAt {
   pCtl?: number;
 }
 
-/** Engine airflow for a given post-intercooler pressure/temperature and exhaust pressure. */
-export type FlowFn = (pUp: number, tUp: number, pExhCyl: number) => FlowAt;
+/**
+ * Engine airflow for a given post-intercooler pressure/temperature and exhaust
+ * pressure. `mAirLoss` (turbo): the air flow at which the exhaust-manifold
+ * loss ahead of the turbine is evaluated (the caller's current flow iterate).
+ */
+export type FlowFn = (pUp: number, tUp: number, pExhCyl: number, mAirLoss?: number) => FlowAt;
 
 export interface BoostState {
   /** Compressor pressure ratio. */
@@ -55,6 +59,27 @@ export interface BoostState {
   /** What stops boost reaching target at this rpm ('none' when at target). */
   limit: 'none' | 'turbine' | 'speed-line' | 'choke' | 'exhaust-pressure' | 'knock' | 'torque' | 'protection';
   flow: FlowAt;
+  /**
+   * Turbine power surplus with the wastegate shut, (P_turbine − P_compressor) / P_compressor,
+   * at this state (turbo only). With SpoolControl.prForce this is the coupled spool margin m(PR).
+   */
+  spoolMargin?: number;
+  /** (top speed-line PR − PR) / PR at this state (turbo only; < 0: the compressor cannot reach this PR). */
+  speedMargin?: number;
+}
+
+/**
+ * Branch control for the spool equilibrium (engine.ts › spoolCeiling).
+ *  - prForce: evaluate at this compressor PR with the wastegate shut (no
+ *    power balance, no target): one point of the coupled spool-margin curve.
+ *  - prCap: upper bound on PR, the lowest root of the COUPLED spool margin
+ *    (the equilibrium a turbo spooling up from rest reaches at this rpm);
+ *    an extra term of the feasibility margin.
+ */
+export interface SpoolControl {
+  prForce?: number;
+  /** Infinity = no spool root below the target (the turbine can supply the compressor). */
+  prCap?: number;
 }
 
 export function compressorChokeFlow(c: EngineConfig): number {
@@ -139,7 +164,7 @@ export interface TurboHint {
  * changes the iteration path (bracketing the PR root from the previous
  * solution); the result is the same root to the solve tolerance.
  */
-export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number, hint?: TurboHint): BoostState {
+export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number, hint?: TurboHint, spool?: SpoolControl | null): BoostState {
   const t = c.turbo;
   const n = t.count;
   const mChokeEach = compressorChokeFlow(c);
@@ -177,7 +202,7 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number, hin
       t2 = compressTemp(T_AMB_K, pr, eta);
       tc = intercool(t2, t.intercoolerEffectiveness);
       pUp = Math.max(0.5 * P_AMB_PA, P_AMB_PA * pr - icDrop(phi));
-      flow = flowAt(pUp, tc, Math.max(p3 * twin, P_AMB_PA));
+      flow = flowAt(pUp, tc, Math.max(p3 * twin, P_AMB_PA), phi * n * mChokeEach);
       const g = flow.mAir / n / mChokeEach;
       if (Math.abs(g - phi) <= CAL.turboPhiTol) {
         phi = g;
@@ -203,6 +228,34 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number, hin
     return { pr, phi, eta, flow, t2, tc, pUp, pc, p3c, ptc, p4, p3wg };
   };
 
+  if (spool?.prForce !== undefined) {
+    // One point of the coupled spool-margin curve: PR imposed, wastegate shut.
+    const r = evalPr(spool.prForce, p3Guess);
+    return {
+      pr: r.pr,
+      tComp: r.t2,
+      tCharge: r.tc,
+      pUp: r.pUp,
+      pExhCyl: Math.max(P_AMB_PA, r.p3c * twin),
+      pExhState: r.p3c,
+      compEta: r.eta,
+      phi: r.phi,
+      drivePowerW: 0,
+      surge: r.pr > surgePr(r.phi),
+      choke: false,
+      spoolLimited: true,
+      limit: 'turbine',
+      flow: r.flow,
+      spoolMargin: (r.ptc - r.pc) / Math.max(r.pc, 100),
+      speedMargin: (compressorMaxPr(r.phi, t.compressorInducerMm) - r.pr) / r.pr,
+    };
+  }
+  // With a SpoolControl the coupled spool equilibrium is already known (prCap,
+  // Infinity = the turbine can drive the compressor up to the target): the
+  // frozen-exhaust-state turbine term and its lowest-root scan are replaced by it.
+  const spoolSet = !!spool && spool.prCap !== undefined;
+  const prCap = spool?.prCap ?? Infinity;
+
   // p3 is warm-started from the previous rpm point, so one pass suffices.
   let p3 = p3Guess;
   let limit: BoostState['limit'] | null = 'none';
@@ -218,10 +271,11 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number, hin
     // the root of the (continuous) margin — found by Illinois, not bisection.
     const margin = (r: ReturnType<typeof evalPr>) =>
       Math.min(
-        (r.ptc - r.pc) / Math.max(r.pc, 100),
+        spoolSet ? Infinity : (r.ptc - r.pc) / Math.max(r.pc, 100),
         (compressorMaxPr(r.phi, t.compressorInducerMm) - r.pr) / r.pr,
         (pTarget - (r.flow.pCtl ?? r.flow.pMan)) / pTarget,
         (p3Max - Math.min(r.p3c, r.p3wg)) / p3Max,
+        (prCap - r.pr) / r.pr,
       );
     // Root of the margin on [lo, hi]; reuses illinois' last evaluation when it is the root.
     const root = (lo: number, hi: number, mL: number, mH: number) => {
@@ -302,7 +356,7 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number, hin
     // continues there. (Choosing the highest root instead leaves the coupled
     // exhaust-state fixed point without a solution: the high root exists only
     // at a back-pressure lower than the one it produces.)
-    for (let guard = 0; guard < 3; guard++) {
+    for (let guard = 0; guard < 3 && !spoolSet; guard++) {
       const r0 = found as ReturnType<typeof evalPr>;
       if (r0.pr <= 1 || (r0.ptc - r0.pc) / Math.max(r0.pc, 100) > margin(r0) + 1e-9) break; // turbine term not binding
       let hiX = r0.pr;
@@ -356,6 +410,7 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number, hin
       const p3s = p3;
       limit = null;
       probe = () => {
+        if (res.pr >= prCap * (1 - 1e-6)) return 'turbine';
         const up = evalPr(Math.min(prMax, res.pr * 1.03), p3s);
         return up.ptc < up.pc ? 'turbine' : up.pr > compressorMaxPr(up.phi, t.compressorInducerMm) ? (up.phi > 0.9 ? 'choke' : 'speed-line') : Math.min(up.p3c, up.p3wg) > CAL.turbineInletMaxBar * 1e5 ? 'exhaust-pressure' : 'none';
       };
@@ -401,6 +456,8 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number, hin
       limit = v;
     },
     flow: res.flow,
+    spoolMargin: (res.ptc - res.pc) / Math.max(res.pc, 100),
+    speedMargin: (compressorMaxPr(res.phi, t.compressorInducerMm) - res.pr) / res.pr,
   };
 }
 
