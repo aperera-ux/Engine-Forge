@@ -3,3 +3,5 @@
 2026-11-05T05:54:03Z vehicle: validation done (published: ET 1.4%, trap 1.5%, 0-60 6.6% all9); sources doc written; sim-suite has 46 pre-existing failures outside src/vehicle
 2026-11-05T16:51:59Z vehicle round2: started, merged main, read code; plan: engine list -> sourcing -> slip model -> fresh holdout
 2026-11-05T16:58:13Z vehicle: slip model committed; 16 cars + fresh holdout declared & committed BEFORE any run. Web: C/D, MT, Wayback blocked in WebFetch; Edmunds/fastestlaps 403 -> data recalled/secondary, flagged
+2026-11-05T16:59:57Z vehicle: train fit done (mu1.30 spin.14 eta.92 capped; unconstrained eta ran to .95). Train 0-60 med 7.9%. Now running holdout ONCE.
+2026-11-05T17:00:47Z vehicle: holdout run once: fresh holdout(4) 0-60 2.6% ET 1.0% trap 1.3% top .6%; train(9) 7.9/1.8/.8; seen(3) 4.3/1.0/1.1. docs written
