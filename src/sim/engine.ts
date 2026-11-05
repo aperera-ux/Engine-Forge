@@ -215,55 +215,113 @@ export function simulate(config: EngineConfig): SimResult {
   let surgeRpm: number | null = null;
   let chokeRpm: number | null = null;
   let spoolRpm: number | null = null;
-  let trimPrev = 0.75;
+  const boosted = c.induction !== 'na';
+  const ecu = c.ecu ?? {};
+  const torqueLimit = boosted ? (ecu.torqueLimitNm ?? 0) : 0;
+  const maxRetard = ecu.maxKnockRetardDeg ?? CAL.ecuMaxRetardDeg;
+  const sched = c.induction === 'turbo' ? ecu.boostSchedule : undefined;
+  const boostTargetAt = (rpm: number): number => {
+    if (c.induction !== 'turbo') return c.supercharger.targetBoostBar;
+    if (!sched) return c.turbo.targetBoostBar;
+    if (rpm <= sched[0].rpm) return sched[0].bar;
+    for (let i = 1; i < sched.length; i++)
+      if (rpm <= sched[i].rpm) return sched[i - 1].bar + ((rpm - sched[i - 1].rpm) * (sched[i].bar - sched[i - 1].bar)) / Math.max(1e-9, sched[i].rpm - sched[i - 1].rpm);
+    return sched[sched.length - 1].bar;
+  };
+  // Re-evaluate one rpm point at a different boost target (wastegate / bypass valve).
+  const targets = new WeakMap<PointOut, number>();
+  const atBoost = (rpm: number, bar: number, from: PointOut): PointOut => {
+    const cc: EngineConfig =
+      c.induction === 'turbo' ? { ...c, turbo: { ...c.turbo, targetBoostBar: bar } } : { ...c, supercharger: { ...c.supercharger, targetBoostBar: bar } };
+    const out = evalPoint({ ...ctx, c: cc }, rpm, from.egtK, from.pExhCyl);
+    targets.set(out, bar);
+    return out;
+  };
+  const boostTargetOf = (p: PointOut) => targets.get(p) ?? (c.induction === 'turbo' ? c.turbo.targetBoostBar : c.supercharger.targetBoostBar);
+  let knockSens = 0.03;
   let shortfall: { ratio: number; rpm: number; reason: string; reachedAnywhere: boolean } | null = null;
   for (const rpm of grid) {
     // EGT / exhaust pressure warm-started from the previous rpm point; the
     // first point is iterated so the sweep starts self-consistent.
     let r = evalPoint(ctx, rpm, egt, pExh);
     if (curve.length === 0) r = evalPoint(ctx, rpm, r.egtK, r.pExhCyl);
-    // Knock-aware boost control (as OEM ECUs do): when holding target boost
-    // would need more than ecuMaxRetardDeg of retard, the wastegate target is
-    // lowered until the retard is back at that limit (secant on boost).
-    // The trim is partial (as a torque-based ECU balances retard against boost):
-    // the accepted retard still rises slowly with the knock severity.
-    if (c.induction === 'turbo' && r.point.knockRetardDeg > CAL.ecuMaxRetardDeg && r.point.boostBar > 0.05) {
-      const b0 = r.point.boostBar;
-      const k0 = r.point.knockRetardDeg;
-      const lim = CAL.ecuMaxRetardDeg + CAL.ecuRetardSoft * (k0 - CAL.ecuMaxRetardDeg);
-      const at = (bar: number) => evalPoint({ ...ctx, c: { ...c, turbo: { ...c.turbo, targetBoostBar: bar } } }, rpm, r.egtK, r.pExhCyl);
-      // Secant iterations on boost (retard is smooth and monotone in boost).
-      let bA = b0;
-      let kA = k0;
-      // Warm start from the previous rpm point's trim ratio.
-      let bB = Math.min(0.97, Math.max(0.3, trimPrev)) * b0;
-      let rB = at(bB);
-      let kB = rB.point.knockRetardDeg;
-      for (let it = 0; it < 2 && Math.abs(kB - lim) > 0.4; it++) {
-        const bN = Math.min(b0, Math.max(0.05 * b0, Math.abs(kA - kB) > 0.05 ? bB - ((kB - lim) * (bB - bA)) / (kB - kA) : 0.5 * bB));
-        const rN = at(bN);
-        bA = bB;
-        kA = kB;
-        bB = bN;
-        rB = rN;
-        kB = rN.point.knockRetardDeg;
+    // ── ECU at WOT (boosted engines) ──
+    if (boosted) {
+      // Boost schedule (turbo) — evaluate at the scheduled target if it differs.
+      const tgt0 = boostTargetAt(rpm);
+      if (c.induction === 'turbo' && Math.abs(tgt0 - c.turbo.targetBoostBar) > 1e-9) r = atBoost(rpm, tgt0, r);
+      // 1) Torque management ("torque structure"): the ECU converts the torque
+      //    limit into a required air charge, using its torque model (indicated
+      //    torque ∝ air charge at the current spark efficiency, minus friction),
+      //    and lowers the boost target to it.
+      if (torqueLimit > 0 && r.point.torqueNm > torqueLimit && r.point.boostBar > 0.01) {
+        let rT = r;
+        let rPrev: PointOut | null = null;
+        for (let it = 0; it < CAL.ecuTorqueIters; it++) {
+          let bReq: number;
+          if (!rPrev) {
+            const tFric = (rT.point.fmepBar * 1e5 * g.vdTotal) / (4 * Math.PI);
+            const ratio = (torqueLimit + tFric) / (rT.point.torqueNm + tFric);
+            bReq = Math.max(0, rT.point.mapBar * ratio - P_AMB_PA / 1e5);
+          } else {
+            // Secant refinement on achieved boost (retard and pumping change with boost).
+            const dT = rT.point.torqueNm - rPrev.point.torqueNm;
+            const db = rT.point.boostBar - rPrev.point.boostBar;
+            bReq = Math.abs(dT) > 1e-6 ? rT.point.boostBar + ((torqueLimit - rT.point.torqueNm) * db) / dT : rT.point.boostBar;
+            bReq = Math.max(0, Math.min(r.point.boostBar, bReq));
+          }
+          const tgt = c.induction === 'turbo' ? bReq : boostTargetOf(rT) * (bReq / Math.max(1e-3, rT.point.boostBar));
+          rPrev = rT;
+          rT = atBoost(rpm, Math.min(boostTargetOf(r), tgt), r);
+        }
+        r = rT;
+        if (r.boost) r.boost.limit = 'torque';
       }
-      r = rB;
-      trimPrev = bB / b0;
-      if (r.boost) r.boost.limit = 'knock';
+      // 2) Knock-aware boost control: when holding the target would need more
+      //    than the accepted retard, the boost target is lowered until the
+      //    retard is back at that limit. The trim is partial (a torque-based
+      //    ECU balances retard against boost): the accepted retard still rises
+      //    slowly with knock severity. Fixed number of secant steps (no early
+      //    exit) so the result is a continuous function of every input.
+      if (r.point.knockRetardDeg > maxRetard && r.point.boostBar > 0.05) {
+        const bA0 = r.point.boostBar;
+        // Turbo: scale the achieved boost (a target above it would not bite when spool-limited).
+        const tgtA = c.induction === 'turbo' ? bA0 : boostTargetOf(r);
+        const k0 = r.point.knockRetardDeg;
+        const lim = maxRetard + CAL.ecuRetardSoft * (k0 - maxRetard);
+        // First step from the previous rpm point's sensitivity d(ln boost)/d(retard).
+        let xA = 1;
+        let kA = k0;
+        let xB = Math.min(0.999, Math.max(0.3, 1 - (k0 - lim) * knockSens));
+        let rB = atBoost(rpm, tgtA * xB, r);
+        let kB = rB.point.knockRetardDeg;
+        for (let it = 0; it < CAL.ecuKnockIters - 1; it++) {
+          const dk = kA - kB;
+          const xN = Math.min(1, Math.max(0.05, Math.abs(dk) > 1e-6 ? xB - ((kB - lim) * (xB - xA)) / (kB - kA) : xB));
+          const rN = atBoost(rpm, tgtA * xN, r);
+          xA = xB;
+          kA = kB;
+          xB = xN;
+          rB = rN;
+          kB = rN.point.knockRetardDeg;
+        }
+        if (k0 - kB > 0.5) knockSens = Math.min(0.2, Math.max(0.005, (1 - (rB.point.boostBar / bA0)) / (k0 - kB)));
+        r = rB;
+        if (r.boost) r.boost.limit = 'knock';
+      }
     }
     egt = r.egtK;
     pExh = r.pExhCyl;
     curve.push(r.point);
     const b = r.boost;
-    if (b && c.induction === 'turbo' && rpm >= 0.5 * c.redlineRpm && c.turbo.targetBoostBar > 0.05) {
-      const ratio = r.point.boostBar / c.turbo.targetBoostBar;
+    if (b && c.induction === 'turbo' && b.limit !== 'torque' && rpm >= 0.5 * c.redlineRpm && boostTargetAt(rpm) > 0.05) {
+      const ratio = r.point.boostBar / boostTargetAt(rpm);
       if (!shortfall || ratio < shortfall.ratio) shortfall = { ratio, rpm, reason: b.limit, reachedAnywhere: false };
     }
     if (b && c.induction === 'turbo') {
       if (b.surge) surgeRpm = rpm;
       if (b.choke && chokeRpm === null) chokeRpm = rpm;
-      if (spoolRpm === null && r.point.boostBar >= c.turbo.targetBoostBar * 0.95) spoolRpm = rpm;
+      if (spoolRpm === null && (b.limit === 'torque' || r.point.boostBar >= boostTargetAt(rpm) * 0.95)) spoolRpm = rpm;
     }
   }
 

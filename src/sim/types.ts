@@ -61,6 +61,28 @@ export interface SuperchargerConfig {
   intercoolerEffectiveness: number;
 }
 
+/**
+ * Optional (physics agent, v4): OEM engine-management calibration at wide-open
+ * throttle. Absent fields mean "no explicit limit" (an aftermarket-style map
+ * that only respects knock and hardware limits).
+ */
+export interface EcuConfig {
+  /**
+   * Brake-torque limit, N·m (OEM torque management / "torque structure").
+   * Boosted engines: the ECU lowers the boost target until brake torque is at
+   * the limit. This is how factory turbo engines produce flat plateaus.
+   * 0 or absent = no limit.
+   */
+  torqueLimitNm?: number;
+  /**
+   * Boost target schedule, bar gauge vs rpm (linear interpolation, clamped at
+   * the ends). Turbo only; replaces turbo.targetBoostBar where given.
+   */
+  boostSchedule?: { rpm: number; bar: number }[];
+  /** Knock retard (deg) the ECU accepts before trimming boost. Default 10. */
+  maxKnockRetardDeg?: number;
+}
+
 export interface EngineConfig {
   name: string;
   layout: Layout;
@@ -114,6 +136,8 @@ export interface EngineConfig {
   pistons: PistonType;
   rods: RodType;
   crank: CrankType;
+  /** Optional (physics agent, v4): ECU torque management / boost schedule. */
+  ecu?: EcuConfig;
 }
 
 /** One row of the dyno sweep. */

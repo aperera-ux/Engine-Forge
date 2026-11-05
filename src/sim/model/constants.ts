@@ -154,6 +154,10 @@ export const CAL = {
   ecuResidualWeight: 0.5,
   /** Knock-aware boost control: max spark retard the ECU accepts before trimming boost, deg. */
   ecuMaxRetardDeg: 10,
+  /** Torque-management correction steps per rpm point (each re-solves the boost loop). */
+  ecuTorqueIters: 2,
+  /** Secant evaluations of the knock-aware boost trim per rpm point (fixed count: continuous result). */
+  ecuKnockIters: 2,
   /** Fraction of the excess retard (beyond ecuMaxRetardDeg) the ECU still accepts. */
   ecuRetardSoft: 0.5,
   /** Relative reduction of the end-gas compression exponent at 1000 rpm (wall heat loss). */

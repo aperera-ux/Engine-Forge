@@ -9,6 +9,7 @@ import type { EngineConfig } from '../types';
 import { CAL, CP_AIR, GAMMA_AIR, P_AMB_PA, R_AIR, R_EXH } from './constants';
 import type { Geometry } from './geometry';
 import { prepareGxEngine, prepareGxStatic, runGasExchange } from './gasExchange';
+import { illinois } from './solve';
 
 export interface CamProfile {
   durI: number;
@@ -152,6 +153,8 @@ export class BreathingModel {
   private readonly base: number;
   private readonly g: Geometry;
   private readonly c: EngineConfig;
+  private memoRpm = -1;
+  private readonly memo: Float64Array;
 
   constructor(g: Geometry, c: EngineConfig, opts: BreathingOpts) {
     this.g = g;
@@ -193,6 +196,7 @@ export class BreathingModel {
     this.xr = new Float64Array(size);
     this.pm = new Float64Array(size);
     this.prNa = c.induction === 'na' ? new Float64Array(k) : null;
+    this.memo = new Float64Array(3 * nL * nP * nQ);
     const ge = prepareGxEngine(g, c, opts.exhaustWaveFactor);
     const rpms: number[] = [];
     for (let i = 0; i < k; i++) rpms.push(Math.exp(this.lnR0 + i * this.h));
@@ -250,12 +254,22 @@ export class BreathingModel {
       q0 = 0;
       prRef = prc;
     }
-    const at = (a: Float64Array, l: number, s: number) => {
-      const off0 = ((l * nP + s) * nQ + q0) * k;
-      const v0 = this.row(a, off0, u, i);
-      if (wq === 0) return v0;
-      const v1 = this.row(a, off0 + k, u, i);
-      return v0 + wq * (v1 - v0);
+    // rpm interpolation of every table row, memoised per rpm (the boost and
+    // throttle solvers call the lookup many times at one rpm).
+    const nL = this.lobes.length;
+    if (inp.rpm !== this.memoRpm) {
+      const tabs = [this.ve, this.xr, this.pm];
+      for (let o = 0; o < 3; o++)
+        for (let l = 0; l < nL; l++)
+          for (let s = 0; s < nP; s++)
+            for (let q = 0; q < nQ; q++) this.memo[((o * nL + l) * nP + s) * nQ + q] = this.row(tabs[o], ((l * nP + s) * nQ + q) * k, u, i);
+      this.memoRpm = inp.rpm;
+    }
+    const memo = this.memo;
+    const at = (o: number, l: number, s: number) => {
+      const b = ((o * nL + l) * nP + s) * nQ + q0;
+      const v0 = memo[b];
+      return wq === 0 ? v0 : v0 + wq * (memo[b + 1] - v0);
     };
     let best = { ve: -1, xr: 0, pm: 0, l: 0, s: 0 };
     for (let l = 0; l < this.lobes.length; l++) {
@@ -264,18 +278,18 @@ export class BreathingModel {
       let pm: number;
       let ph = 0;
       if (nP === 1) {
-        ve = at(this.ve, l, 0);
-        xr = at(this.xr, l, 0);
-        pm = at(this.pm, l, 0);
+        ve = at(0, l, 0);
+        xr = at(1, l, 0);
+        pm = at(2, l, 0);
       } else {
         const r = this.phases[2];
         const w = CAL.ecuResidualWeight;
-        const vm = at(this.ve, l, 0);
-        const v0 = at(this.ve, l, 1);
-        const vp = at(this.ve, l, 2);
-        const xm = at(this.xr, l, 0);
-        const x0 = at(this.xr, l, 1);
-        const xp = at(this.xr, l, 2);
+        const vm = at(0, l, 0);
+        const v0 = at(0, l, 1);
+        const vp = at(0, l, 2);
+        const xm = at(1, l, 0);
+        const x0 = at(1, l, 1);
+        const xp = at(1, l, 2);
         // ECU objective (trapped charge, residual penalised), parabolic in phase.
         const ym = vm - w * xm;
         const y0 = v0 - w * x0;
@@ -290,7 +304,7 @@ export class BreathingModel {
         const wp = 0.5 * x * (x + 1);
         ve = wm * vm + w0 * v0 + wp * vp;
         xr = wm * xm + w0 * x0 + wp * xp;
-        pm = wm * at(this.pm, l, 0) + w0 * at(this.pm, l, 1) + wp * at(this.pm, l, 2);
+        pm = wm * at(2, l, 0) + w0 * at(2, l, 1) + wp * at(2, l, 2);
       }
       if (ve - CAL.ecuResidualWeight * xr > best.ve - CAL.ecuResidualWeight * best.xr) best = { ve, xr, pm, l, s: ph };
     }
@@ -347,14 +361,7 @@ export function orificeFlow(cdA: number, pUp: number, tUp: number, pDown: number
  * demandPerPa: engine mass flow per Pa of manifold pressure (kg/s/Pa).
  */
 export function solveThrottle(cdA: number, pUp: number, tUp: number, demandPerPa: number): number {
-  let lo = 0.1 * pUp;
-  let hi = pUp;
-  for (let i = 0; i < 24; i++) {
-    const pm = 0.5 * (lo + hi);
-    if (demandPerPa * pm > orificeFlow(cdA, pUp, tUp, pm)) hi = pm;
-    else lo = pm;
-  }
-  return 0.5 * (lo + hi);
+  return illinois((pm) => demandPerPa * pm - orificeFlow(cdA, pUp, tUp, pm), 0.1 * pUp, pUp, 40, 1e-8);
 }
 
 /** Wall heating of the fresh charge, K (more time at low rpm; plenum adds). */

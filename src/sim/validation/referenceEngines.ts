@@ -299,6 +299,8 @@ export const REFERENCE_ENGINES: ReferenceEngine[] = [
       fuel: 'gas91', lambda: 0.82, directInjection: true,
       redlineRpm: 7000, idleRpm: 650,
       blockMaterial: 'aluminum', pistons: 'cast', rods: 'forged-steel', crank: 'forged',
+      // physics agent v4: OEM torque management = published 330 lb-ft plateau 1380-5000 rpm
+      ecu: { torqueLimitNm: nm(330) },
     },
     published: {
       hp: 320, hpRpm: 6000, torqueNm: nm(330), torqueRpm: 3190, redlineRpm: 7000, massKg: 175,
@@ -334,6 +336,8 @@ export const REFERENCE_ENGINES: ReferenceEngine[] = [
       fuel: 'gas91', lambda: 0.82, directInjection: true,
       redlineRpm: 6500, idleRpm: 700,
       blockMaterial: 'iron', pistons: 'cast', rods: 'forged-steel', crank: 'forged',
+      // physics agent v4: OEM torque management = published 258 lb-ft plateau 1500-4600 rpm
+      ecu: { torqueLimitNm: 350 },
     },
     published: {
       hp: 220, hpRpm: 5450, torqueNm: 350, torqueRpm: 3050, redlineRpm: 6500, massKg: 140,
@@ -368,6 +372,8 @@ export const REFERENCE_ENGINES: ReferenceEngine[] = [
       fuel: 'gas87', lambda: 0.85, directInjection: true,
       redlineRpm: 6500, idleRpm: 750,
       blockMaterial: 'iron', pistons: 'cast', rods: 'forged-steel', crank: 'cast',
+      // physics agent v4: OEM torque management = published 125 lb-ft plateau 1400-4500 rpm (overboost excluded)
+      ecu: { torqueLimitNm: 170 },
     },
     published: {
       hp: 123, hpRpm: 6000, torqueNm: 170, torqueRpm: 2950, redlineRpm: 6500, massKg: 97,
@@ -403,6 +409,8 @@ export const REFERENCE_ENGINES: ReferenceEngine[] = [
       fuel: 'gas87', lambda: 0.8, directInjection: true,
       redlineRpm: 6000, idleRpm: 600,
       blockMaterial: 'aluminum', pistons: 'cast', rods: 'forged-steel', crank: 'forged',
+      // physics agent v4: OEM torque management = published 470 lb-ft rating (flat truck torque curve)
+      ecu: { torqueLimitNm: nm(470) },
     },
     published: { hp: 375, hpRpm: 5000, torqueNm: nm(470), torqueRpm: 3500, redlineRpm: 6000, massKg: 205 },
     ratingConfidence: 'medium',
