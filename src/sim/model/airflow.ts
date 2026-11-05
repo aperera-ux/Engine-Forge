@@ -9,7 +9,6 @@ import type { EngineConfig } from '../types';
 import { CAL, CP_AIR, GAMMA_AIR, GAMMA_EXH, P_AMB_PA, R_AIR, R_EXH } from './constants';
 import type { Geometry } from './geometry';
 import { prepareGxEngine, prepareGxStatic, runGasExchange } from './gasExchange';
-import { illinois } from './solve';
 
 export interface CamProfile {
   durI: number;
@@ -456,56 +455,23 @@ export function orificeFlow(cdA: number, pUp: number, tUp: number, pDown: number
  * demandPerPa: engine mass flow per Pa of manifold pressure (kg/s/Pa).
  */
 export function solveThrottle(cdA: number, pUp: number, tUp: number, demandPerPa: number): number {
-  // Narrow bracket from the incompressible estimate of the throttle drop (WOT: small).
-  const rho = pUp / (R_AIR * tUp);
-  const m0 = demandPerPa * pUp;
-  const dp0 = (m0 * m0) / (2 * rho * cdA * cdA);
-  const lo = Math.max(0.1 * pUp, pUp - 2.5 * dp0);
-  const fLo = throttleResidual(cdA, pUp, tUp, demandPerPa, lo);
-  if (lo > 0.1 * pUp && fLo < 0) return throttleRoot(cdA, pUp, tUp, demandPerPa, lo, pUp, fLo);
-  return throttleRoot(cdA, pUp, tUp, demandPerPa, 0.1 * pUp, pUp, throttleResidual(cdA, pUp, tUp, demandPerPa, 0.1 * pUp));
+  // Closed form. With x = pMan/pUp the balance D·pUp·x = CdA·pUp·ψ(x)/√(RT)
+  // reads ψ(x) = A·x, A = D√(RT)/CdA. Subsonic: ψ² = k(x^(2/γ) − x^((γ+1)/γ)),
+  // k = 2γ/(γ−1); dividing by x² and setting y = x^((1−γ)/γ) ≥ 1 gives
+  // k(y² − y) = A², so y = (1 + √(1 + 4A²/k))/2 and x = y^(γ/(1−γ)).
+  // Below the critical ratio the throttle is choked: ψ = ψ* and x = ψ*/A.
+  // Lower bound 0.1·pUp as before (the previous bracketed solver's range).
+  const A = (demandPerPa * Math.sqrt(R_AIR * tUp)) / cdA;
+  const k = (2 * GAMMA_AIR) / (GAMMA_AIR - 1);
+  const y = 0.5 * (1 + Math.sqrt(1 + (4 * A * A) / k));
+  let x = Math.pow(y, GAMMA_AIR / (1 - GAMMA_AIR));
+  if (x < CRIT_AIR) x = PSI_CRIT_AIR / A;
+  return pUp * Math.min(1, Math.max(0.1, x));
 }
 
-function throttleResidual(cdA: number, pUp: number, tUp: number, demandPerPa: number, pm: number): number {
-  return demandPerPa * pm - orificeFlow(cdA, pUp, tUp, pm);
-}
-
-/**
- * illinois(f, a, b, 40, 1e-8, fa, undefined, pure = true) for the throttle
- * residual, written out so the hot residual is inlined (same iterates and
- * result as the generic solver, operation for operation).
- */
-function throttleRoot(cdA: number, pUp: number, tUp: number, demandPerPa: number, lo: number, hi: number, fLo: number): number {
-  let a = lo;
-  let b = hi;
-  let fa = fLo;
-  let fb = throttleResidual(cdA, pUp, tUp, demandPerPa, b);
-  if (fa === 0) return a;
-  if (fb === 0) return b;
-  if (fa * fb > 0) return Math.abs(fa) < Math.abs(fb) ? a : b;
-  let side = 0;
-  const tol = 1e-8 * Math.max(Math.abs(a), Math.abs(b), 1e-12);
-  let x = 0.5 * (a + b);
-  for (let i = 0; i < 40; i++) {
-    x = (a * fb - b * fa) / (fb - fa);
-    if (!(x > Math.min(a, b) && x < Math.max(a, b))) x = 0.5 * (a + b);
-    if (Math.abs(b - a) < tol) return x;
-    const fx = throttleResidual(cdA, pUp, tUp, demandPerPa, x);
-    if (fx === 0) return x;
-    if (fx * fb > 0) {
-      b = x;
-      fb = fx;
-      if (side === -1) fa /= 2;
-      side = -1;
-    } else {
-      a = x;
-      fa = fx;
-      if (side === 1) fb /= 2;
-      side = 1;
-    }
-  }
-  return x;
-}
+const PSI_CRIT_AIR = Math.sqrt(
+  ((2 * GAMMA_AIR) / (GAMMA_AIR - 1)) * (Math.pow(CRIT_AIR, 2 / GAMMA_AIR) - Math.pow(CRIT_AIR, (GAMMA_AIR + 1) / GAMMA_AIR)),
+);
 
 /**
  * Wall heating of the fresh charge, K: heat transfer from the ports/valves at
