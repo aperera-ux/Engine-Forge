@@ -25,7 +25,7 @@ function Tile({ label, value, unit, sub, alt, level, title, testId }: { label: s
 
 /** "1,600–4,800" when an ECU limit holds a plateau, else the single peak rpm. */
 function rpmTxt(range: [number, number] | undefined, rpm: number): string {
-  return range && range[1] - range[0] > 1 ? `${fmt(range[0])}–${fmt(range[1])}` : fmt(rpm);
+  return range && range[1] - range[0] > 1 ? `${(range[0] / 1000).toFixed(1)}–${(range[1] / 1000).toFixed(1)}k` : fmt(rpm);
 }
 
 export function KpiPanel() {

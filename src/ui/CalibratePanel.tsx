@@ -348,6 +348,9 @@ function FitSection({ imp }: { imp: DynoImportOk }) {
 
 // ---------------------------------------------------------------------------------------------
 
+/** Signed one-decimal percent, never "-0.0". */
+const signed = (v: number) => (Math.abs(v) < 0.05 ? '0.0' : `${v > 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}`);
+
 function RmsBlock({ fit }: { fit: FitOk }) {
   const cls = fit.verdict === 'good' ? 'ok' : fit.verdict === 'fair' ? 'warn' : 'bad';
   const label = fit.verdict === 'good' ? 'Good fit' : fit.verdict === 'fair' ? 'Fair fit' : 'Poor fit';
@@ -369,9 +372,7 @@ function RmsBlock({ fit }: { fit: FitOk }) {
         </span>
       </div>
       <div className="cal-sub">
-        Over {fmt(fit.overlap.loRpm)} to {fmt(fit.overlap.hiRpm)} rpm ({fit.overlap.n} points). Mean error {fit.biasBeforePct > 0 ? '+' : ''}
-        {fit.biasBeforePct.toFixed(1)} % → {fit.biasAfterPct > 0 ? '+' : ''}
-        {fit.biasAfterPct.toFixed(1)} %.
+        Over {fmt(fit.overlap.loRpm)} to {fmt(fit.overlap.hiRpm)} rpm ({fit.overlap.n} points). Mean error {signed(fit.biasBeforePct)} % → {signed(fit.biasAfterPct)} %.
       </div>
     </div>
   );
