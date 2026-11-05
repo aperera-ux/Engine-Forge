@@ -10,6 +10,7 @@ export type Quantity =
   | 'speed' // m/s (piston speed)
   | 'power' // kW
   | 'torque' // N·m
+  | 'area' // m²
   | 'none';
 
 interface Conv {
@@ -31,6 +32,7 @@ const METRIC: Record<Quantity, Conv> = {
   speed: { label: 'm/s', to: id, from: id, extraDecimals: 0 },
   power: { label: 'kW', to: id, from: id, extraDecimals: 0 },
   torque: { label: 'N·m', to: id, from: id, extraDecimals: 0 },
+  area: { label: 'm²', to: id, from: id, extraDecimals: 0 },
   none: { label: '', to: id, from: id, extraDecimals: 0 },
 };
 
@@ -43,6 +45,7 @@ const IMPERIAL: Record<Quantity, Conv> = {
   speed: { label: 'ft/min', to: (v) => v * 196.85, from: (v) => v / 196.85, extraDecimals: -2 },
   power: { label: 'hp', to: (v) => (v * 1000) / 745.7, from: (v) => (v * 745.7) / 1000, extraDecimals: 0 },
   torque: { label: 'lb·ft', to: (v) => v * 0.737562, from: (v) => v / 0.737562, extraDecimals: 0 },
+  area: { label: 'ft²', to: (v) => v * 10.7639, from: (v) => v / 10.7639, extraDecimals: 0 },
   none: { label: '', to: id, from: id, extraDecimals: 0 },
 };
 

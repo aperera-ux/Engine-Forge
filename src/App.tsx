@@ -7,16 +7,19 @@ import { MiniCharts } from './ui/charts/MiniCharts';
 import { KpiPanel, WarningsList } from './ui/Analytics';
 import { useStore } from './ui/store';
 import { cancelDynoPull, runDynoPull, startCrankClock } from './ui/dyno';
+import { VehicleView } from './ui/vehicle/VehicleView';
 import './ui/app.css';
 
 export default function App() {
   const collapsed = useStore((s) => s.panelCollapsed);
+  const appMode = useStore((s) => s.appMode);
   useEffect(() => {
     startCrankClock();
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.closest('input, select, textarea, [contenteditable]')) return;
       const s = useStore.getState();
+      if (s.appMode !== 'engine') return; // engine-mode shortcuts only
       if (e.code === 'Space') {
         e.preventDefault();
         s.setRunning(!s.running);
@@ -32,6 +35,7 @@ export default function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+  if (appMode === 'vehicle') return <VehicleView />;
   return (
     <div className={`app ${collapsed ? 'cfg-collapsed' : ''}`}>
       <Header />

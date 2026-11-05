@@ -11,6 +11,7 @@ import { SNAP_COLORS } from './charts/common';
 import { setAudioEnabled } from './audio';
 import { buildSheet } from './buildSheet';
 import { Garage } from './Garage';
+import type { AppMode } from './store';
 
 const PRESETS: EngineConfig[] = PresetsModule.PRESETS;
 const PRESET_GROUPS = (PresetsModule as Record<string, unknown>).PRESET_GROUPS as Record<string, string[]> | undefined;
@@ -146,6 +147,8 @@ function SnapshotControls() {
 export function Header() {
   const units = useStore((s) => s.units);
   const setUnits = useStore((s) => s.setUnits);
+  const appMode = useStore((s) => s.appMode);
+  const setAppMode = useStore((s) => s.setAppMode);
   const muted = useStore((s) => s.muted);
   const setMuted = useStore((s) => s.setMuted);
   const config = useStore((s) => s.config);
@@ -180,11 +183,21 @@ export function Header() {
       <div className="brand">
         <img className="brand-logo" src="/logo.svg" alt="Engine Forge" width={146} height={26} draggable={false} onDragStart={(e) => e.preventDefault()} />
       </div>
+      <Segmented<AppMode>
+        size="sm"
+        value={appMode}
+        onChange={setAppMode}
+        options={[
+          { value: 'engine', label: 'Engine' },
+          { value: 'vehicle', label: 'Vehicle' },
+        ]}
+        testId="mode-switch"
+      />
       <div className="divider" />
       <PresetPicker />
       <Garage flash={flash} />
       <div className="spacer" />
-      <SnapshotControls />
+      {appMode === 'engine' && <SnapshotControls />}
       <div className="divider" />
       <Segmented<Units>
         size="sm"

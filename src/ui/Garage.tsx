@@ -110,6 +110,11 @@ function SlotCard({ i, e, onDone, flash }: { i: number; e: SavedEngine | null; o
         <div className="gar-spec">
           {fmt(e.displacementL, 1)} L {engineCode(e.config)} · {ind} · {pw} {pu} · {tq} {tu}
         </div>
+        {e.vehicle && (
+          <div className="gar-spec" data-testid={`garage-vehicle-${i}`}>
+            + Car: {e.vehicle.spec.name} · {fmt(e.vehicle.spec.curbMassKg)} kg {e.vehicle.spec.layout}
+          </div>
+        )}
         <div className="gar-when">Saved {when(e.savedAt)}</div>
       </div>
       <div className="gar-acts">
