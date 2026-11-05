@@ -254,6 +254,44 @@ export interface SimOptions {
    * Costs a second solve only when the config actually carries a limit.
    */
   includeUnlimited?: boolean;
+  /**
+   * Additive (physics agent, §17): per-build calibration multipliers (src/calibrate
+   * fits them to a measured dyno curve). Omitted fields, or the whole object, are
+   * the identity and leave every output bit-identical.
+   */
+  calibration?: SimCalibration;
+}
+
+/**
+ * Calibration multipliers that act INSIDE every operating-point solve, so the
+ * ECU (torque limiter, knock trim, protection) and the turbo / exhaust fixed
+ * point see them; they are not a post-hoc rescaling of the result.
+ */
+export interface SimCalibration {
+  /**
+   * Multiplier on the trapped-air volumetric efficiency of the gas-exchange
+   * model (after the ECU's cam choice). Moves airflow, MAP and boost (turbo
+   * flow, wastegate), trapped charge, knock retard, EGT and fuel flow
+   * together. Default 1; clamped to [0.5, 1.5].
+   */
+  veScale?: number;
+  /**
+   * Multiplier on mechanical friction MEP (Chen–Flynn rings/bearings,
+   * valvetrain, accessories). Pumping MEP (from the gas-exchange cycle) and
+   * supercharger drive power are not friction and are not scaled. Acts on
+   * brake MEP before the ECU torque limiter. Default 1; clamped to [0.3, 3].
+   */
+  frictionScale?: number;
+  /**
+   * Brake-torque cap, N·m, enforced like an ECU torque limit: on boosted
+   * engines by lowering the boost target (combined with any OEM limit in force
+   * as the lower of the two), and by closing the throttle (manifold-pressure
+   * target) where boost cannot go lower or the engine is NA. Applies whether
+   * or not applyOemLimits is set. Points it holds count as torque-limited for
+   * peakTorqueRpm / peakTorqueRpmRange. Ignored unless finite and > 0.
+   * SimResult.unlimited is computed without it.
+   */
+  torqueCapNm?: number;
 }
 
 export interface SimResult {

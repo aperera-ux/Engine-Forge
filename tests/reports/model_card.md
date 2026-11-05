@@ -49,7 +49,9 @@ A 0-D cycle-resolved wide-open-throttle engine model. It evaluates one cylinder 
 | Holdout, boosted | 5 | 7.2% |
 
 - **Peaks, 21 reference engines:**
-  - Median |hp error| 4.6%, mean 5.5%, max 13.8% (target: median ≤ 3%, max ≤ 8%, not met). The §16 self-consistency work moved the mean from 5.45 to 5.51% and holdout RMS from 7.78 to 7.82%, with no retune.
+  - Median |hp error| 4.6%, mean 5.5%, max 13.8% (target: median ≤ 3%, max ≤ 8%, not met). The §16 self-consistency work moved the mean from 5.45 to 5.51% and holdout RMS from 7.78 to 7.82%, with no retune. A train-only refit of the knock/ECU constants (§17.1) was rejected and the constants are unchanged:
+    - Lowering `ecuMaxRetardDeg` to 9° improves train RMS by only 0.016 pt.
+    - It also breaks the torque-limiter invariants, through a knock-severity path dependence that is now documented.
   - Torque-peak rpm within ±10% for 12 of 21 (target ≥ 85%, not met).
   - Holdout curve RMS 7.8% against a target of ≤ 5%, not met.
 - **Holdout was scored once per round,** after the constants were frozen.
@@ -58,6 +60,19 @@ A 0-D cycle-resolved wide-open-throttle engine model. It evaluates one cylinder 
   - Audi 2.7T S4: +30% peak hp.
   - N74: 39% over with limits off.
   - Boosted engines at the 10% level.
+
+## Per-build calibration (`SimOptions.calibration`, §17.2–17.3)
+- `simulate(cfg, { calibration: { veScale, frictionScale, torqueCapNm } })` applies three multipliers inside every operating-point solve, not to the result:
+  - `veScale` acts on the trapped air, so airflow, boost, knock and EGT respond;
+  - `frictionScale` acts on mechanical FMEP before the ECU torque limiter (pumping and supercharger drive are not scaled);
+  - `torqueCapNm` is an ECU torque limit, enforced through the boost target and, on NA engines or at zero boost, by throttle (MAP) control.
+- Omitted means identity, and the outputs are bit-identical.
+- The dyno-file calibration tool (`src/calibrate`) uses these instead of its former post-hoc scaling of IMEP and FMEP.
+- **Fit quality, 44 reference curves:** mean RMS 6.42 → 2.95 %, with 6 curves still above 5 %. The old post-hoc version reached 6.42 → 2.81 % with 5 above 5 %, partly by scaling the modelled pumping work. Moving the scales into the solve alone gives 2.66 %.
+- **Known issues in calibrated fits:**
+  - Pushrod NA fits often hit the friction bound: their deficit is breathing, not friction.
+  - A turbo spool fold can make B58 fits at VE ≈ 1.05 slow and jumpy.
+  - A cam-timing table discontinuity can leave the fitter in a neighbouring minimum. The fit reports these cases as ill-conditioned or at a bound.
 
 ## Calibrated constants and plausibility
 All tuned scalars sit inside literature ranges: valve Cd 0.65–0.81, port-reflection ≤ 0.95, friction A 0.27 against 0.4 for the 1960s, and the like. The full table with sensitivities is in `physics_audit.md` §14.2.
@@ -75,6 +90,7 @@ All tuned scalars sit inside literature ranges: valve Cd 0.65–0.81, port-refle
 - **ITB top-end gain** is not reproduced.
 - **ECU-limited turbo engines:** the plateau end and the peak-power rpm depend on the estimated turbo hardware.
 - **Turbo spool folds:** where the turbine/compressor power balance has two equilibria (spool-limited low rpm), the model takes the lower one, the equilibrium reached when spooling up from rest. Near the fold the curve can jump under tiny input changes (Subaru EJ257 at 1600 rpm: +88 N·m for bore +0.1%). The 2.7T and TT RS low-rpm points sit near such folds.
+- **Knock trim on torque-limited points** takes the knock severity from the limited point, not from the scheduled target (§17.1). With a lower retard authority, or more VE, a lightly knocking limited point can be trimmed below the torque limit. With the current constants this happens only under calibration (Ford 1.0 at VE +5 %: 167.4 vs 170 N·m).
 - **Variable lift** is two-stage, blended over a narrow band of the ECU objective at the switch.
 - **Boundary configs:** fuzz fails for absurd combinations (BMEP above 30 bar, EGT at the model's 1227 °C clamp, adjacent-point jumps on NA).
 - **Mass model:** ±15% fails on three engines.

@@ -8,7 +8,7 @@
  *        →  brake torque/power, BSFC, EGT, peak pressure.
  * Plus mechanical limits, mass, balance and warnings. See src/sim/model/*.
  */
-import type { DynoPoint, EngineConfig, SimOptions, SimResult } from './types';
+import type { DynoPoint, EngineConfig, SimCalibration, SimOptions, SimResult } from './types';
 import { computeLayout } from './layout';
 import { CAL, HP_W, LBFT_PER_NM, P_AMB_PA, R_AIR, RHO_AMB, T_AMB_K } from './model/constants';
 import { computeGeometry, maxPistonAccel, meanPistonSpeed, sanitize, type Geometry } from './model/geometry';
@@ -41,6 +41,15 @@ interface PointCtx {
   evapVe: number;
   evapKnock: number;
   octane: number;
+  /** SimOptions.calibration: scale on the gas-exchange VE and on mechanical FMEP (1 = identity). */
+  veScale: number;
+  fricScale: number;
+  /**
+   * ECU throttle torque control: manifold-pressure ceiling, Pa absolute
+   * (Infinity = wide open). Used only where a torque limit cannot be met by
+   * the boost target (NA engines, or boost already at zero).
+   */
+  pManCap: number;
   /**
    * Warm starts shared by all evaluations of one simulate() call (knock retard,
    * compressor PR / flow fraction, fixed-point Jacobian). They change only the
@@ -98,28 +107,33 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
     const tFresh = Math.max(200, tUp + chargeWallHeating(rpm, c.itb, tUp) - ctx.evapVe);
     // VE depends only weakly on the throttle drop (via pe/pi): one evaluation.
     // The ECU's cam choice (VVT phase / variable lift) is made inside the lookup.
+    // With a throttle torque-control ceiling (pManCap < ∞) the manifold sits at
+    // the ceiling, so the gas exchange sees that intake pressure (back-flow,
+    // residual, pumping); Infinity leaves the wide-open lookup unchanged.
     const ve = ctx.breathing.lookup({
       rpm,
       sp,
       tMan: tUp,
-      peOverPi: pExhCyl / (0.98 * pUp),
+      peOverPi: pExhCyl / Math.min(0.98 * pUp, ctx.pManCap),
       tExh: tExhPort,
       valveFloatRpm: ctx.vFloat,
     });
-    const demandPerPa = (((ve.ve * tUp) / tFresh) * g.vdTotal * cyclesPerS) / (R_AIR * tUp);
+    // SimOptions.calibration.veScale scales the trapped air per unit manifold density.
+    const demandPerPa = ((((ve.ve * tUp) / tFresh) * g.vdTotal * cyclesPerS) / (R_AIR * tUp)) * ctx.veScale;
     let pUpEff = pUp;
     if (c.induction === 'na' && c.intakeSystem !== 'open' && CAL.intakeSysZeta > 0) {
       // Production airbox / filter / duct: total-pressure loss ζ·ṁ²/(2ρA²), A = throttle-body area.
-      const m0 = demandPerPa * solveThrottle(ctx.cdAThrottle, pUp, tUp, demandPerPa);
+      const m0 = demandPerPa * Math.min(solveThrottle(ctx.cdAThrottle, pUp, tUp, demandPerPa), ctx.pManCap);
       const aDuct = (Math.PI / 4) * (c.throttleMm / 1000) ** 2;
       pUpEff = pUp - (CAL.intakeSysZeta * m0 * m0 * R_AIR * tUp) / (2 * pUp * aDuct * aDuct);
     }
-    const pMan = solveThrottle(ctx.cdAThrottle, pUpEff, tUp, demandPerPa);
+    const pManWot = solveThrottle(ctx.cdAThrottle, pUpEff, tUp, demandPerPa);
+    const pMan = Math.min(pManWot, ctx.pManCap);
     lastVe = ve;
     lastTFresh = tFresh;
     const mAir = demandPerPa * pMan;
     lastMExh = mAir * (1 + 1 / afrAct);
-    return { mAir, mExh: lastMExh, pMan, tExh: turbo ? tExhPort - 40 : tExhPort };
+    return { mAir, mExh: lastMExh, pMan, tExh: turbo ? tExhPort - 40 : tExhPort, pCtl: pManWot };
   };
 
   let boost: BoostState | null = null;
@@ -180,7 +194,7 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   const imepBar = wInd / g.vdCyl / 1e5;
 
   // ── Losses ──
-  const fmepMech = mechanicalFmep(c, sp, spark.pMaxBar, rpm);
+  const fmepMech = mechanicalFmep(c, sp, spark.pMaxBar, rpm) * ctx.fricScale;
   const pmep = CAL.gxPumpingFromCycle ? ve.pmepRel * (pMan / 1e5) : pumpingMep(pExhCyl / 1e5, pMan / 1e5, ve.z, ve.zExh);
   const driveMep = boost && boost.drivePowerW > 0 ? boost.drivePowerW / (g.vdTotal * cyclesPerS) / 1e5 : 0;
   const fmepBar = fmepMech + pmep + driveMep;
@@ -370,6 +384,11 @@ function solvePoint(ctx: PointCtx, rpm: number, egt0: number, p0: number): Point
  * perturbs each and checks cached == uncached results). So boost target, ECU
  * limits, intercooler, turbo sizing, throttle, fuel-system and bottom-end
  * edits reuse the table. Small LRU.
+ * The table depends on nothing else: in particular no SimOptions field reaches
+ * it (calibration.veScale multiplies the looked-up VE, the torque cap acts
+ * through the ECU), so options are deliberately not in the key (guarded by
+ * the same test). Anything that is ever made to affect the table must be added
+ * to breathingKey.
  */
 const BREATHING_CACHE = new Map<string, BreathingModel>();
 const BREATHING_CACHE_MAX = 12;
@@ -415,8 +434,20 @@ function breathingFor(c: EngineConfig, build: () => BreathingModel): BreathingMo
  */
 export const PEAK_PLATEAU_BAND_NM = 0.1;
 
+/** SimOptions.calibration, validated: identity (1, 1, no cap) for anything omitted or not finite. */
+function calibrationOf(o: SimCalibration | undefined): { veScale: number; fricScale: number; capNm: number } {
+  const num = (v: unknown, lo: number, hi: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : 1);
+  const cap = o?.torqueCapNm;
+  return {
+    veScale: num(o?.veScale, 0.5, 1.5),
+    fricScale: num(o?.frictionScale, 0.3, 3),
+    capNm: typeof cap === 'number' && Number.isFinite(cap) && cap > 0 ? cap : 0,
+  };
+}
+
 export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult {
   const applyOem = opts.applyOemLimits !== false;
+  const cal = calibrationOf(opts.calibration);
   for (const k of Object.keys(pointSolveStats) as (keyof typeof pointSolveStats)[]) pointSolveStats[k] = 0;
   const c = sanitize(config);
   const g = computeGeometry(c);
@@ -443,6 +474,9 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     evapVe: evapCooling(c, c.directInjection ? 0.22 : 0.1),
     evapKnock: evapCooling(c, c.directInjection ? CAL.evapDi : CAL.evapPfi),
     octane: octaneIndex(c),
+    veScale: cal.veScale,
+    fricScale: cal.fricScale,
+    pManCap: Infinity,
     hints: { spark: { retard: -1, slope: NaN, pSlope: 0 }, turbo: { pr: NaN, phi: 0.5, slope: NaN }, jac: null },
   };
 
@@ -458,6 +492,8 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
   const ecu = c.ecu ?? {};
   const limitPresent = boosted && ((ecu.torqueLimitNm ?? 0) > 0 || (ecu.powerLimitKw ?? 0) > 0);
   const torqueLimitNm = boosted && applyOem ? (ecu.torqueLimitNm ?? 0) : 0;
+  // Constant torque limit in force: the OEM limit (if applied) and/or the calibration cap, the lower of the two.
+  const tqLimNm = torqueLimitNm > 0 && cal.capNm > 0 ? Math.min(torqueLimitNm, cal.capNm) : Math.max(torqueLimitNm, cal.capNm);
   const powerLimitW = boosted && applyOem ? (ecu.powerLimitKw ?? 0) * 1000 : 0;
   const maxRetard = ecu.maxKnockRetardDeg ?? CAL.ecuMaxRetardDeg;
   const sched = c.induction === 'turbo' ? ecu.boostSchedule : undefined;
@@ -618,6 +654,59 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     if (hi.t > lo.t) tqSlope = (hi.f - lo.f) / (hi.t - lo.t);
     return bracketRoot(evalT, lo, hi, tol, CAL.ecuTorqueMaxIters - it).rr;
   };
+  /**
+   * ECU throttle torque control: where the torque limit cannot be met by the
+   * boost target (NA engines with a calibration torque cap; boosted engines
+   * whose limit is below the torque at zero boost), the ECU closes the
+   * throttle. The actuator is the manifold-pressure ceiling pManCap (a
+   * drive-by-wire ECU commands an air charge, i.e. MAP): torque(pManCap) =
+   * limit, bracketed below the wide-open MAP, Illinois to ecuTorqueSolveTolNm
+   * on converged operating points (as limitTorque). Returns the lower bracket
+   * end (torque ≤ limit) if the cap is hit.
+   */
+  const limitThrottle = (rpm: number, limit: number, r0: PointOut): PointOut => {
+    const tol = CAL.ecuTorqueSolveTolNm;
+    const bar = boostTargetOf(r0);
+    const cc: EngineConfig =
+      c.induction === 'turbo'
+        ? { ...c, turbo: { ...c.turbo, targetBoostBar: bar } }
+        : c.induction === 'supercharger'
+          ? { ...c, supercharger: { ...c.supercharger, targetBoostBar: bar } }
+          : c;
+    let warm = r0;
+    const evalP = (pm: number): Pt => {
+      const rr = solvePoint({ ...ctx, c: cc, pManCap: pm }, rpm, warm.egtIn, warm.pExhIn);
+      warm = rr;
+      return { t: pm, rr, f: rr.point.torqueNm - limit };
+    };
+    const pLo = 0.05 * P_AMB_PA;
+    let hi: Pt = { t: r0.point.mapBar * 1e5, rr: r0, f: r0.point.torqueNm - limit };
+    let prevHi: Pt | null = null;
+    let lo: Pt | null = null;
+    let it = 0;
+    for (; !lo && it < 8; it++) {
+      // Secant through the last two over-limit points, else the ECU torque model
+      // (air charge ∝ torque + friction torque), aimed just below the limit.
+      let t = NaN;
+      if (prevHi && prevHi.t > hi.t && prevHi.f > hi.f) t = hi.t - ((hi.f + 0.5 * tol) * (prevHi.t - hi.t)) / (prevHi.f - hi.f);
+      if (!(t > pLo && t < hi.t)) {
+        const p = hi.rr.point;
+        const tFric = (p.fmepBar * 1e5 * g.vdTotal) / (4 * Math.PI);
+        t = hi.t * ((limit + tFric) / (p.torqueNm + tFric));
+      }
+      if (!(t < hi.t)) t = 0.5 * hi.t;
+      t = it >= 6 ? pLo : Math.max(pLo, t);
+      const q = evalP(t);
+      if (Math.abs(q.f) <= tol) return q.rr;
+      if (q.f > 0) {
+        prevHi = hi;
+        hi = q;
+        if (t <= pLo) break;
+      } else lo = q;
+    }
+    if (!lo) return hi.rr;
+    return bracketRoot(evalP, lo, hi, tol, CAL.ecuTorqueMaxIters).rr;
+  };
   /** Torque-limited boost targets of the previous rpm points (warm start). */
   const limT: { rpm: number; t: number }[] = [];
   let knockSens = 0.03;
@@ -629,7 +718,7 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     const tgt0 = c.induction === 'turbo' ? boostTargetAt(rpm) : c.supercharger.targetBoostBar;
     // Effective ECU torque limit at this rpm: torque limit and/or rated-power limit (P/ω).
     const tqFromPower = powerLimitW > 0 ? powerLimitW / ((rpm * 2 * Math.PI) / 60) : 0;
-    const torqueLimit = torqueLimitNm > 0 && tqFromPower > 0 ? Math.min(torqueLimitNm, tqFromPower) : Math.max(torqueLimitNm, tqFromPower);
+    const torqueLimit = tqLimNm > 0 && tqFromPower > 0 ? Math.min(tqLimNm, tqFromPower) : Math.max(tqLimNm, tqFromPower);
     // Warm start for the torque limit: the limited target of the previous rpm
     // points, extrapolated. Torque rises with the target, so if the point at
     // that prediction is already above the limit, the limit binds at the
@@ -746,10 +835,18 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
         if (r.boost) r.boost.limit = 'protection';
       }
     }
+    // 4) Throttle torque control: a torque limit the boost target cannot meet
+    //    (NA engine with a calibration torque cap, or boost already at zero).
+    let thrLimited = false;
+    if (torqueLimit > 0 && r.point.torqueNm > torqueLimit + CAL.ecuTorqueSolveTolNm) {
+      r = limitThrottle(rpm, torqueLimit, r);
+      thrLimited = true;
+      if (r.boost) r.boost.limit = 'torque';
+    }
     egt = r.egtK;
     pExh = r.pExhCyl;
     curve.push(r.point);
-    limitedBy.push(r.boost?.limit === 'torque' ? (torqueLimitNm > 0 && torqueLimit === torqueLimitNm ? 'torque' : 'power') : null);
+    limitedBy.push(thrLimited || r.boost?.limit === 'torque' ? (tqLimNm > 0 && torqueLimit === tqLimNm ? 'torque' : 'power') : null);
     const b = r.boost;
     if (b && c.induction === 'turbo' && b.limit !== 'torque' && rpm >= 0.5 * c.redlineRpm && boostTargetAt(rpm) > 0.05) {
       const ratio = r.point.boostBar / boostTargetAt(rpm);
@@ -813,7 +910,12 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
       powerLimitKw: ecu.powerLimitKw,
       source: limitPresent ? ecu.limitSource ?? 'hardware' : undefined,
     },
-    unlimited: opts.includeUnlimited ? (limitPresent && applyOem ? simulate(config, { applyOemLimits: false }).curve : curve) : undefined,
+    // Unlimited: no OEM limit and no calibration torque cap (the VE / friction scales stay).
+    unlimited: opts.includeUnlimited
+      ? (limitPresent && applyOem) || cal.capNm > 0
+        ? simulate(config, { applyOemLimits: false, calibration: opts.calibration && { ...opts.calibration, torqueCapNm: undefined } }).curve
+        : curve
+      : undefined,
     displacementCc: dispL * 1000,
     displacementL: dispL,
     cylinderCc: g.vdCyl * 1e6,

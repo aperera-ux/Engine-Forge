@@ -2,10 +2,9 @@
  * A stored calibration: what was fitted, to what, and how well. Lives in the UI
  * store and in Garage saves (optional field, so old saves load unchanged).
  */
-import { simulate } from '../sim/engine';
 import { hardwareDiff } from '../sim/customBuild';
 import type { EngineConfig, SimResult } from '../sim/types';
-import { applyPost, configFor, postFor } from './model';
+import { calibrationFor, configFor, simulateCalibratedConfig } from './model';
 import { ALL_PARAM_IDS, PARAM_DEFS, type ParamId, type ParamValues } from './params';
 import type { FitOk } from './fit';
 import type { Basis, CorrectionStandard } from './parse';
@@ -68,7 +67,7 @@ export function buildCalibration(args: {
 
 /** simulate() with a stored calibration's corrections applied. `config` may be edited since the fit. */
 export function simulateCalibrated(config: EngineConfig, cal: Calibration): SimResult {
-  return applyPost(simulate(config, { applyOemLimits: cal.applyOemLimits }), postFor(cal, cal.values));
+  return simulateCalibratedConfig(config, { applyOemLimits: cal.applyOemLimits }, calibrationFor(cal, cal.values));
 }
 
 /** True when the build has been edited since the calibration was applied. */
