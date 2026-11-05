@@ -3,7 +3,7 @@ import { chromium } from '@playwright/test';
 import fs from 'node:fs';
 const out = process.argv[2] ?? 'tests/e2e-ui/out';
 fs.mkdirSync(out, { recursive: true });
-const base = 'http://localhost:5175/';
+const base = process.argv[3] ?? 'http://localhost:5175/';
 const browser = await chromium.launch({ args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] });
 const errors = [];
 async function open(w, h, clear = true) {

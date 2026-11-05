@@ -45,21 +45,21 @@ export function ticksFor(min: number, max: number, step: number): number[] {
   return out;
 }
 
-/** Chart colour tokens (dark surface). Power uses the app accent. */
+/** Chart colour tokens (light surface; series >= 3:1 on white). Power uses the app accent. */
 export const C = {
-  power: '#ff7a1a',
-  torque: '#4f9cf5',
-  secondary: '#c98500',
-  aqua: '#22b07d',
-  violet: '#9085e9',
-  magenta: '#e0679a',
-  critical: '#e66767',
-  grid: 'rgba(255,255,255,0.06)',
-  axis: 'rgba(255,255,255,0.38)',
-  cursor: 'rgba(255,255,255,0.55)',
+  power: '#d9480f',
+  torque: '#2563eb',
+  secondary: '#a16207',
+  aqua: '#0f9d75',
+  violet: '#7c3aed',
+  magenta: '#db2777',
+  critical: '#dc2626',
+  grid: 'rgba(15,23,42,0.08)',
+  axis: '#66707e',
+  cursor: 'rgba(15,23,42,0.5)',
 };
 
 /** Snapshot colours by slot (stable per snapshot). */
 export const SNAP_COLORS = [C.aqua, C.violet, C.magenta];
 
-export const AXIS_TICK = { fill: 'rgba(235,236,240,0.5)', fontSize: 10, fontFamily: 'var(--mono)' };
+export const AXIS_TICK = { fill: '#566070', fontSize: 10, fontFamily: 'var(--mono)' };
