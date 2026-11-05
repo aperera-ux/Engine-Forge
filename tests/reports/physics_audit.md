@@ -899,3 +899,140 @@ Metric: max over rpm of max(|d(ε) − 2 d(ε/2)|, |d(+ε) + d(−ε)|) / torque
 - Cold (breathing cache off): max 9.1 ms (B58).
 - All presets are under 10 ms.
 - What brings it within budget: warm-start hints that change only the iteration path. These are the retard and its slope, PR and φ, the fixed-point Jacobian, and the previous rpm's torque-limited target.
+
+## 17. Train-only knock/ECU refit after §16, and first-class calibration multipliers
+
+### 17.1 Train-only refit of the knock / ECU constants: rejected
+**Method.** `src/sim/__tests__/regression/refit.test.ts` (opt-in `SIM_REFIT=scan|fit`) simulates the 32 TRAIN dyno curves only and never simulates a holdout curve. It reports the train RMS (all / NA / boosted) and, as a train-side guard, the 21-set peak errors. No 21-set engine has a holdout curve; the harness checks this. Adoption rule: train RMS improves, every constant stays inside its plausible range and is not at a bound, and no 21-set headline statistic is worse by more than 0.4 pt (the §14 rule).
+
+**Literature ranges for the constants scanned.** These are not in §14.2. They have the same caveat: engineering-consensus ranges from memory, not re-checked against the sources.
+
+| Constant | Value | Plausible range and basis |
+|---|---|---|
+| knockTauScale | 1.33 | 0.5–2: multiplier on the Douaud–Eyzat pre-exponential 17.68 ms, which is refitted per engine family in the literature (Heywood §9.6). |
+| knockRpmExp | 0.6 | 0–1 by construction (0 = wall-clock time, 1 = crank-angle time). |
+| knockDilutionExp | 1.0 | 0.5–2 (residual dilution slows end-gas chemistry). |
+| octaneKPerBar | 1.0 | 0.5–1.5 (Kalghatgi K falls below 0 under boost). |
+| sparkLossK | 0.0005 | 0.0003–0.0008 per deg² (about 3–8 % torque at 10° retard). |
+| ecuMaxRetardDeg | 10 | 6–15° crank: ECU knock-retard authority before boost is trimmed. An ECU strategy value, not a physical constant. |
+| ecuRetardSoft, ecuRetardSoftCapDeg | 0.7, 5 | 0–1 and 0–8°: ECU strategy, no literature value. |
+
+**One-at-a-time scans (train mean RMS, baseline 5.898; 21-set mean \|hp\| 5.509, mean / max \|tq\| 3.764 / 8.486).**
+- Only the boosted-ECU knobs help, and every helpful direction lowers torque at knock-limited boosted points. These knobs are a lower `ecuMaxRetardDeg`, `ecuRetardSoft` or `ecuRetardSoftCapDeg`, and a lower `knockRpmExp`.
+- `knockTauScale` is flat: 5.898 to 5.905 over 1.3–2.0.
+- `knockRpmExp` 0.4 reaches a train RMS of 5.82, but the 21-set median \|hp\| goes from 4.56 to 6.16. Rejected.
+- `octaneKPerBar` 1.2 gives 5.887, but the median goes to 5.40. Rejected.
+- Joint coordinate descent drives `ecuRetardSoft` and `ecuRetardSoftCapDeg` to their bounds, and the three ECU knobs trade off against each other (degenerate). Rejected.
+- **Single-parameter fit of `ecuMaxRetardDeg`.**
+  - The train optimum is 7.8°: train 5.871, 21-set mean \|hp\| 5.39. But the peak torque gets worse: Ford 3.5 EcoBoost −6.7 → −10.0 %, so the max \|tq\| goes from 8.49 to 10.04.
+  - The trade-off is monotone. Lower retard authority helps the over-predicted peak hp and the B58 / EA113 curves, and hurts the under-predicted boosted peak torques.
+  - Under the 0.4 pt guard the value is 9.0°. That gives train 5.882 (−0.016), 21-set mean \|hp\| 5.465, and max \|tq\| unchanged.
+
+**Why the 9.0° candidate was still rejected.** It adds 3 failures to `torqueLimiter.test.ts`, and at 9.5° a fourth, in `pointSolve.test.ts`:
+- Ford 1.0 EcoBoost never reaches its 170 N·m limit: peak 168.7 N·m.
+- The EA888 gen 3 plateau start is unstable under ±0.01 N·m limit changes.
+- At 9.5°, one B58 ECU solve does not converge.
+
+Cause: the soft accepted retard, `lim = max + cap·tanh(soft·(k0 − max)/cap)`, takes the knock severity `k0` from the current point. On a torque-limited point that is the retard at the limited, lower boost. Since lim(k) < k for k > max, a limited point that still knocks lightly is trimmed to a lower accepted retard than the unlimited point at that rpm. That puts it below the torque limit, although the scheduled target trimmed for knock makes more torque than the limit. So the "lowest of schedule / limit / knock / protection" rule of §16.2 holds only while no limited point retards past `ecuMaxRetardDeg`. At 10° that is just met; any lower value breaks it.
+
+**The consistent alternative was tried and also rejected.** In it, the severity comes from the retard at the scheduled target, so the trim yields exactly the lower of the torque-limited and the knock-trimmed targets.
+- At 10° it moves only 4 limited configs. B58 at 1200 rpm rises +3.8 % to the limit, which moves peakTorqueRpm from 1600 to 1200 (published plateau from 1380). EA888 gen 3, Ford 1.0 and EA113 move by up to +0.4 %, +1.3 % and +3.0 % at three to six low-rpm points.
+- Train goes from 5.898 to 5.936. The path-dependent trim had been holding these low-rpm points down, and this agrees with the dyno data. Their real cause is likely that the spool or knock at low rpm is over-predicted.
+- With the fix in place, no single knock / ECU constant gets back below 5.898 within the 21-set guard: `ecuMaxRetardDeg` 9 gives 5.920 and `ecuRetardSoftCapDeg` 3 gives 5.916.
+
+**Result: constants unchanged; no output moved.**
+- The holdout was computed once, for the frozen 9.0° candidate after it had been chosen: 7.818 → 7.820. It was not used for the decision.
+- Open item: the knock-severity path dependence. Fixing it needs a better low-rpm spool and knock model first (for example a transient spool or ECU low-rpm boost ramp). It is not a constants refit.
+
+What the rejected 9.0° candidate would have moved (> 0.1 %, from the snapshot harness). This is for reference only; none of it is in the code.
+- Boosted configs only, NA unchanged.
+- Torque at 1–34 points per config, up to −3.2 %. Ford 3.5: 32 of 35 points, peak 594.5 → 584.7 N·m. Ford 1.0: 34 of 38 points, peak 170.0 → 168.7 N·m (below its limit).
+- EA888 gen 3 peak torque 349.5 → 346.4 N·m. B58 / N20 / EA113 / EA888 / Ford 1.0 / 2.7T peakTorqueRpm moves 1–2 grid steps.
+- Hellcat and the hypercar: low-rpm points −1.4 %.
+- Warnings: retard values and the Ford 1.0 turbo-lag versus boost-target warning.
+
+| Statistic (`SIM_STATS=1`) | main (§16) | 9.0° candidate (rejected) | Adopted (= main) |
+|---|---|---|---|
+| Train RMS, all / NA / boosted | 5.898 / 6.845 / 3.055 | 5.882 / 6.845 / 2.993 | 5.898 / 6.845 / 3.055 |
+| Holdout RMS, all / NA / boosted | 7.818 / 8.232 / 7.238 | 7.820 / 8.232 / 7.242 | 7.818 / 8.232 / 7.238 |
+| 21-set median / mean / max \|hp err\| | 4.564 / 5.509 / 13.796 | 4.564 / 5.465 / 13.796 | unchanged |
+| 21-set max \|tq err\|; tq-rpm ±10 % | 8.49 %; 12/21 | 8.49 %; 12/21 | unchanged |
+
+### 17.2 First-class calibration multipliers: `SimOptions.calibration`
+```ts
+simulate(config, { calibration: { veScale?: number; frictionScale?: number; torqueCapNm?: number } })
+```
+It is defined in `src/sim/types.ts` (`SimCalibration`). It lives in `SimOptions`, not in `EngineConfig`, because it is not hardware: `hardwareDiff`, custom-build detection and saves are unaffected. Omitted fields, or the whole object, are the identity. Non-finite values are ignored. `veScale` is clamped to 0.5–1.5 and `frictionScale` to 0.3–3. `torqueCapNm` counts only if it is > 0.
+
+| Field | Where it acts (engine.ts) | What responds |
+|---|---|---|
+| `veScale` | Multiplies the trapped-air demand in `flowAt`, after the breathing lookup and the ECU cam choice. This is the per-run equivalent of `CAL.gxVeScale`, and the two give identical curves (checked on B58). | Every flow evaluation of the point solve: throttle and airbox loss, MAP, turbo φ / PR / wastegate, exhaust mass flow and turbine power, trapped mass → knock-limited spark and retard, EGT, fuel flow, the ECU torque limiter and the knock trim. |
+| `frictionScale` | Multiplies mechanical FMEP (Chen–Flynn rings and bearings, valvetrain, accessories) in `evalPoint`, before the brake torque that the ECU limiter sees. | Brake MEP, and therefore the boost the torque limiter needs on limited engines. Pumping MEP comes from the gas-exchange cycle and can be negative under boost. Supercharger drive power is a boost-system loss. Neither is friction, so neither is scaled. |
+| `torqueCapNm` | Combined with any OEM torque limit in force as the lower of the two (`tqLimNm`), and applied through the existing boost-target limiter. Where that cannot meet it (NA engines, or the torque at zero boost already above the cap), a new **throttle torque control** acts: `limitThrottle` puts a ceiling `pManCap` on manifold pressure and solves torque(pManCap) = cap by bracketed Illinois to 0.002 N·m on converged points. The ceiling stands for a drive-by-wire ECU commanding an air charge. It works whether or not `applyOemLimits` is set. | At throttled points the gas exchange sees the throttled intake pressure (back-flow, residual, pumping), and the turbo wastegate keeps regulating boost upstream of the throttle (`FlowAt.pCtl`), so it does not spool up against it. Capped points count as torque-limited, so peakTorqueRpm is the plateau start and peakTorqueRpmRange spans the plateau. `SimResult.unlimited` is computed without the cap but keeps the two scales. |
+
+- **Identity.** With the options omitted, empty or at unit values, every output is bit-identical to main: `SIM_SNAPSHOT=check`, 67 configs × 3 modes, 0 differing leaves. Identity is also tested in `calibrationOptions.test.ts`.
+  - The throttle fallback also covers the case noted in §15.2 (an OEM limit below the zero-boost torque). No reference config reaches that case, so nothing moves.
+- **Breathing cache.** The table key is the config (minus the fields proven irrelevant) plus `CAL`. No `SimOptions` field reaches the table: `veScale` multiplies the looked-up VE, and the cap acts through the ECU. Options are therefore deliberately left out of the key. This is documented at `breathingKey` and guarded by three new `breathingCache.test.ts` cases: cached = uncached with a calibration set, for NA, turbo and supercharged engines.
+- **Tests.** New file `src/sim/__tests__/calibrationOptions.test.ts`, 18 tests:
+  - identity;
+  - VE moves airflow and VE together, never reduces retard, and raises peak pressure;
+  - VE on the turbo: spool-limited boost and back-pressure rise, and limited plateaus hold with less boost;
+  - VE ±1e-4 continuity;
+  - friction scales only the mechanical part, and limited plateaus hold with more boost;
+  - the cap on NA (two engines and two levels), on SC, turbo, and a turbo below its zero-boost torque: ≤ cap + 0.05 N·m, held, plateau start reported, zero unconverged solves, uncapped points unchanged to ≤ 1e-5;
+  - NA capped points have MAP below ambient and higher pumping;
+  - the cap combines with the OEM limit and works with limits off;
+  - `unlimited` drops the cap.
+
+**Findings while testing.** Pre-existing behaviour, not caused by the multipliers, but it now reaches users through calibration.
+- **Spool fold.** On B58, `veScale` 1.03–1.08 (and the same `CAL.gxVeScale`) puts 1000 rpm on a spool fold: the turbine/compressor balance has its gain near +1 at the torque-limited target of about 0.86 bar.
+  - The torque-limiter bracket then evaluates up to 30 points that do not converge to the fixed point (EGT residual up to 24 K). That point ends at 354 N·m instead of the 450 N·m limit.
+  - The simulate cost rises to 20–33 ms.
+  - Same class as the EJ257 fold in §16.3.
+- **Knock-severity path dependence (§17.1).** On limited turbo engines with knock (Ford 1.0), +5 % VE gives slightly less peak torque (170.0 → 167.4 N·m), not the limit. The knock trim measures severity at the limited point.
+- **Cam timing.** The breathing tables jump by about 0.5 % VE at the top end of the LS3 for a 0.006° cam-timing change. This is a gas-exchange discretisation effect. It creates false local minima for the calibration fitter (§17.3).
+
+### 17.3 `src/calibrate` now uses the multipliers
+- **`model.ts`.**
+  - `calibrationFor(frame, values)` maps `veScale`, `fricScale` and `torqueCap` (as a fraction of the base build's peak torque, `capRefNm`) to `SimCalibration`. Identity values are omitted.
+  - `simulateWith` calls `simulate(configFor(base, v), { ...opts, calibration })`.
+  - The post-hoc `applyPost` (bmep′ = ve·imep − fric·fmep, rescaled airflow, fuel, BTE and peaks) and `postFor` are removed.
+  - For a non-identity calibration the result still drops `uncertainty` (the model's validation band does not describe a fitted curve) and `unlimited`, as before.
+  - `types.ts › simulateCalibrated` keeps its signature, so the UI is untouched.
+- **`params.ts`.** The `veScale` and `fricScale` descriptions now say what they act on. Ranges are unchanged. `torqueCap` still applies only to boosted builds: the simulator supports an NA cap, but a free cap on an NA fit would flatten a curve-shape error into a fake plateau.
+- **Imports.** The allowed imports are unchanged (`../sim/engine`, `../sim/types`, `../sim/customBuild`), so `calibrate-boundary.test.ts` needs no change.
+- **`fit.test.ts`.**
+  - The five model tests are rewritten against `calibrationFor` / `simulateWith`: identity, the options passed through, direction, cap plateau, OEM limit kept.
+  - **The LS3 identifiability case no longer recovers the truth exactly.** The fit stops at 0.05 % RMS with VE 1.041 instead of 1.06 and friction 1.03 instead of 1.2. Between that point and the truth lies the cam-timing table jump of §17.2. The test now requires RMS < 0.15 %, VE within 0.03, and the fit's own ill-conditioned flag on the (VE, friction) pair, which it raises. K20 and Coyote still recover all four parameters to the old tolerances.
+  - Since friction became mechanical-only, VE and friction correlate at 0.97 in all three cases. They are flagged ill-conditioned, which is honest.
+- **44-curve refit summary** (opt-in `CAL_REFIT44=1 npx vitest run src/calibrate/__tests__/refit44.test.ts`). It fits every published curve, train and holdout, with the default parameter set and OEM-limit policy. It is a per-build tool test; no global constant is fitted.
+
+| Calibration model | Mean RMS before | Mean RMS after | Curves above 5 % after |
+|---|---|---|---|
+| Old post-hoc scaling, as quoted at the calibrate merge (earlier sim) | 6.43 | 2.84 | 5 |
+| Old post-hoc scaling, re-run on this sim | 6.422 | 2.806 | 5 (S85, EA113, L8P, HT383, ZZ632) |
+| **New, in the solve; friction = mechanical FMEP (adopted)** | 6.422 | **2.954** | **6** (S85, 2.7T S4, L8P, HT383, ZZ572/720, ZZ632) |
+| Diagnostic only, not adopted: in the solve, friction scaling mechanical + pumping + SC drive, as the old post-hoc fmep did | 6.422 | 2.655 | 4 (S85, L8P, HT383, ZZ632) |
+
+- **Moving the scales into the solve helps by itself:** 2.806 → 2.655 at the old friction definition.
+  - Turbo fits improve most: N74 3.83 → 1.70, TT RS 4.38 → 2.28, EA113 5.02 → 2.90 (which drops out of the > 5 % list). In these fits the fitted VE now changes the boost the limiter needs, as on the real engine.
+- **Restricting friction to its physical meaning costs 0.30 pt** (2.655 → 2.954), almost all on GM pushrod NA curves: LS7 2.95 → 3.87, LT1 3.65 → 4.38, HT383 6.51 → 7.26, ZZ632 10.8 → 12.8. These fits push `fricScale` to its bound because the high-rpm deficit is a breathing / pumping error, not friction.
+  - The old definition reached a lower RMS by scaling the gas-exchange pumping work, which is a physically modelled term, by up to 0.7×. Under boost it also scaled a negative pumping MEP the wrong way.
+  - I kept the physical definition, so the fitted friction value means what its documented 0.7–1.5 range (Chen–Flynn variation) says. The bound hits are reported as `at-bound` warnings.
+  - A separate, bounded pumping or breathing-shape parameter would recover most of the difference honestly. That is left as a follow-up.
+- **2.7T S4 holdout** goes from 3.44 to 5.20 % and now joins the > 5 % list. Its low-rpm points sit near the spool fold (§16.3), and the fit ends at three bounds.
+- A full 44-curve run takes about 95 s, the same as before.
+
+### 17.4 Cost and tests
+- **Timing,** `SIM_SNAPSHOT=time`, warm median of 31:
+  - Max 7.43 ms (B58, 7.4–7.6 ms over two runs); median over configs 0.66 ms.
+  - Cold (`SIM_COLD=1`): max 9.15 ms (B58).
+  - Every preset is under 10 ms, unchanged from §16.6.
+  - With a calibration set (warm median of 21):
+    - A torque cap gives LS3 1.9 ms (0.7 without) and Hellcat 4.5 ms (1.5 without). The extra cost is the throttle solve at each capped point.
+    - Turbos get no extra cost from a cap: B58 6.2 ms, EA113 7.0 ms, Ford 1.0 6.0 ms.
+    - VE and friction scales cost nothing, except B58 at VE 1.05: 19–33 ms (spool fold, §17.2).
+- **Full `npx vitest run`:** 905 tests, 43 failed, 5 skipped (opt-in harnesses).
+  - The 43 are identical by name to main 9e1e9d6, checked by running main's `src` against the same suites: 28 envelopes, 6 sanity, 6 fuzz, 2 continuity, 1 "bigger cam".
+  - `tsc -b` is clean.
+  - The `tests/reports/data/*.json` rewrites from the runs were reverted.
