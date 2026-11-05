@@ -32,6 +32,12 @@ export interface CycleInputs {
   wantKnock: boolean;
   /** Trapped residual (burned-gas) mass fraction; dilution lengthens the ignition delay. */
   residual?: number;
+  /**
+   * false: only pMax and the knock integral are wanted — integration stops once
+   * combustion is complete and the volume only grows (pressure can only fall),
+   * and `work` is then NaN. Default true.
+   */
+  needWork?: boolean;
 }
 
 export interface CycleOut {
@@ -40,8 +46,22 @@ export interface CycleOut {
   knockIntegral: number;
 }
 
+/** First index from which every polytropic step is an expansion (per geometry). */
+const expansionFrom = new WeakMap<Float64Array, number>();
+function expansionStart(polyStep: Float64Array): number {
+  let j = expansionFrom.get(polyStep);
+  if (j === undefined) {
+    j = polyStep.length;
+    while (j > 0 && polyStep[j - 1] <= 1) j--;
+    expansionFrom.set(polyStep, j);
+  }
+  return j;
+}
+
 export function runCycle(inp: CycleInputs): CycleOut {
   const { vol, polyStep } = inp.g;
+  const needWork = inp.needWork !== false;
+  const iExp = needWork ? 361 : expansionStart(polyStep);
   let p = inp.pBdc;
   const p0 = inp.pBdc;
   let pMax = p;
@@ -89,6 +109,9 @@ export function runCycle(inp: CycleInputs): CycleOut {
       const lnP = Math.log(p);
       const tU = inp.tIvc * Math.exp(kU * (lnP - lnP0));
       ki += msPerDeg * Math.exp(-(lnOnFac - CAL.knockPressureExp * (lnP - lnAtm) + 3800 / tU));
+    } else if (!needWork && xb >= 0.99999 && i + 1 >= iExp) {
+      // Burn complete and only expansion left: p falls monotonically, pMax is final.
+      return { pMaxPa: pMax, work: NaN, knockIntegral: ki };
     } else if (!inp.wantKnock && xb >= 0.99999 && th1 > 120) {
       // Remaining expansion only matters for work; finish polytropically.
       for (let j = i + 1; j < 360; j++) {
@@ -192,12 +215,12 @@ export function knockLimitedSpark(
 ): SparkResult {
   const mbt = mbtSpark(burnDeg);
   const start = (adv: number) => -adv + CAL.delayDeg;
-  const atMbt = runCycle({ ...base, thetaStart: start(mbt), wantKnock: true });
+  const atMbt = runCycle({ ...base, thetaStart: start(mbt), wantKnock: true, needWork: false });
   if (atMbt.knockIntegral <= 1) {
     return { sparkBtdc: mbt, retard: 0, workRatio: 1, pMaxBar: atMbt.pMaxPa / 1e5, knockIntegralMbt: atMbt.knockIntegral };
   }
   const maxRetard = Math.min(40, mbt + 15);
-  const ki = (r: number) => runCycle({ ...base, thetaStart: start(mbt - r), wantKnock: true });
+  const ki = (r: number) => runCycle({ ...base, thetaStart: start(mbt - r), wantKnock: true, needWork: false });
   let retard = maxRetard;
   let best = ki(maxRetard);
   if (best.knockIntegral <= 1) {
