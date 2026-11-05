@@ -1612,6 +1612,7 @@
 }
 .side .warnings ul {
   min-height: 0;
+  overscroll-behavior: contain;
 }
 .sev-counts {
   display: flex;
@@ -1674,10 +1675,8 @@
   line-height: 1.35;
 }
 .side .warn-msg {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  /* Full text always visible: wrap long messages; the list scrolls if needed. */
+  overflow-wrap: anywhere;
 }
 .side .warn-item {
   padding: 6px 8px;
