@@ -363,6 +363,30 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
         if (r.boost) r.boost.limit = 'knock';
       }
     }
+    // 3) Component protection (boosted): even at the richest allowed mixture and the
+    //    accepted retard, the ECU cuts boost when EGT would exceed the turbine /
+    //    exhaust-valve limit or peak cylinder pressure the absolute ceiling.
+    //    Fixed-iteration bisection on the boost scale (continuous in the inputs).
+    if (boosted && r.point.boostBar > 0.05) {
+      const excess = (pt: DynoPoint) =>
+        Math.max((pt.egtC - CAL.ecuEgtMaxC) / 100, (pt.peakCylinderPressureBar - CAL.ecuPmaxCapBar) / 100);
+      if (excess(r.point) > 0) {
+        const tgtP = c.induction === 'turbo' ? r.point.boostBar : boostTargetOf(r);
+        let lo = 0.02;
+        let hi = 1;
+        let best: PointOut | null = null;
+        for (let it = 0; it < 9; it++) {
+          const x = 0.5 * (lo + hi);
+          const rr = atBoost(rpm, tgtP * x, r);
+          if (excess(rr.point) <= 0) {
+            lo = x;
+            best = rr;
+          } else hi = x;
+        }
+        r = best ?? atBoost(rpm, tgtP * lo, r);
+        if (r.boost) r.boost.limit = 'protection';
+      }
+    }
     egt = r.egtK;
     pExh = r.pExhCyl;
     curve.push(r.point);

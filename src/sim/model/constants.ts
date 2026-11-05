@@ -97,6 +97,11 @@ export const CAL = {
   liftShapeExp: 1.85,
   /** Valve curtain discharge coefficient and port-throat discharge coefficients (re. valve head area). */
   /** Airbox + filter + duct loss coefficient (dynamic head through a duct the size of the throttle body), 'stock' intake. */
+  /** Cylinder-to-cylinder / cycle-to-cycle spread of the acoustic tuning rpm (fraction), see airflow.lookup. */
+  waveRpmSpread: 0.02,
+  /** ECU component protection: boost is cut above this EGT (deg C) / peak cylinder pressure (bar). */
+  ecuEgtMaxC: 1090,
+  ecuPmaxCapBar: 220,
   intakeSysZeta: 2.5,
   valveCurtainCd: 0.78,
   /** p-norm exponent of the curtain/throat series combination (see gasExchange.valveArea). */

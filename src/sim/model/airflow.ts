@@ -277,10 +277,33 @@ export class BreathingModel {
     const nL = this.lobes.length;
     if (inp.rpm !== this.memoRpm) {
       const tabs = [this.ve, this.xr, this.pm];
+      // Tolerance averaging: a real engine is not a single ideal cylinder. The
+      // cylinders differ in runner/port length, valve timing and gas
+      // temperature (speed of sound), and cycles differ in charge temperature,
+      // so the acoustic tuning rpm of the engine as a whole is the average over
+      // a spread of ±CAL.waveRpmSpread (≈ 3–4 %) about the ideal-cylinder
+      // value. Weights 1/4, 1/2, 1/4 (a 3-point Gaussian). This narrows
+      // single-cylinder resonance ripples to what a dyno actually shows.
+      const sg = CAL.waveRpmSpread;
+      const ws = sg > 0 ? [0.25, 0.5, 0.25] : [1];
+      const sh = sg > 0 ? [1 - sg, 1, 1 + sg] : [1];
+      const tI: number[] = [];
+      const uI: number[] = [];
+      for (const f of sh) {
+        let tj = (Math.log(Math.max(100, inp.rpm * f)) - this.lnR0) / this.h;
+        tj = Math.min(k - 1, Math.max(0, tj));
+        const ij = Math.min(k - 2, Math.floor(tj));
+        tI.push(ij);
+        uI.push(tj - ij);
+      }
       for (let o = 0; o < 3; o++)
         for (let l = 0; l < nL; l++)
           for (let s = 0; s < nP; s++)
-            for (let q = 0; q < nQ; q++) this.memo[((o * nL + l) * nP + s) * nQ + q] = this.row(tabs[o], ((l * nP + s) * nQ + q) * k, u, i);
+            for (let q = 0; q < nQ; q++) {
+              let acc = 0;
+              for (let j = 0; j < ws.length; j++) acc += ws[j] * this.row(tabs[o], ((l * nP + s) * nQ + q) * k, uI[j], tI[j]);
+              this.memo[((o * nL + l) * nP + s) * nQ + q] = acc;
+            }
       this.memoRpm = inp.rpm;
     }
     const memo = this.memo;

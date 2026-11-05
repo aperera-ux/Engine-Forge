@@ -39,7 +39,7 @@ export interface BoostState {
   /** Boost limited by turbine power (not yet at target). */
   spoolLimited: boolean;
   /** What stops boost reaching target at this rpm ('none' when at target). */
-  limit: 'none' | 'turbine' | 'speed-line' | 'choke' | 'exhaust-pressure' | 'knock' | 'torque';
+  limit: 'none' | 'turbine' | 'speed-line' | 'choke' | 'exhaust-pressure' | 'knock' | 'torque' | 'protection';
   flow: FlowAt;
 }
 
