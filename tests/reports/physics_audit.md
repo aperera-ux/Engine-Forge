@@ -689,3 +689,81 @@ In range = inside the plausible range after the refit. All values are within ran
 | `simulate < 15 ms` (Ford 3.5, 16.2 ms) | flaky | Wall-clock test. Its cost rose with `ecuTorqueIters` = 6. |
 
 Only the Rule 4 premise was changed.
+
+## 15. ECU torque limiter: bracketed solve, and a deterministic peak rpm on limited plateaus
+
+### 15.1 What was wrong
+- The old torque/power limiter in `engine.ts` ran 6 fixed secant steps. Each step was computed on the achieved boost (MAP − ambient) but applied as the wastegate/bypass target. The two differ by up to about 0.007 bar, so the iteration aimed at the wrong variable.
+- The last steps used nearly identical point pairs, so their slope came from rounding noise.
+- Measured on the 12 limited reference configs with the pre-fix code:
+  - **46 points sat more than 0.05 N·m above the limit.** The worst were N74 +5.0 N·m at 2200 rpm (+0.67 %), N63 +2.8, N55 +2.2 and B58 +1.9.
+  - **Power-limited points stalled below P/ω:** N74 −7.7 N·m at 5400 rpm, B58 −6.3 at 7000, EA888 gen 1 −3.0 at 6000.
+  - A 1-ulp change inside the solver moved limited points by up to 5e-4 relative.
+  - peakTorqueRpm (the argmax over a plateau of near-identical values) was set by that noise.
+
+### 15.2 What it does now
+1. **`limitTorque` solves torque(t) = limit in one variable,** the boost target t that the ECU commands.
+   - The bracket starts with hi = the current target.
+   - To find lo, it tries the ECU torque model (air charge ∝ torque + friction → required boost → target), then a secant through the two lowest over-limit points aimed at −tol/2. After 4 tries it sets t = 0.
+   - Once bracketed, it runs Illinois, falling back to bisection if a step leaves the bracket.
+   - It stops at the first point with |T − limit| ≤ `CAL.ecuTorqueTolNm` = 0.05 N·m. If it hits the cap (`ecuTorqueMaxIters` = 16, normally 2–4 evaluations), it returns lo, which is ≤ the limit.
+   - **Guarantee:** torque ≤ limit + 0.05 N·m. The one exception is a limit below the unboosted torque at t = 0. A real ECU would then pull throttle or spark, which is not modelled. No reference config hits this case.
+2. **The torque limit is re-applied after the knock trim and component protection.**
+   - Those steps re-solve the point from the exhaust-state warm start of the limited point (its EGT and back-pressure). That changes knock retard at identical boost: B58 at 1600 rpm, same 0.615 bar, retard 10.0° → 9.5°.
+   - So they could land up to 1.5 N·m above the limit. This is a model artefact: `evalPoint` is not a fixed point in EGT. It is left for a follow-up.
+3. **Peak rpm on a limited plateau.** If any point within `PEAK_PLATEAU_BAND_NM` = 0.1 N·m (2 × tol) of the peak torque is held by the torque limit:
+   - `peakTorqueRpm` = the **lowest** rpm in that band, which is the plateau start.
+   - New `peakTorqueRpmRange` = [first, last] rpm in the band. It is the OEM quote, "450 N·m @ 1400–5000 rpm"; its single-number form ("from 1400 rpm") is the start.
+   - The same rule applies to `peakPowerRpm` / `peakPowerRpmRange` with the power limit, using a band of 0.1 N·m × ω.
+   - Otherwise both are the plain argmax and the range is [argmax, argmax]. All NA and limits-off results are unchanged.
+   - Why not a relative 0.1 % band for every curve: on smooth NA curves the neighbour of the peak is often within 0.1 %, so that rule shifted 40 NA peak rpms one grid step down. That is a bias, not determinism, so it was rejected.
+   - Why not the plateau midpoint: no OEM sheet quotes a midpoint.
+4. **Uncertainty.** The curve-shape term of `computeUncertainty` is now measured from the plateau (0 inside it), not from one noise-chosen rpm.
+   - `peakTorquePct` is the band at peakTorqueRpm. That is now the low-rpm plateau start, which carries the < 2000 rpm penalty, so on limited engines it rises (B58 10.3 → 12.9 %, N74 8.8 → 12.0).
+   - `peakHpPct` falls (N63 12.0 → 9.1).
+5. **UI consistency (checked, not edited).** `Analytics.tsx`, `buildSheet.ts` and `DynoChart.tsx` show "peak @ peakTorqueRpm" and put the marker at (peakTorqueRpm, peakTorqueNm). By definition the curve there is within 0.1 N·m of peakTorqueNm (tested), so the marker sits on the curve.
+   - Suggested UI follow-up: display `peakTorqueRpmRange` when its ends differ.
+
+### 15.3 Outputs that moved by more than 0.1 % (67 configs × default / unlimited / oemOff; every SimResult leaf)
+- **Unchanged:** NA and supercharged configs, Ford 3.5 EcoBoost (limit never binds), every oemOff result, and the unlimited curves. Only the 12 limited turbo configs move, in default mode and in the identical `[unlimited]` main curve.
+
+| Config | Torque points > 0.1 % (worst) | Peak torque | peakTorqueRpm | peakPowerRpm | Reason |
+|---|---|---|---|---|---|
+| B58 | 8 (+1.72 % @7000; −0.43 @2000) | 448.95 → 447.04 | 2000 → 1600 | – | Plateau overshoot removed; power-limited top end was stalled 6 N·m low |
+| N74 | 11 (+1.10 @5400; −0.66 @2200) | 755.04 → 750.03 | 2200 → 1400 | – | Same (was +5.0 / −7.7 N·m) |
+| N63 | 13 (−0.47 @2050; +0.17 high rpm) | 602.82 → 600.03 | 2050 → 1450 | – | Overshoot removed |
+| N55 | 3 (−0.55 @1800) | 402.22 → 400.04 | 1800 → 1000 | – | Overshoot removed |
+| N20 | 1 (−0.18 @1600) | 350.62 → 350.03 | – | – | Overshoot removed |
+| EA113 | 8 (+1.99 @6250; −0.50 @4900) | 281.30 → 280.04 | 4900 → 1750 | 5950 → 5500 | Overshoot / undershoot removed; knock-trim warning rpm 5200 → 5050 |
+| EA888 gen 1 | 10 (+1.27 @6700) | 280.97 → 280.04 | 2000 → 1600 | – | Power-limited top end was 2.6–3.0 N·m low; knock warning 4.1 → 4.2° |
+| EA888 gen 3 | 3 (+0.35 @6400) | 350.56 → 350.05; hp −0.22 % | – | 6250 → 5050 | Power band start; choke warning 6500 → 6400 rpm |
+| 1.8 TFSI | 10 (−0.32 @2050) | 250.80 → 250.03 | 2500 → 1450 | – | Overshoot removed |
+| Ford 1.0 | 3 (+0.90 @2200) | 170.04 (same) | 3100 → 2800 | – | Plateau points below the limit (knock trim) now ≤ limit and consistent |
+| 2.7T S4 | 3 (−0.31 @2400) | 401.26 → 400.04 | 2400 → 2000 | – | Overshoot removed |
+| TT RS | 1 (−0.15 @1800) | 450.67 → 450.03 | – | 6200 → 5400 | Power band start |
+
+- Other leaves at the same points follow from the boost change: boost, MAP, airflow, knock retard, spark, EGT, BSFC, pmep. The largest is boost +0.065 bar (EA113 6250).
+- `uncertainty.*` moves on these 12 configs, see 15.2 item 4.
+
+### 15.4 Accuracy, before → after (`SIM_STATS=1 npx vitest run src/sim/__tests__/regression/stats.test.ts`)
+| Statistic | Before | After |
+|---|---|---|
+| 21-set median / mean / max \|peak hp err\| | 4.566 / 5.464 / 13.790 % | 4.566 / 5.453 / 13.790 % |
+| 21-set max \|peak torque err\|; torque-peak rpm within ±10 % | 8.57 %; 12/21 | 8.57 %; 12/21 |
+| Train RMS, all / NA / boosted | 5.920 / 6.846 / 3.142 | 5.920 / 6.846 / 3.142 |
+| Holdout RMS, all / NA / boosted | 7.785 / 8.237 / 7.152 | 7.781 / 8.237 / 7.143 |
+
+- No statistic got worse.
+- Two 21-set torque-peak rpms changed, both inside the published plateau before and after: B58 2000 → 1600, Ford 1.0 3100 → 2800.
+
+### 15.5 Robustness and cost
+- **Torque ≤ limit + 0.05 N·m at every point** of the 12 limited configs and of 4 user-capped configs, 2 of them supercharged. Before the fix, 46 points broke this.
+- **Perturbations of 1e-9 relative** (bore ±, stroke, CR, intercooler, torque limit) move limited points by ≤ 3e-8 relative and never move a peak rpm.
+- **Perturbations of 1e-5** move limited points by ≤ 1.8e-4. That is the accept-iterate tolerance jump, bounded by 0.05 N·m.
+- **Perturbations of 1e-3** move peak rpm on 5 of 38 config × perturbation cases.
+  - The largest jumps (Ford 1.0, 1.5 %) come from the knock trim, which has its own 0.1° stop and the warm-start dependence in 15.2 item 2, not from the torque limiter.
+- **Timing** (warm median of 31, `SIM_SNAPSHOT=time`): max 7.27 → 5.92 ms (B58 6.95 → 5.92, EA113 7.27 → 5.00, N63 6.86 → 4.41). Cold max 7.49 ms (B58). The bracketed solve is faster than the 6 fixed steps on every limited preset.
+- **Tests:**
+  - New file `src/sim/__tests__/torqueLimiter.test.ts`, 45 tests. The pre-fix limiter fails 28 of them.
+  - Full suite: 44 → 43 failures, with no new ones. Fixed: `envelopes › vw-ea888-gen3-gti › peak-power rpm within tolerance (or within published hp plateau)`, because peakPowerRpm is now the power-band start.
+- `CAL.ecuTorqueIters` (§13a item 3, §14.4) is replaced by `ecuTorqueMaxIters` and `ecuTorqueTolNm`.
