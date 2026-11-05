@@ -79,13 +79,18 @@ const PSI_CRIT_EXH = Math.sqrt(
 );
 
 /** Turbine-inlet pressure that passes mExh through an effective nozzle area. */
-function turbineInletPressure(cdA: number, mExh: number, t3: number, p4: number): number {
+export function turbineInletPressure(cdA: number, mExh: number, t3: number, p4: number): number {
   // Lower bound: the pressure that passes mExh at sonic (choked) conditions.
   const crit = CRIT_EXH;
   const pCh = (mExh * Math.sqrt(R_EXH * t3)) / (Math.max(1e-9, cdA) * PSI_CRIT_EXH);
   if (p4 / pCh <= crit) return pCh; // choked: exact
-  // Subsonic: the root lies between p4 and the pressure at which the flow would choke.
-  return illinois((p3) => orificeFlow(cdA, p3, t3, p4, GAMMA_EXH, R_EXH) - mExh, Math.max(p4, pCh), p4 / crit, 40, 1e-7, undefined, undefined, true);
+  // Subsonic: closed-form inverse of the orifice equation. With x = p4/p3 and
+  // y = x^((1−γ)/γ): (p3·ψ/p4)² = k·(y² − y), k = 2γ/(γ−1), so
+  // y = (1 + √(1 + 4K²/k))/2 with K = ṁ√(RT)/(CdA·p4), and p3 = p4·y^(γ/(γ−1)).
+  const kq = (2 * GAMMA_EXH) / (GAMMA_EXH - 1);
+  const K = (mExh * Math.sqrt(R_EXH * t3)) / (Math.max(1e-9, cdA) * p4);
+  const y = 0.5 * (1 + Math.sqrt(1 + (4 * K * K) / kq));
+  return Math.min(p4 / crit, p4 * Math.pow(y, GAMMA_EXH / (GAMMA_EXH - 1)));
 }
 
 /** Exhaust-manifold pulse-energy factor on turbine work (log = small volume, best pulses). */
