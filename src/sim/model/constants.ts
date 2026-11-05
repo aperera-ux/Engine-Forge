@@ -94,7 +94,7 @@ export const CAL = {
   /** Global scale on the gas-exchange VE (port losses, in-cylinder heat pick-up not resolved). */
   gxVeScale: 1.0,
   /** Lift-profile shape exponent: L = Lmax·(1 − x²)^n over the seat duration. */
-  liftShapeExp: 2.15,
+  liftShapeExp: 1.85,
   /** Valve curtain discharge coefficient and port-throat discharge coefficients (re. valve head area). */
   valveCurtainCd: 0.83,
   intakeThroatCd: 0.86,
@@ -103,9 +103,9 @@ export const CAL = {
   runnerAreaRatio: 0.975,
   /** Port length added to the runner / primary acoustic length, × bore. */
   intakePortLenBore: 1.4,
-  exhaustPortLenBore: 1.0,
+  exhaustPortLenBore: 0.7,
   /** Magnitude of the (inverting) open-end reflection at the plenum / bellmouth. */
-  intakeReflect: 0.941,
+  intakeReflect: 0.971,
   intakeReflectItb: 0.85,
   /** Magnitude of the (inverting) reflection at the collector, by exhaust type. */
   exhReflect: { log: 0.15, shorty: 0.4, 'long-tube': 0.4, 'tuned-equal': 0.4 } as Record<string, number>,
@@ -187,7 +187,7 @@ export const CAL = {
   /** Fraction of fuel energy actually released as pressure in the 1-zone model. */
   pressureHeatFrac: 0.78,
   // ── friction (Chen–Flynn, bar, m/s) ──
-  fA: 0.403,
+  fA: 0.443,
   fB: 0.004,
   fC: 0.045,
   fD: 0.0006,

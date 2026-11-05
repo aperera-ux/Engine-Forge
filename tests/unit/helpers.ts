@@ -50,14 +50,18 @@ export const BASES = {
 } as const;
 export type BaseKey = keyof typeof BASES;
 /**
- * Base engines for hardware sanity/continuity tests. The OEM torque limit
- * (EngineConfig.ecu.torqueLimitNm, physics v4) is removed: these rules test
- * hardware physics (boost, intercooler, cams, ...), which a torque-limited
+ * Base engines for hardware sanity/continuity tests. The OEM torque and
+ * rated-power limits (EngineConfig.ecu.torqueLimitNm / powerLimitKw, physics
+ * v4) are removed: these rules test hardware physics (boost, intercooler,
+ * cams, ...), which a torque/power-limited
  * factory ECU legitimately hides by design. See physics_audit.md §11.
  */
 export const base = (k: BaseKey) => {
   const c = ref(BASES[k]);
-  if (c.ecu) delete c.ecu.torqueLimitNm;
+  if (c.ecu) {
+    delete c.ecu.torqueLimitNm;
+    delete c.ecu.powerLimitKw;
+  }
   return c;
 };
 
