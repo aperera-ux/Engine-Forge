@@ -290,7 +290,7 @@ export const REFERENCE_ENGINES: ReferenceEngine[] = [
       },
       induction: 'turbo',
       turbo: {
-        targetBoostBar: 1.0, compressorInducerMm: 46, turbineAR: 0.5,
+        targetBoostBar: 1.0, compressorInducerMm: 50 /* physics agent v4: estimate 46 -> 50 mm so the published plateau end (5000 rpm) is reachable without choke */, turbineAR: 0.5,
         intercoolerEffectiveness: 0.8, twinScroll: true, count: 1,
       },
       supercharger: NO_SC,

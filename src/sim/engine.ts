@@ -28,6 +28,8 @@ import { mechanicalFmep, pumpingMep } from './model/friction';
 import { estimateMassKg, mechanicalLimitRpm, valveFloatRpm } from './model/mechanical';
 import { computeBalance } from './model/balance';
 import { computeWarnings } from './model/warnings';
+import { computeUncertainty } from './model/uncertainty';
+import { illinois } from './model/solve';
 
 interface PointCtx {
   c: EngineConfig;
@@ -135,7 +137,19 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   const burn = burnDuration(c, rpm);
   const spark = knockLimitedSpark({ g, rpm, pBdc, tIvc, q, burnDeg: burn, octane: octaneIndex(c, pMan / 1e5), residual: xr }, burn);
   const eta = indicatedEfficiency(c, rpm, burn);
-  const lamF = lambdaPowerFactor(c.lambda);
+  // ECU component protection: if the exhaust would exceed the EGT limit at the
+  // requested lambda (e.g. under heavy knock retard), the ECU enriches — the
+  // excess fuel absorbs heat (vaporisation, cracking). Lambda is solved so that
+  // EGT sits at the limit (never leaner than requested, never below 0.7).
+  const egtAt = (lam: number) =>
+    exhaustTemp({ ...c, lambda: lam }, tIvc, (eta * lambdaPowerFactor(lam) * spark.workRatio * eStoich) / mAirCyl, rpm);
+  let lam = c.lambda;
+  const egtLimK = CAL.ecuEgtLimitC + 273.15;
+  if (CAL.ecuEgtLimitC > 0 && egtAt(lam) > egtLimK) {
+    const lamMin = Math.min(c.lambda, CAL.ecuLambdaMin);
+    lam = egtAt(lamMin) > egtLimK ? lamMin : illinois((x) => egtAt(x) - egtLimK, lamMin, c.lambda, 20, 1e-5);
+  }
+  const lamF = lambdaPowerFactor(lam);
   const wInd = eta * lamF * spark.workRatio * eStoich; // J/cyl-cycle
   const imepBar = wInd / g.vdCyl / 1e5;
 
@@ -148,8 +162,8 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
 
   const torqueNm = Math.max(0, (bmepBar * 1e5 * g.vdTotal) / (4 * Math.PI));
   const powerKw = (torqueNm * rpm * 2 * Math.PI) / 60 / 1000;
-  const fuelKgS = flow.mAir / afrAct;
-  const egtK = exhaustTemp(c, tIvc, (wInd / mAirCyl), rpm);
+  const fuelKgS = flow.mAir / (fuel.afr * lam);
+  const egtK = exhaustTemp(lam === c.lambda ? c : { ...c, lambda: lam }, tIvc, wInd / mAirCyl, rpm);
   // BSFC is meaningless near zero brake power: report 0 (no value) below 1 kW.
   const bsfc = powerKw >= 1 ? (fuelKgS * 3.6e6) / powerKw : 0;
   const bte = fuelKgS > 0 ? Math.min(0.6, (powerKw * 1000) / (fuelKgS * fuel.lhv)) : 0;
@@ -178,6 +192,7 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
     peakCylinderPressureBar: spark.pMaxBar,
     exhaustPressureBar: pExhCyl / 1e5,
     pmepBar: pmep,
+    lambda: lam,
   };
   // Warm start for the next rpm: turbine-inlet pressure for turbos, else exhaust pressure.
   return { point, boost, egtK, pExhCyl: boost && turbo ? boost.pExhCyl : pExhCyl };
@@ -396,5 +411,6 @@ export function simulate(config: EngineConfig): SimResult {
     balance: computeBalance(c, lay),
     reliabilityScore,
     warnings,
+    uncertainty: computeUncertainty(c, curve, pk.rpm, tq.rpm),
   };
 }

@@ -160,7 +160,7 @@ export const CAL = {
   /** Exponent on (1 − residual fraction) in the auto-ignition delay: burned-gas dilution slows end-gas chemistry. */
   knockDilutionExp: 1.0,
   /** ECU cam-phasing objective: maximise VE − weight × residual fraction (residual costs burn rate / knock margin). */
-  ecuResidualWeight: 0,
+  ecuResidualWeight: 2,
   /** ECU torque model for cam selection: indicated MEP per unit of trapped-charge VE, bar (per bar MAP). */
   ecuImepPerVe: 14,
   /** Knock-aware boost control: max spark retard the ECU accepts before trimming boost, deg. */
@@ -215,6 +215,23 @@ export const CAL = {
   scReferenceRpm: 6000,
   /** Engine-flow passes per compressor-PR evaluation (flow fraction warm-started). */
   turboFlowPasses: 1,
+  /** ECU exhaust-temperature protection: enrich above this EGT, °C (0 = off), down to this lambda. */
+  ecuEgtLimitC: 980,
+  ecuLambdaMin: 0.72,
+  // ── uncertainty (uncertainty.ts) ──
+  /** Base ±% band at the torque peak ≈ RMS peak-hp residual vs published figures (update after recalibration). */
+  uncBasePct: 7,
+  /** Extra relative width per unit |ln(rpm / torque-peak rpm)| (curve shape less certain than peaks). */
+  uncShapePerLn: 0.5,
+  /** Extra ±% below 2000 rpm (lugging: knock, heat transfer, wave tuning least certain). */
+  uncLowRpmPct: 2,
+  /** Extra ±% per degree of knock retard, and for boosted points. */
+  uncKnockPctPerDeg: 0.25,
+  uncBoostPct: 1.5,
+  /** Extrapolation score = 1 − exp(−K·Σ d²), d = distance outside each validated range / range width. */
+  uncExtrapK: 2,
+  /** Band multiplier at full extrapolation (band × (1 + this · score)). */
+  uncExtrapWiden: 2,
   /** Turbine-inlet (exhaust manifold) pressure limit enforced by boost control, bar abs. */
   turbineInletMaxBar: 4.5,
 };

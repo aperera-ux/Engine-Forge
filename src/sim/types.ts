@@ -184,6 +184,8 @@ export interface DynoPoint {
   exhaustPressureBar?: number;
   /** Pumping MEP (part of fmepBar), bar. Optional (physics agent). */
   pmepBar?: number;
+  /** Lambda actually run (ECU EGT-protection enrichment may richen the requested value). Optional (physics agent, v4). */
+  lambda?: number;
 }
 
 export type WarningSeverity = 'info' | 'warn' | 'critical';
@@ -193,6 +195,24 @@ export interface SimWarning {
   /** Short machine id, e.g. 'piston-speed', 'knock', 'valve-float'. */
   code: string;
   message: string;
+}
+
+/**
+ * Optional (physics agent, v4): prediction uncertainty (data only).
+ * Bands are ≈1σ, in % of the predicted value, from validation residuals against
+ * published figures, widened when the configuration is outside the validated
+ * envelope.
+ */
+export interface SimUncertainty {
+  /** ±% band on torque (and power) for each curve point (same order as `curve`). */
+  torquePct: number[];
+  /** ±% on peak power and peak torque. */
+  peakHpPct: number;
+  peakTorquePct: number;
+  /** 0 = inside the envelope of the validated reference engines, → 1 far outside. */
+  extrapolation: number;
+  /** Why the band is wide (which inputs are outside the validated range, etc.). */
+  reasons: string[];
 }
 
 export interface SimResult {
@@ -245,4 +265,6 @@ export interface SimResult {
   /** 0–100 reliability score; 100 = stock-like margins. */
   reliabilityScore: number;
   warnings: SimWarning[];
+  /** Optional (physics agent, v4): prediction uncertainty band and extrapolation score. */
+  uncertainty?: SimUncertainty;
 }
