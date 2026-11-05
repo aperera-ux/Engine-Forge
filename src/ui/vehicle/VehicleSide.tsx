@@ -10,14 +10,15 @@ import { useVehicleSim } from './sim';
 import { speedConv } from './VehicleCharts';
 
 /**
- * Round-2 validation with SIMULATED engine curves (research/vehicle_sources.md, "Round-2 results").
+ * Round-3 validation with SIMULATED engine curves (research/vehicle_sources.md, "Round 3").
  * Bands use the worse of train (n=9) and fresh holdout (n=4) median |error|, to stay conservative.
+ * Round 3: train 0-60 8.4 / ET 1.5 / trap 1.1 / top 2.9 %; holdout 5.7 / 2.7 / 2.2 / 1.9 %.
  */
 export const VALIDATION = {
   nTrain: 9,
   nHoldout: 4,
-  zeroTo60Pct: 8.9,
-  zeroTo60WorstPct: 17.5,
+  zeroTo60Pct: 8.4,
+  zeroTo60WorstPct: 18.8,
   quarterMilePct: 2.7,
   trapPct: 2.2,
   topSpeedPct: 2.9,
@@ -280,7 +281,7 @@ function Accuracy() {
           Level road, no wind, {`20 °C`} sea-level air unless changed. Global parameters were fitted on {VALIDATION.nTrain} cars; {VALIDATION.nHoldout} were held out and run once. AWD is not validated.
         </li>
       </ul>
-      <div className="veh-acc-s">Method and sources: research/vehicle_sources.md. Most reference figures are recalled or from secondary sources, not yet checked against the original magazine test sheets.</div>
+      <div className="veh-acc-s">Method and sources: research/vehicle_sources.md. Only 2 of the 16 reference cars (Z06, CTS-V) are checked against primary Car and Driver spec sheets; the rest are recalled or from secondary sources. AWD has one reference car (STI, secondary data).</div>
     </section>
   );
 }
