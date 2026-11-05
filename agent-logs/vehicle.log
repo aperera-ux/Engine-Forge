@@ -2,3 +2,4 @@
 2026-11-05T05:51:38Z vehicle: core model (accelerate/topSpeed/optimize), 9 reference cars, tests passing; globals fitted on train (mu 1.36, util .9, eta .92)
 2026-11-05T05:54:03Z vehicle: validation done (published: ET 1.4%, trap 1.5%, 0-60 6.6% all9); sources doc written; sim-suite has 46 pre-existing failures outside src/vehicle
 2026-11-05T16:51:59Z vehicle round2: started, merged main, read code; plan: engine list -> sourcing -> slip model -> fresh holdout
+2026-11-05T16:58:13Z vehicle: slip model committed; 16 cars + fresh holdout declared & committed BEFORE any run. Web: C/D, MT, Wayback blocked in WebFetch; Edmunds/fastestlaps 403 -> data recalled/secondary, flagged

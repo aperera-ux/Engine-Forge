@@ -11,7 +11,8 @@ describe('vehicle validation report (informational)', () => {
       const rows = evaluateAll(src).filter((r) => showHoldout || r.car.split === 'train');
       const tr = rows.filter((r) => r.car.split === 'train');
       const ho = rows.filter((r) => r.car.split === 'holdout');
-      console.log(`\n=== ${src} ===\n${formatTable(rows)}\nTRAIN ${JSON.stringify(summarize(tr))}` + (showHoldout ? `\nHOLDOUT ${JSON.stringify(summarize(ho))}` : ''));
+      const seen = rows.filter((r) => r.car.split === 'seen');
+      console.log(`\n=== ${src} ===\n${formatTable(rows)}\nTRAIN ${JSON.stringify(summarize(tr))}` + (showHoldout ? `\nHOLDOUT(fresh) ${JSON.stringify(summarize(ho))}\nSEEN ${JSON.stringify(summarize(seen))}` : ''));
     }
   });
 });

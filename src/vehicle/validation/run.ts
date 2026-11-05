@@ -1,6 +1,7 @@
 import { simulate } from '../../sim/engine';
 import { DYNO_CURVES, DYNO_ENGINE_BY_ID } from '../../sim/validation/dynoCurves';
 import { runAcceleration } from '../accelerate';
+import { topSpeed } from '../topSpeed';
 import { buildTorqueCurve, curveFromSimResult, scaleCurveToPeaks } from '../torqueCurve';
 import type { AccelResult, RunOptions, TorqueCurve, VehicleGlobals } from '../types';
 import { REFERENCE_CARS, type ReferenceCar } from './referenceCars';
@@ -51,6 +52,14 @@ export interface CarRow {
   err060: number | null;
   errQm: number | null;
   errTrap: number | null;
+  /** Model top speed, mph, with the car's own limiter (if any), and without it. */
+  topMph: number;
+  topLimitedBy: string;
+  topUnlimitedMph: number;
+  /** Signed % error of top speed vs published: drag-limited cars only (limiter cars: null, see topOk). */
+  errTop: number | null;
+  /** Limiter cars: true when the governor binds in the model (unlimited speed >= limiter). */
+  topOk: boolean | null;
 }
 
 const pct = (m: number | null, r: number | null) => (m === null || r === null ? null : (100 * (m - r)) / r);
@@ -58,10 +67,18 @@ const pct = (m: number | null, r: number | null) => (m === null || r === null ? 
 export function evaluateCar(car: ReferenceCar, src: CurveSource, opts: RunOptions = {}): CarRow {
   const ci = curveFor(car.engineId, src);
   const result = runAcceleration(car.spec, ci.curve, { rollout: car.measured.rollout, sampleDt: 0, ...opts });
+  const ts = topSpeed(car.spec, ci.curve, opts);
+  const tsFree = topSpeed({ ...car.spec, speedLimiterMph: undefined }, ci.curve, opts);
+  const pub = car.topSpeed;
   return {
     car,
     src,
     basis: ci.basis,
+    topMph: ts.speedMph,
+    topLimitedBy: ts.limitedBy,
+    topUnlimitedMph: tsFree.speedMph,
+    errTop: pub && pub.kind === 'drag-limited' ? pct(ts.speedMph, pub.mph) : null,
+    topOk: pub && pub.kind === 'limiter' ? ts.limitedBy === 'limiter' && Math.abs(ts.speedMph - pub.mph) < 0.5 : null,
     result,
     err060: pct(result.t0to60mph, car.measured.zeroTo60),
     errQm: pct(result.quarterMileS, car.measured.quarterMileS),
@@ -81,10 +98,14 @@ export interface Summary {
   med060: number;
   medQm: number;
   medTrap: number;
+  medTop: number;
   /** Median of signed errors (bias). */
   bias060: number;
   biasQm: number;
   biasTrap: number;
+  biasTop: number;
+  /** limiter cars where the governor binds / limiter cars total */
+  limiterOk: string;
 }
 
 export function summarize(rows: CarRow[]): Summary {
@@ -95,9 +116,12 @@ export function summarize(rows: CarRow[]): Summary {
     med060: median(abs((r) => r.err060)),
     medQm: median(abs((r) => r.errQm)),
     medTrap: median(abs((r) => r.errTrap)),
+    medTop: median(abs((r) => r.errTop)),
     bias060: median(sgn((r) => r.err060)),
     biasQm: median(sgn((r) => r.errQm)),
     biasTrap: median(sgn((r) => r.errTrap)),
+    biasTop: median(sgn((r) => r.errTop)),
+    limiterOk: `${rows.filter((r) => r.topOk === true).length}/${rows.filter((r) => r.topOk !== null).length}`,
   };
 }
 
@@ -113,7 +137,7 @@ export function formatTable(rows: CarRow[]): string {
   for (const r of rows) {
     const m = r.car.measured;
     lines.push(
-      `${r.car.id} | ${r.car.split} | ${r.basis} | ${f(m.zeroTo60, 1)}/${f(r.result.t0to60mph)}/${e(r.err060)} | ${f(m.quarterMileS, 1)}/${f(r.result.quarterMileS)}/${e(r.errQm)} | ${f(m.quarterMileTrapMph, 1)}/${f(r.result.quarterMileTrapMph, 1)}/${e(r.errTrap)}`,
+      `${r.car.id} | ${r.car.split} | ${r.basis} | ${f(m.zeroTo60, 1)}/${f(r.result.t0to60mph)}/${e(r.err060)} | ${f(m.quarterMileS, 1)}/${f(r.result.quarterMileS)}/${e(r.errQm)} | ${f(m.quarterMileTrapMph, 1)}/${f(r.result.quarterMileTrapMph, 1)}/${e(r.errTrap)} | ${r.car.topSpeed ? `${r.car.topSpeed.mph}${r.car.topSpeed.kind === 'limiter' ? 'L' : ''}/${r.topMph.toFixed(0)}(${r.topUnlimitedMph.toFixed(0)}, ${r.topLimitedBy})/${r.errTop !== null ? e(r.errTop) : r.topOk ? 'limiter ok' : 'LIMITER MISS'}` : '-'}`,
     );
   }
   return lines.join('\n');
