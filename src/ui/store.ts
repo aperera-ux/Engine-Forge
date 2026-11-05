@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import type { EngineConfig, SimResult } from '../sim/types';
 import { DEFAULT_CONFIG } from '../sim/defaults';
-import { parseCalibration, simulateCalibrated, type Calibration } from '../calibrate/types';
+import { simulateCalibrated, type Calibration } from '../calibrate/types';
+import { configToHash, parseHash, parseStoredCalibration } from './shareLink';
 import { simulate } from '../sim/engine';
 import { PRESETS } from '../sim/presets';
 import { oemLimitOptions } from '../sim/customBuild';
@@ -55,6 +56,8 @@ export interface UIState {
   result: SimResult;
   /** Active calibration to a measured dyno curve (null = uncalibrated model). */
   calibration: Calibration | null;
+  /** Set when the calibration came from a share link that did not carry the whole measured curve. */
+  calibrationLinkNote: string | null;
   /** Apply a fitted calibration: the build becomes the fitted build and the result carries its corrections. */
   applyCalibration: (cal: Calibration) => void;
   /** Drop the calibration and restore the build as it was before it was applied. */
@@ -86,7 +89,7 @@ export interface UIState {
   setTurbo: (patch: Partial<EngineConfig['turbo']>) => void;
   setSupercharger: (patch: Partial<EngineConfig['supercharger']>) => void;
   /** Load a whole engine. A saved calibration comes with it; otherwise the build is uncalibrated. */
-  loadConfig: (cfg: EngineConfig, cal?: Calibration | null) => void;
+  loadConfig: (cfg: EngineConfig, cal?: Calibration | null, linkNote?: string | null) => void;
   setRpm: (rpm: number) => void;
   setLoad: (load: number) => void;
   setRunning: (running: boolean) => void;
@@ -164,31 +167,13 @@ function runSim(config: EngineConfig, base: EngineConfig | null, wantUnlimited: 
 }
 
 // ---- URL hash share ---------------------------------------------------------
-function b64urlEncode(s: string): string {
-  const bytes = new TextEncoder().encode(s);
-  let bin = '';
-  bytes.forEach((b) => (bin += String.fromCharCode(b)));
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+export { configToHash };
+export function shareUrl(cfg: EngineConfig, cal?: Calibration | null): string {
+  return `${location.origin}${location.pathname}${configToHash(cfg, cal)}`;
 }
-function b64urlDecode(s: string): string {
-  const pad = s.replace(/-/g, '+').replace(/_/g, '/');
-  const bin = atob(pad + '==='.slice((pad.length + 3) % 4));
-  return new TextDecoder().decode(Uint8Array.from(bin, (ch) => ch.charCodeAt(0)));
-}
-export function configToHash(cfg: EngineConfig): string {
-  return `#cfg=${b64urlEncode(JSON.stringify(cfg))}`;
-}
-export function shareUrl(cfg: EngineConfig): string {
-  return `${location.origin}${location.pathname}${configToHash(cfg)}`;
-}
-function configFromHash(): EngineConfig | null {
-  const m = /[#&]cfg=([A-Za-z0-9_-]+)/.exec(location.hash);
-  if (!m) return null;
-  try {
-    return mergeConfig(JSON.parse(b64urlDecode(m[1])));
-  } catch {
-    return null;
-  }
+/** The engine (and calibration, if the link carries one) in the current URL hash. */
+function hashState() {
+  return parseHash(location.hash, mergeConfig);
 }
 
 /** Validate one garage entry from storage. Old saves have no `vehicle`; that stays undefined. */
@@ -205,7 +190,7 @@ export function parseSavedEngine(e: unknown): SavedEngine | null {
     displacementL: Number(r.displacementL) || 0,
   };
   if (r.vehicle && typeof r.vehicle === 'object') out.vehicle = mergeDesign(r.vehicle);
-  const cal = parseCalibration(r.calibration, mergeConfig);
+  const cal = parseStoredCalibration(r.calibration, mergeConfig);
   if (cal) out.calibration = cal;
   return out;
 }
@@ -235,8 +220,8 @@ function initialVehicle(): VehicleDesign {
 
 function initialConfig(): EngineConfig {
   if (typeof window === 'undefined') return DEFAULT_CONFIG;
-  const fromHash = configFromHash();
-  if (fromHash) return fromHash;
+  const fromHash = hashState();
+  if (fromHash) return fromHash.config;
   try {
     const raw = localStorage.getItem(LS_CONFIG);
     if (raw) return mergeConfig(JSON.parse(raw));
@@ -261,11 +246,14 @@ function initialPrefs(): { units: Units; viewMode: ViewMode; panelCollapsed: boo
 }
 
 function initialCalibration(): Calibration | null {
-  if (typeof window === 'undefined' || configFromHash()) return null;
+  if (typeof window === 'undefined') return null;
+  // A share link decides on its own: a link without a calibration opens uncalibrated.
+  const fromHash = hashState();
+  if (fromHash) return fromHash.cal?.calibration ?? null;
   try {
     const raw = localStorage.getItem(LS_CALIBRATION);
     if (!raw) return null;
-    const cal = parseCalibration(JSON.parse(raw), mergeConfig);
+    const cal = parseStoredCalibration(JSON.parse(raw), mergeConfig);
     return cal;
   } catch {
     return null;
@@ -274,6 +262,7 @@ function initialCalibration(): Calibration | null {
 
 const cfg0 = initialConfig();
 const cal0 = initialCalibration();
+const calNote0 = typeof window === 'undefined' ? null : (hashState()?.cal?.note ?? null);
 const base0 = cal0 ? presetByName(cal0.baseConfig.name) : presetByName(cfg0.name);
 const sim0 = runSim(cfg0, base0, false, undefined, cal0);
 const prefs0 = initialPrefs();
@@ -297,17 +286,18 @@ export const useStore = create<UIState>()((set, get) => {
     },
     ...sim0,
     calibration: cal0,
+    calibrationLinkNote: cal0 ? calNote0 : null,
     applyCalibration: (cal) => {
       const cfg = normalizeConfig(structuredClone(cal.fittedConfig));
       const r = runSim(cfg, get().basePreset, false, get().result, cal);
-      set({ calibration: cal, config: cfg, ...r });
+      set({ calibration: cal, calibrationLinkNote: null, config: cfg, ...r });
     },
     revertCalibration: () => {
       const cal = get().calibration;
       if (!cal) return;
       const cfg = normalizeConfig(structuredClone(cal.baseConfig));
       const r = runSim(cfg, get().basePreset, get().showUnlimited, get().result, null);
-      set({ calibration: null, config: cfg, ...r });
+      set({ calibration: null, calibrationLinkNote: null, config: cfg, ...r });
     },
     rpm: Math.round(Math.max(cfg0.idleRpm, cfg0.redlineRpm * 0.45)),
     load: 0.35,
@@ -335,8 +325,8 @@ export const useStore = create<UIState>()((set, get) => {
     setTurbo: (patch) => apply({ ...get().config, turbo: { ...get().config.turbo, ...patch } }),
     setSupercharger: (patch) =>
       apply({ ...get().config, supercharger: { ...get().config.supercharger, ...patch } }),
-    loadConfig: (cfg, cal = null) => {
-      set({ calibration: cal });
+    loadConfig: (cfg, cal = null, linkNote = null) => {
+      set({ calibration: cal, calibrationLinkNote: cal ? linkNote : null });
       // A calibrated save keeps its stock-preset reference (the saved build is no longer the stock hardware).
       apply(mergeConfig(structuredClone(cfg)), presetByName(cal ? cal.baseConfig.name : cfg.name));
     },
@@ -422,6 +412,12 @@ export const useStore = create<UIState>()((set, get) => {
 if (typeof window !== 'undefined') {
   let t: number | undefined;
   let tv: number | undefined;
+  // Keep the URL in sync without polluting history, but only if it is already a share link.
+  const syncShareHash = () => {
+    if (!location.hash.includes('cfg=')) return;
+    const st = useStore.getState();
+    history.replaceState(null, '', configToHash(st.config, st.calibration));
+  };
   useStore.subscribe((s, prev) => {
     if (s.config !== prev.config) {
       window.clearTimeout(t);
@@ -431,11 +427,11 @@ if (typeof window !== 'undefined') {
         } catch {
           /* quota */
         }
-        // Keep the URL in sync without polluting history, but only if it is already a share link.
-        if (location.hash.includes('cfg=')) history.replaceState(null, '', configToHash(s.config));
+        syncShareHash();
       }, 250);
     }
     if (s.calibration !== prev.calibration) {
+      window.setTimeout(syncShareHash, 0);
       try {
         if (s.calibration) localStorage.setItem(LS_CALIBRATION, JSON.stringify(s.calibration));
         else localStorage.removeItem(LS_CALIBRATION);
@@ -472,8 +468,8 @@ if (typeof window !== 'undefined') {
     }
   });
   window.addEventListener('hashchange', () => {
-    const c = configFromHash();
-    if (c) useStore.getState().loadConfig(c);
+    const h = hashState();
+    if (h) useStore.getState().loadConfig(h.config, h.cal?.calibration ?? null, h.cal?.note ?? null);
   });
 }
 
