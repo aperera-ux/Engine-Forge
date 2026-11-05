@@ -16,3 +16,16 @@
                  combustion.ts: knock delay lengthened by residual dilution (1−xr)^-1 (CAL.knockDilutionExp).
                  Calibration: median 7.0, mean 7.5, max 14.9, tq-peak-rpm ±10 % for 14/21 (was ~8/21).
                  NEXT: ECU torque management + cheaper/continuous knock trim; fix new test regressions.
+2026-11-05 STEP 2-4: ECU torque management (EcuConfig.torqueLimitNm/powerLimitKw/boostSchedule/maxKnockRetardDeg),
+                 bracketed knock-trim (Illinois, retard cap +5 deg), Illinois PR search in the turbo solver, exact choked
+                 turbine-inlet solve, faster throttle solve; compressible valve-flow expansibility; wall heating ∝ (Twall−Tcharge);
+                 collector cross-talk by exhaust type; ECU cam choice by torque model (VE − 2·xr − pmep/14);
+                 ECU EGT protection (enrich to 980 °C, λ ≥ 0.72; DynoPoint.lambda); SimResult.uncertainty.
+2026-11-05 MERGE main (25 dyno curves). Turbo over-prediction root cause: published factory turbo curves are ECU torque- AND
+                 power-limited (flat torque plateau, flat power band); configs lacked both limits. Uniform rule in
+                 referenceEngines.ts sets them from published plateau/band. TRAIN torque RMS boosted 10.15 → 3.97 %.
+                 Retuned on TRAIN only. FROZEN fit, holdout evaluated once: mean RMS 7.74 % (boost 7.76, NA 7.71);
+                 before v4 turbo work 10.74 (boost 12.92, NA 7.85). N74 24.8 → 5.2 %.
+                 21-set: median 5.9 mean 6.2 max 13.0 maxTq 7.7. Tests: see physics_audit.md §11.
+                 NEXT: NA pushrod/big-cam high-rpm deficit (GM cam-swap −8..−10 %, pmep ~1 bar at peak vs 0.35 for 4v),
+                 S85 +11 %, wave-ripple argmax jumps, undersized-valve choke (Rule 10), fuzz BMEP/EGT extremes, perf p99.
