@@ -126,6 +126,72 @@ export const DYNO_CURVES: DynoCurve[] = [
     notes: 'Raster chart traced by colour at 4x (solid traces; dashed N54 excluded by upper-trace pick, labels masked). Axes 500-7500 rpm, 0-600 Nm / 0-240 kW from gridlines. Cross-check vs chart kW 2000-6750 rpm: within 1.8 %; below 2000 rpm BMW\'s drawn power trace is inconsistent with its own torque trace (up to 11 %), so only torque was used. 3750 rpm dropped (curves cross). Declared curve: 400 Nm 1200-5000, 225 kW 5800-6400.',
     split: 'train',
   },
+  {
+    engineId: 'bmw-n20-28i',
+    source: {
+      url: 'https://archive.org/download/BMWTechnicalTrainingDocuments/ST1111%20N20%20Engine/N20%20Engine.pdf',
+      title: 'BMW Technical Training ST1111 "N20 Engine", 1.2.1 Full-load diagram N20B20O0 vs N52B30O1',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'ECE', confidence: 'high',
+    points: [{ rpm: 1000, torqueNm: 226, hp: 32 }, { rpm: 1250, torqueNm: 347, hp: 61 }, { rpm: 1500, torqueNm: 350, hp: 74 }, { rpm: 1750, torqueNm: 350, hp: 86 }, { rpm: 2000, torqueNm: 350, hp: 98 }, { rpm: 2250, torqueNm: 350, hp: 111 }, { rpm: 2500, torqueNm: 350, hp: 123 }, { rpm: 2750, torqueNm: 350, hp: 135 }, { rpm: 3000, torqueNm: 350, hp: 147 }, { rpm: 3250, torqueNm: 350, hp: 160 }, { rpm: 3500, torqueNm: 350, hp: 172 }, { rpm: 3750, torqueNm: 350, hp: 184 }, { rpm: 4000, torqueNm: 350, hp: 197 }, { rpm: 4250, torqueNm: 350, hp: 209 }, { rpm: 4500, torqueNm: 350, hp: 221 }, { rpm: 4750, torqueNm: 350, hp: 233 }, { rpm: 5000, torqueNm: 344, hp: 242 }, { rpm: 5250, torqueNm: 331, hp: 244 }, { rpm: 5500, torqueNm: 318, hp: 246 }, { rpm: 6000, torqueNm: 291, hp: 245 }, { rpm: 6250, torqueNm: 277, hp: 243 }, { rpm: 6500, torqueNm: 264, hp: 241 }, { rpm: 6750, torqueNm: 244, hp: 231 }, { rpm: 7000, torqueNm: 223, hp: 219 }],
+    notes: 'Raster chart traced by colour at 4x; x 0-8000 rpm and 0-400 Nm / 0-200 kW from gridlines (Nm = 2 x kW on the same grid). Solid N20 traces: upper trace <= 5500 rpm, lower trace >= 6000 rpm (the dashed N52 curves cross the solid ones near 5700 rpm; 5750 dropped). Cross-check vs chart kW: mean 0.5 %, max 2.5 %. Piecewise-linear declared curve.',
+    split: 'train',
+  },
+  {
+    engineId: 'bmw-n63-550i',
+    source: {
+      url: 'https://archive.org/download/BMWTechnicalTrainingDocuments/ST501%20New%20Engine%20Technology/03_BMW%20Engines%20Introduction.pdf',
+      title: 'BMW Technical Training ST501 "BMW Engines Introduction", p.23 Full Load Diagram N63B44O0 vs N62B48O1',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'ECE', confidence: 'high',
+    points: [{ rpm: 1000, torqueNm: 443, hp: 62 }, { rpm: 1250, torqueNm: 489, hp: 86 }, { rpm: 1500, torqueNm: 538, hp: 113 }, { rpm: 1750, torqueNm: 598, hp: 147 }, { rpm: 2000, torqueNm: 600, hp: 169 }, { rpm: 2250, torqueNm: 600, hp: 190 }, { rpm: 2500, torqueNm: 600, hp: 211 }, { rpm: 2750, torqueNm: 600, hp: 232 }, { rpm: 3000, torqueNm: 600, hp: 253 }, { rpm: 3250, torqueNm: 600, hp: 274 }, { rpm: 3500, torqueNm: 600, hp: 295 }, { rpm: 3750, torqueNm: 600, hp: 316 }, { rpm: 4000, torqueNm: 600, hp: 337 }, { rpm: 4250, torqueNm: 600, hp: 358 }, { rpm: 4500, torqueNm: 600, hp: 379 }, { rpm: 4750, torqueNm: 591, hp: 394 }, { rpm: 5000, torqueNm: 572, hp: 402 }, { rpm: 5250, torqueNm: 550, hp: 405 }, { rpm: 5500, torqueNm: 526, hp: 406 }, { rpm: 5750, torqueNm: 504, hp: 407 }, { rpm: 6000, torqueNm: 483, hp: 407 }, { rpm: 6250, torqueNm: 461, hp: 405 }, { rpm: 6500, torqueNm: 437, hp: 399 }],
+    notes: 'Raster chart (grey background, white gridlines) traced by colour at 4x; upper (solid) traces. Axes 1000-6000 rpm gridlines, 360-600 Nm / 20-300 kW. Cross-check vs chart kW: mean 0.8 %, max 2.7 %.',
+    split: 'train',
+  },
+  {
+    engineId: 'bmw-n62-48',
+    source: {
+      url: 'https://archive.org/download/BMWTechnicalTrainingDocuments/ST501%20New%20Engine%20Technology/03_BMW%20Engines%20Introduction.pdf',
+      title: 'BMW Technical Training ST501 "BMW Engines Introduction", p.23 Full Load Diagram (dotted N62B48O1 comparison curve)',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'ECE', confidence: 'low',
+    points: [{ rpm: 1000, torqueNm: 381, hp: 54 }, { rpm: 1250, torqueNm: 397, hp: 70 }, { rpm: 1500, torqueNm: 415, hp: 87 }, { rpm: 1750, torqueNm: 433, hp: 106 }, { rpm: 2000, torqueNm: 448, hp: 126 }, { rpm: 2250, torqueNm: 462, hp: 146 }, { rpm: 2500, torqueNm: 469, hp: 165 }, { rpm: 2750, torqueNm: 475, hp: 183 }, { rpm: 3000, torqueNm: 482, hp: 203 }, { rpm: 3250, torqueNm: 487, hp: 222 }, { rpm: 3500, torqueNm: 488, hp: 240 }, { rpm: 3750, torqueNm: 488, hp: 257 }, { rpm: 4000, torqueNm: 486, hp: 273 }, { rpm: 4250, torqueNm: 481, hp: 287 }, { rpm: 4500, torqueNm: 474, hp: 300 }, { rpm: 4750, torqueNm: 468, hp: 312 }, { rpm: 5000, torqueNm: 462, hp: 324 }, { rpm: 5250, torqueNm: 456, hp: 336 }, { rpm: 5500, torqueNm: 449, hp: 347 }, { rpm: 5750, torqueNm: 438, hp: 354 }, { rpm: 6000, torqueNm: 426, hp: 359 }, { rpm: 6250, torqueNm: 409, hp: 359 }, { rpm: 6500, torqueNm: 393, hp: 359 }],
+    notes: 'Dotted comparison trace (second trace from top in each column, +/-6 px window). Torque trace matches the 490 Nm @ 3400 label and the chart kW above 4500 rpm (within 3 %), BUT the drawn N62 power trace below 4000 rpm is a near-straight line inconsistent with this torque (up to 30 % low) - one of the two traces is schematic, hence LOW confidence.',
+    split: 'train',
+  },
+  {
+    engineId: 'bmw-n74-760i',
+    source: {
+      url: 'https://archive.org/download/BMWTechnicalTrainingDocuments/ST915%20N74%20Engine/N74_Engine_web.pdf',
+      title: 'BMW Technical Training ST915 "N74 Engine", p.10 Horse Power and Torque Diagram (N74B60 vs N73B60, N63B44)',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'ECE', confidence: 'medium',
+    points: [{ rpm: 1000, torqueNm: 498, hp: 70 }, { rpm: 1250, torqueNm: 575, hp: 101 }, { rpm: 1500, torqueNm: 693, hp: 146 }, { rpm: 1750, torqueNm: 750, hp: 184 }, { rpm: 2000, torqueNm: 750, hp: 211 }, { rpm: 2250, torqueNm: 750, hp: 237 }, { rpm: 2500, torqueNm: 750, hp: 263 }, { rpm: 2750, torqueNm: 750, hp: 290 }, { rpm: 3000, torqueNm: 750, hp: 316 }, { rpm: 3250, torqueNm: 750, hp: 342 }, { rpm: 3500, torqueNm: 750, hp: 369 }, { rpm: 3750, torqueNm: 750, hp: 395 }, { rpm: 4000, torqueNm: 750, hp: 421 }, { rpm: 4250, torqueNm: 750, hp: 448 }, { rpm: 4500, torqueNm: 750, hp: 474 }, { rpm: 4750, torqueNm: 750, hp: 500 }, { rpm: 5000, torqueNm: 750, hp: 527 }, { rpm: 5250, torqueNm: 735, hp: 542 }, { rpm: 5500, torqueNm: 707, hp: 546 }, { rpm: 5750, torqueNm: 675, hp: 545 }, { rpm: 6000, torqueNm: 646, hp: 544 }, { rpm: 6250, torqueNm: 616, hp: 541 }, { rpm: 6500, torqueNm: 580, hp: 529 }],
+    notes: 'Low-resolution raster (separate kW and Nm panels); torque panel traced by colour at 4x (upper solid trace), axes 0-7000 rpm / 400-850 Nm from gridlines. Power panel only used as cross-check: torque-derived power 405-407 kW at 5500-6000 rpm vs the 400 kW label (+1.5 %). Trace reaches 750 Nm at ~1600 rpm, not 1500 as labelled.',
+    split: 'holdout',
+  },
+  {
+    engineId: 'bmw-s85-m5',
+    source: {
+      url: 'https://archive.org/download/BMWTechnicalTrainingDocuments/ST505%20E60%20M5%20Complete%20Vehicle/03_M%20Engines.pdf',
+      title: 'BMW Technical Training ST505 "M Engines", p.13 S85B50 Engine Statistics (power/torque chart)',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'ECE', confidence: 'medium',
+    points: [{ rpm: 1250, torqueNm: 394, hp: 69 }, { rpm: 1500, torqueNm: 391, hp: 82 }, { rpm: 1750, torqueNm: 390, hp: 96 }, { rpm: 2000, torqueNm: 390, hp: 110 }, { rpm: 2250, torqueNm: 391, hp: 124 }, { rpm: 2500, torqueNm: 395, hp: 139 }, { rpm: 2750, torqueNm: 413, hp: 160 }, { rpm: 3000, torqueNm: 429, hp: 181 }, { rpm: 3250, torqueNm: 440, hp: 201 }, { rpm: 3500, torqueNm: 447, hp: 220 }, { rpm: 3750, torqueNm: 453, hp: 239 }, { rpm: 4000, torqueNm: 458, hp: 257 }, { rpm: 4250, torqueNm: 462, hp: 276 }, { rpm: 4500, torqueNm: 465, hp: 294 }, { rpm: 4750, torqueNm: 470, hp: 314 }, { rpm: 5000, torqueNm: 473, hp: 332 }, { rpm: 5250, torqueNm: 480, hp: 354 }, { rpm: 5500, torqueNm: 494, hp: 382 }, { rpm: 5750, torqueNm: 507, hp: 409 }, { rpm: 6000, torqueNm: 520, hp: 438 }, { rpm: 6250, torqueNm: 517, hp: 454 }, { rpm: 6500, torqueNm: 510, hp: 466 }, { rpm: 6750, torqueNm: 504, hp: 478 }, { rpm: 7000, torqueNm: 497, hp: 489 }, { rpm: 7250, torqueNm: 485, hp: 494 }, { rpm: 7500, torqueNm: 472, hp: 497 }, { rpm: 7750, torqueNm: 460, hp: 501 }, { rpm: 8000, torqueNm: 438, hp: 492 }, { rpm: 8250, torqueNm: 423, hp: 490 }],
+    notes: 'Raster chart (grey background, white gridlines), thick coarse piecewise-linear traces; traced by colour at 4x. Axes 2000-8000 rpm gridlines, 250-800 Nm / 50-600 PS. Cross-check vs chart PS (P = T*n/7023): mean 1.2 %, max 4.1 %. Coarse source -> medium confidence.',
+    split: 'train',
+  },
+  {
+    engineId: 'bmw-s65-m3',
+    source: {
+      url: 'https://archive.org/download/BMWTechnicalTrainingDocuments/ST505%20E60%20M5%20Complete%20Vehicle/03_M%20Engines.pdf',
+      title: 'BMW Technical Training ST505 "M Engines", p.15 S65B40 power/torque chart',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'ECE', confidence: 'medium',
+    points: [{ rpm: 1500, torqueNm: 297, hp: 63 }, { rpm: 1750, torqueNm: 317, hp: 78 }, { rpm: 2000, torqueNm: 336, hp: 94 }, { rpm: 2250, torqueNm: 356, hp: 112 }, { rpm: 2500, torqueNm: 375, hp: 132 }, { rpm: 2750, torqueNm: 388, hp: 150 }, { rpm: 3000, torqueNm: 392, hp: 165 }, { rpm: 3250, torqueNm: 396, hp: 181 }, { rpm: 3500, torqueNm: 399, hp: 196 }, { rpm: 3750, torqueNm: 400, hp: 211 }, { rpm: 4000, torqueNm: 400, hp: 225 }, { rpm: 4250, torqueNm: 397, hp: 237 }, { rpm: 4500, torqueNm: 395, hp: 250 }, { rpm: 4750, torqueNm: 393, hp: 262 }, { rpm: 5000, torqueNm: 393, hp: 276 }, { rpm: 5250, torqueNm: 394, hp: 290 }, { rpm: 5500, torqueNm: 394, hp: 304 }, { rpm: 5750, torqueNm: 394, hp: 318 }, { rpm: 6000, torqueNm: 394, hp: 332 }, { rpm: 6250, torqueNm: 394, hp: 346 }, { rpm: 6500, torqueNm: 393, hp: 359 }, { rpm: 6750, torqueNm: 392, hp: 372 }, { rpm: 7000, torqueNm: 390, hp: 383 }, { rpm: 7250, torqueNm: 389, hp: 396 }, { rpm: 7500, torqueNm: 386, hp: 407 }, { rpm: 7750, torqueNm: 379, hp: 412 }, { rpm: 8000, torqueNm: 366, hp: 411 }, { rpm: 8250, torqueNm: 352, hp: 408 }],
+    notes: 'Same chart style/method as S85. Cross-check vs chart PS above 3500 rpm: within 3.7 % (mean ~1.5 %); below 3000 rpm the drawn power trace is inconsistent with the torque trace (up to 26 % at 1500 rpm) - torque used.',
+    split: 'holdout',
+  },
 ];
 
 /** All engines (peak-calibration set + extended set) by id. */
