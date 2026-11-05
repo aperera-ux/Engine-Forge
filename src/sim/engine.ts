@@ -543,12 +543,15 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
   const omega = (rpm: number) => (rpm * 2 * Math.PI) / 60;
   const inTq = (i: number) => curve[i].torqueNm >= tq.torqueNm - band;
   const inPk = (i: number) => (pk.powerKw - curve[i].powerKw) * 1000 <= band * omega(curve[i].rpm);
-  const plateauStart = (inBand: (i: number) => boolean, kind: 'torque' | 'power', argmaxRpm: number) => {
-    if (!curve.some((_, i) => inBand(i) && limitedBy[i] === kind)) return argmaxRpm;
-    return curve[curve.findIndex((_, i) => inBand(i))].rpm;
+  const plateau = (inBand: (i: number) => boolean, kind: 'torque' | 'power', argmaxRpm: number): [number, number] => {
+    if (!curve.some((_, i) => inBand(i) && limitedBy[i] === kind)) return [argmaxRpm, argmaxRpm];
+    const idx = curve.map((_, i) => i).filter(inBand);
+    return [curve[idx[0]].rpm, curve[idx[idx.length - 1]].rpm];
   };
-  const tqRpm = plateauStart(inTq, 'torque', tq.rpm);
-  const pkRpm = plateauStart(inPk, 'power', pk.rpm);
+  const tqRange = plateau(inTq, 'torque', tq.rpm);
+  const pkRange = plateau(inPk, 'power', pk.rpm);
+  const tqRpm = tqRange[0];
+  const pkRpm = pkRange[0];
   const dispL = g.vdTotal * 1000;
   const massKg = estimateMassKg(c);
   const mechLimit = mechanicalLimitRpm(c, g);
@@ -589,6 +592,8 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     peakTorqueNm: tq.torqueNm,
     peakTorqueLbFt: tq.torqueLbFt,
     peakTorqueRpm: tqRpm,
+    peakTorqueRpmRange: tqRange,
+    peakPowerRpmRange: pkRange,
     specificOutputHpL: pk.hp / dispL,
     meanPistonSpeedRedlineMs: spRed,
     maxPistonAccelRedline: maxPistonAccel(g, c.redlineRpm),
@@ -601,6 +606,6 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     balance: computeBalance(c, lay),
     reliabilityScore,
     warnings,
-    uncertainty: computeUncertainty(c, curve, pkRpm, tqRpm),
+    uncertainty: computeUncertainty(c, curve, pkRpm, tqRpm, tqRange),
   };
 }

@@ -51,7 +51,14 @@ function ensureEnvelope() {
 
 const fmt = (x: number) => (Math.abs(x) >= 100 ? x.toFixed(0) : Math.abs(x) >= 10 ? x.toFixed(1) : x.toFixed(2));
 
-export function computeUncertainty(c: EngineConfig, curve: DynoPoint[], peakPowerRpm: number, peakTorqueRpm: number): SimUncertainty {
+export function computeUncertainty(
+  c: EngineConfig,
+  curve: DynoPoint[],
+  peakPowerRpm: number,
+  peakTorqueRpm: number,
+  /** Torque plateau [start, end] rpm (ECU-limited plateau); default [peakTorqueRpm, peakTorqueRpm]. */
+  peakTorqueRange: [number, number] = [peakTorqueRpm, peakTorqueRpm],
+): SimUncertainty {
   ensureEnvelope();
   const reasons: string[] = [];
   let d2 = 0;
@@ -82,11 +89,13 @@ export function computeUncertainty(c: EngineConfig, curve: DynoPoint[], peakPowe
   if (knockMax > 15) reasons.push(`heavy knock retard (${knockMax.toFixed(0)}°): the knock model is least certain there`);
 
   const widen = 1 + CAL.uncExtrapWiden * extrapolation;
-  const rpmTq = Math.max(1, peakTorqueRpm);
+  const tqLo = Math.max(1, peakTorqueRange[0]);
+  const tqHi = Math.max(tqLo, peakTorqueRange[1]);
   const torquePct = curve.map((p) => {
     // Residual-based base band; curve shape is less certain away from the peak
+    // (on an ECU-limited plateau: away from the plateau, which is all "peak")
     // and at lugging speeds; knock-limited and boosted points add spread.
-    const off = Math.abs(Math.log(p.rpm / rpmTq));
+    const off = p.rpm < tqLo ? Math.log(tqLo / p.rpm) : p.rpm > tqHi ? Math.log(p.rpm / tqHi) : 0;
     let b = CAL.uncBasePct * (1 + CAL.uncShapePerLn * off) + (p.rpm < 2000 ? CAL.uncLowRpmPct : 0);
     b += CAL.uncKnockPctPerDeg * p.knockRetardDeg;
     if (p.boostBar > 0.05) b += CAL.uncBoostPct;
