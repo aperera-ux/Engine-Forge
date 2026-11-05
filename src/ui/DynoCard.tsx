@@ -49,7 +49,7 @@ function DynoNotes() {
           Factory ECU limits off: custom build
         </span>
       )}
-      {lim.present && lim.applied && result.unlimited && (
+      {lim.present && lim.applied && (
         <label className="dn-toggle">
           <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} data-testid="unlimited-toggle" />
           Show hardware-only curve (dashed)

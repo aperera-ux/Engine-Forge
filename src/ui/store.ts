@@ -116,12 +116,13 @@ export function presetByName(name: string): EngineConfig | null {
   return PRESETS.find((p) => p.name === name) ?? null;
 }
 
-function runSim(config: EngineConfig, base: EngineConfig | null, prev?: SimResult): { result: SimResult; simError: string | null; simMs: number } {
+function runSim(config: EngineConfig, base: EngineConfig | null, wantUnlimited: boolean, prev?: SimResult): { result: SimResult; simError: string | null; simMs: number } {
   const t0 = performance.now();
   try {
     const opts = oemLimitOptions(config, base ?? undefined);
-    // The hardware-only curve is only needed (and only costs a 2nd solve) when a limit is present.
-    const result = simulate(config, { ...opts, includeUnlimited: !!config.ecu?.torqueLimitNm || !!config.ecu?.powerLimitKw });
+    // The hardware-only curve costs a 2nd solve (~2x on turbo presets, measured ~25 ms vs ~12 ms), so it is
+    // only requested while the overlay toggle is on AND a limit is actually in force.
+    const result = simulate(config, { ...opts, includeUnlimited: wantUnlimited && !!opts.applyOemLimits });
     if (!result || !Array.isArray(result.curve) || result.curve.length === 0) throw new Error('empty curve');
     return { result, simError: null, simMs: performance.now() - t0 };
   } catch (e) {
@@ -212,7 +213,7 @@ function initialPrefs(): { units: Units; viewMode: ViewMode; panelCollapsed: boo
 
 const cfg0 = initialConfig();
 const base0 = presetByName(cfg0.name);
-const sim0 = runSim(cfg0, base0);
+const sim0 = runSim(cfg0, base0, false);
 const prefs0 = initialPrefs();
 
 let snapCounter = 0;
@@ -220,7 +221,7 @@ let snapCounter = 0;
 export const useStore = create<UIState>()((set, get) => {
   const apply = (config: EngineConfig, base: EngineConfig | null = get().basePreset) => {
     const norm = normalizeConfig(config);
-    const r = runSim(norm, base, get().result);
+    const r = runSim(norm, base, get().showUnlimited, get().result);
     const rpm = Math.min(Math.max(get().rpm, norm.idleRpm), norm.redlineRpm);
     set({ config: norm, basePreset: base, ...r, rpm });
   };
@@ -228,7 +229,10 @@ export const useStore = create<UIState>()((set, get) => {
     config: cfg0,
     basePreset: base0,
     showUnlimited: false,
-    setShowUnlimited: (showUnlimited) => set({ showUnlimited }),
+    setShowUnlimited: (showUnlimited) => {
+      set({ showUnlimited });
+      if (showUnlimited) apply(get().config); // re-solve once with the hardware-only curve
+    },
     ...sim0,
     rpm: Math.round(Math.max(cfg0.idleRpm, cfg0.redlineRpm * 0.45)),
     load: 0.35,
