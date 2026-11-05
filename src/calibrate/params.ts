@@ -5,8 +5,9 @@
  * Two kinds, both built on the public simulate() API only:
  *  - hardware shifts applied to the EngineConfig before simulate()
  *    (runner length, cam timing, boost target);
- *  - output corrections applied to the SimResult's own mean-effective-pressure
- *    terms (volumetric-efficiency / flow scale, friction scale, ECU torque cap).
+ *  - SimOptions.calibration multipliers that act inside the simulator's
+ *    operating-point solve (volumetric-efficiency scale, friction scale, ECU
+ *    torque cap), so the ECU, knock and turbo models respond to them.
  *
  * The ranges are deliberately narrow. A parameter that needs to leave its range
  * to match the data is reported as "at bound" rather than silently absorbed.
@@ -44,7 +45,7 @@ export const PARAM_DEFS: Record<ParamId, ParamDef> = {
     min: 0.85,
     max: 1.15,
     decimals: 3,
-    what: 'Multiplier on the indicated mean effective pressure: trapped-charge differences from port flow, valve Cd, head porting, airbox and combustion efficiency that the model does not see.',
+    what: 'Multiplier on the trapped-air volumetric efficiency inside the simulation (airflow, boost, knock and EGT respond): port flow, valve Cd, head porting and airbox differences that the model does not see.',
     range: '+/-15 %. The model reproduces published NA peak torque to about 6 to 8 % RMS, and ported heads or restrictive intakes move real engines by 5 to 10 %, so a larger scale is a data or unit problem, not tuning.',
     applies: () => true,
   },
@@ -56,7 +57,7 @@ export const PARAM_DEFS: Record<ParamId, ParamDef> = {
     min: 0.7,
     max: 1.5,
     decimals: 3,
-    what: 'Multiplier on friction mean effective pressure (rings, bearings, valvetrain, pumping, accessories).',
+    what: 'Multiplier on mechanical friction mean effective pressure (rings, bearings, valvetrain, accessories), applied before the ECU torque limiter. Pumping work comes from the gas-exchange model and is not scaled.',
     range: '0.7 to 1.5. Break-in state, oil viscosity and ring tension move motoring friction by about +/-30 % between otherwise identical engines (Chen-Flynn constants differ by that much between engine families).',
     applies: () => true,
   },
