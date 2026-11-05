@@ -315,6 +315,183 @@ export const DYNO_CURVES: DynoCurve[] = [
     notes: "Declared (idealised, piecewise-linear) full-load curve from an Audi/VW Self Study Programme: vector chart, trace vertices read from the PDF path data, axes calibrated from the printed label positions. Axes 0-720 Nm / 0-360 kW, 0-8000 rpm (labels dual-unit). Chart peaks 539 Nm / 321 kW vs table 540 Nm @ 3000-4000 / 320 kW. Cross-check torque-derived vs chart kW: mean 1.5 %, max 3.4 %. Points 1500-7000 rpm (trace runs to ~7190).",
     split: 'train',
   },
+  // ───────────────────────────── added in research round 3: chevrolet.com crate-engine dyno charts (raster) ─────────────────────────────
+  {
+    engineId: 'gm-lt1-crate',
+    source: {
+      url: 'https://www.chevrolet.com/content/dam/chevrolet/na/us/english/index/performance/new/performance-parts/crate-engines/lt-engines/lt1-engine/02-gifs/Dyno-Chart-LT1.gif',
+      title: 'Chevrolet Performance (chevrolet.com) LT1 6.2 crate engine page, DYNO CHART',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'unknown', confidence: 'medium',
+    points: [{ rpm: 1500, torqueNm: 486, hp: 102 }, { rpm: 1750, torqueNm: 503, hp: 124 }, { rpm: 2000, torqueNm: 520, hp: 146 }, { rpm: 2250, torqueNm: 534, hp: 169 }, { rpm: 2500, torqueNm: 547, hp: 192 }, { rpm: 2750, torqueNm: 562, hp: 217 }, { rpm: 3000, torqueNm: 576, hp: 243 }, { rpm: 3250, torqueNm: 579, hp: 264 }, { rpm: 3500, torqueNm: 582, hp: 286 }, { rpm: 3750, torqueNm: 598, hp: 315 }, { rpm: 4000, torqueNm: 613, hp: 344 }, { rpm: 4250, torqueNm: 618, hp: 369 }, { rpm: 4500, torqueNm: 623, hp: 394 }, { rpm: 4750, torqueNm: 626, hp: 418 }, { rpm: 5000, torqueNm: 611, hp: 429 }, { rpm: 5250, torqueNm: 593, hp: 437 }, { rpm: 5500, torqueNm: 576, hp: 445 }, { rpm: 5750, torqueNm: 556, hp: 449 }, { rpm: 6000, torqueNm: 540, hp: 455 }],
+    notes: "Raster (animated GIF) chart traced by colour at 3440x1566 (or 1720x783): final frame, white (torque) and yellow (hp) marker/line centroids per pixel column, axes calibrated from detected gridlines (labels read visually; x axis starts at the axis line = first label, y bottom = lowest label), sampled every 250 rpm by linear interpolation. Axis units lb-ft / hp (shared axis), torque converted x1.35582 to Nm. Chart hp trace vs chart torque trace (hp = lb-ft*rpm/5252): mean 0.8 %, max 1.8 %. Traced peaks 462 lb-ft @ 4750 rpm / 455 hp vs callouts 462 lb-ft @ 4600 / 459 hp @ 6000. The chart is an idealised few-marker representation of a crate-engine dyno run (Chevrolet Performance: SAE J1349 net / J1995 gross, test headers, no accessories); declared/idealised, not a raw trace. Points 1500-6000 rpm.",
+    split: 'train',
+  },
+  {
+    engineId: 'gm-lt4-crate',
+    source: {
+      url: 'https://www.chevrolet.com/content/dam/chevrolet/na/us/english/index/performance/new/performance-parts/crate-engines/lt-engines/lt4-engine/dyno-chart/2026-dyno-chart-lt4.gif',
+      title: 'Chevrolet Performance (chevrolet.com) LT4 6.2 supercharged crate engine page, DYNO CHART',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'unknown', confidence: 'medium',
+    points: [{ rpm: 1250, torqueNm: 618, hp: 108 }, { rpm: 1500, torqueNm: 660, hp: 139 }, { rpm: 1750, torqueNm: 701, hp: 172 }, { rpm: 2000, torqueNm: 740, hp: 208 }, { rpm: 2250, torqueNm: 772, hp: 244 }, { rpm: 2500, torqueNm: 804, hp: 282 }, { rpm: 2750, torqueNm: 836, hp: 323 }, { rpm: 3000, torqueNm: 847, hp: 357 }, { rpm: 3250, torqueNm: 857, hp: 391 }, { rpm: 3500, torqueNm: 883, hp: 434 }, { rpm: 3750, torqueNm: 882, hp: 464 }, { rpm: 4000, torqueNm: 875, hp: 492 }, { rpm: 4250, torqueNm: 860, hp: 513 }, { rpm: 4500, torqueNm: 850, hp: 537 }, { rpm: 4750, torqueNm: 846, hp: 564 }, { rpm: 5000, torqueNm: 831, hp: 583 }, { rpm: 5250, torqueNm: 810, hp: 597 }, { rpm: 5500, torqueNm: 792, hp: 612 }, { rpm: 5750, torqueNm: 772, hp: 623 }, { rpm: 6000, torqueNm: 751, hp: 633 }, { rpm: 6250, torqueNm: 736, hp: 646 }],
+    notes: "Raster (animated GIF) chart traced by colour at 3440x1566 (or 1720x783): final frame, white (torque) and yellow (hp) marker/line centroids per pixel column, axes calibrated from detected gridlines (labels read visually; x axis starts at the axis line = first label, y bottom = lowest label), sampled every 250 rpm by linear interpolation. Axis units lb-ft / hp (shared axis), torque converted x1.35582 to Nm. Chart hp trace vs chart torque trace (hp = lb-ft*rpm/5252): mean 0.8 %, max 2.3 %. Traced peaks 652 lb-ft @ 3500 rpm / 646 hp vs callouts 650 lb-ft @ 3600 / 650 hp @ 6400. The chart is an idealised few-marker representation of a crate-engine dyno run (Chevrolet Performance: SAE J1349 net / J1995 gross, test headers, no accessories); declared/idealised, not a raw trace. Points 1250-6250 rpm.",
+    split: 'holdout',
+  },
+  {
+    engineId: 'gm-l8p-crate',
+    source: {
+      url: 'https://www.chevrolet.com/content/dam/chevrolet/na/us/english/index/performance/powertrain/engines/new/lt/l8p/dyno/Dyno-Chart-L8P.gif',
+      title: 'Chevrolet Performance (chevrolet.com) L8P 6.6 crate engine page, DYNO CHART',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'unknown', confidence: 'medium',
+    points: [{ rpm: 2000, torqueNm: 578, hp: 162 }, { rpm: 2250, torqueNm: 582, hp: 184 }, { rpm: 2500, torqueNm: 598, hp: 210 }, { rpm: 2750, torqueNm: 620, hp: 239 }, { rpm: 3000, torqueNm: 654, hp: 276 }, { rpm: 3250, torqueNm: 677, hp: 309 }, { rpm: 3500, torqueNm: 694, hp: 341 }, { rpm: 3750, torqueNm: 716, hp: 377 }, { rpm: 4000, torqueNm: 726, hp: 408 }, { rpm: 4250, torqueNm: 725, hp: 433 }, { rpm: 4500, torqueNm: 729, hp: 461 }, { rpm: 4750, torqueNm: 730, hp: 487 }, { rpm: 5000, torqueNm: 713, hp: 501 }, { rpm: 5250, torqueNm: 696, hp: 513 }, { rpm: 5500, torqueNm: 673, hp: 520 }, { rpm: 5750, torqueNm: 651, hp: 525 }, { rpm: 6000, torqueNm: 613, hp: 516 }],
+    notes: "Raster (animated GIF) chart traced by colour at 3440x1566 (or 1720x783): final frame, white (torque) and yellow (hp) marker/line centroids per pixel column, axes calibrated from detected gridlines (labels read visually; x axis starts at the axis line = first label, y bottom = lowest label), sampled every 250 rpm by linear interpolation. Axis units lb-ft / hp (shared axis), torque converted x1.35582 to Nm. Chart hp trace vs chart torque trace (hp = lb-ft*rpm/5252): mean 1.3 %, max 3.4 %. Traced peaks 539 lb-ft @ 4750 rpm / 525 hp vs callouts 543 lb-ft @ 4600 / 523 hp @ 5800. The chart is an idealised few-marker representation of a crate-engine dyno run (Chevrolet Performance: SAE J1349 net / J1995 gross, test headers, no accessories); declared/idealised, not a raw trace. Points 2000-6000 rpm.",
+    split: 'train',
+  },
+  {
+    engineId: 'gm-l8t-66',
+    source: {
+      url: 'https://www.chevrolet.com/content/dam/chevrolet/na/us/english/index/performance/powertrain/engines/new/lt/l8p/dyno/new/2026-dyno-chart-l8t-v02.gif',
+      title: 'Chevrolet Performance (chevrolet.com) L8T 6.6 (HD truck gas V8) crate engine page, DYNO CHART',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'unknown', confidence: 'medium',
+    points: [{ rpm: 1750, torqueNm: 523, hp: 129 }, { rpm: 2000, torqueNm: 547, hp: 154 }, { rpm: 2250, torqueNm: 565, hp: 179 }, { rpm: 2500, torqueNm: 580, hp: 203 }, { rpm: 2750, torqueNm: 589, hp: 228 }, { rpm: 3000, torqueNm: 598, hp: 252 }, { rpm: 3250, torqueNm: 605, hp: 276 }, { rpm: 3500, torqueNm: 611, hp: 300 }, { rpm: 3750, torqueNm: 619, hp: 326 }, { rpm: 4000, torqueNm: 625, hp: 351 }, { rpm: 4250, torqueNm: 612, hp: 365 }, { rpm: 4500, torqueNm: 595, hp: 376 }, { rpm: 4750, torqueNm: 579, hp: 386 }, { rpm: 5000, torqueNm: 555, hp: 390 }, { rpm: 5250, torqueNm: 538, hp: 397 }, { rpm: 5500, torqueNm: 516, hp: 399 }],
+    notes: "Raster (animated GIF) chart traced by colour at 3440x1566 (or 1720x783): final frame, white (torque) and yellow (hp) marker/line centroids per pixel column, axes calibrated from detected gridlines (labels read visually; x axis starts at the axis line = first label, y bottom = lowest label), sampled every 250 rpm by linear interpolation. Axis units lb-ft / hp (shared axis), torque converted x1.35582 to Nm. Chart hp trace vs chart torque trace (hp = lb-ft*rpm/5252): mean 1.0 %, max 3.9 %. Traced peaks 461 lb-ft @ 4000 rpm / 399 hp vs callouts 464 lb-ft @ 4000 / 401 hp @ 5200. The chart is an idealised few-marker representation of a crate-engine dyno run (Chevrolet Performance: SAE J1349 net / J1995 gross, test headers, no accessories); declared/idealised, not a raw trace. Points 1750-5500 rpm.",
+    split: 'holdout',
+  },
+  {
+    engineId: 'gm-ht383',
+    source: {
+      url: 'https://www.chevrolet.com/content/dam/chevrolet/na/us/english/index/performance/new/engines1/crate-engine/383/02-images/2026-dyno-chart-ht-383-v2.gif',
+      title: 'Chevrolet Performance (chevrolet.com) HT383 crate engine page, DYNO CHART',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'unknown', confidence: 'medium',
+    points: [{ rpm: 2500, torqueNm: 564, hp: 198 }, { rpm: 2750, torqueNm: 584, hp: 225 }, { rpm: 3000, torqueNm: 580, hp: 244 }, { rpm: 3250, torqueNm: 604, hp: 276 }, { rpm: 3500, torqueNm: 598, hp: 294 }, { rpm: 3750, torqueNm: 581, hp: 306 }, { rpm: 4000, torqueNm: 553, hp: 311 }, { rpm: 4250, torqueNm: 538, hp: 321 }, { rpm: 4500, torqueNm: 511, hp: 323 }, { rpm: 4750, torqueNm: 481, hp: 321 }, { rpm: 5000, torqueNm: 422, hp: 297 }],
+    notes: "Raster (animated GIF) chart traced by colour at 3440x1566 (or 1720x783): final frame, white (torque) and yellow (hp) marker/line centroids per pixel column, axes calibrated from detected gridlines (labels read visually; x axis starts at the axis line = first label, y bottom = lowest label), sampled every 250 rpm by linear interpolation. Axis units lb-ft / hp (shared axis), torque converted x1.35582 to Nm. Chart hp trace vs chart torque trace (hp = lb-ft*rpm/5252): mean 1.0 %, max 2.5 % (1 stray hp reading excluded). Traced peaks 446 lb-ft @ 3250 rpm / 323 hp vs callouts 444 lb-ft @ 3000 / 323 hp @ 4200. The chart is an idealised few-marker representation of a crate-engine dyno run (Chevrolet Performance: SAE J1349 net / J1995 gross, test headers, no accessories); declared/idealised, not a raw trace. Points 2500-5000 rpm.",
+    split: 'train',
+  },
+  {
+    engineId: 'gm-sp383-435',
+    source: {
+      url: 'https://www.chevrolet.com/content/dam/chevrolet/na/us/english/index/performance/new/engines1/crate-engine/383/02-images/Dyno-Chart-SP383.gif',
+      title: 'Chevrolet Performance (chevrolet.com) SP383/435 crate engine page, DYNO CHART',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'unknown', confidence: 'medium',
+    points: [{ rpm: 2750, torqueNm: 512, hp: 198 }, { rpm: 3000, torqueNm: 531, hp: 224 }, { rpm: 3250, torqueNm: 540, hp: 246 }, { rpm: 3500, torqueNm: 543, hp: 267 }, { rpm: 3750, torqueNm: 554, hp: 292 }, { rpm: 4000, torqueNm: 570, hp: 320 }, { rpm: 4250, torqueNm: 587, hp: 350 }, { rpm: 4500, torqueNm: 599, hp: 379 }, { rpm: 4750, torqueNm: 598, hp: 399 }, { rpm: 5000, torqueNm: 586, hp: 411 }, { rpm: 5250, torqueNm: 570, hp: 420 }, { rpm: 5500, torqueNm: 552, hp: 427 }, { rpm: 5750, torqueNm: 525, hp: 424 }],
+    notes: "Raster (animated GIF) chart traced by colour at 3440x1566 (or 1720x783): final frame, white (torque) and yellow (hp) marker/line centroids per pixel column, axes calibrated from detected gridlines (labels read visually; x axis starts at the axis line = first label, y bottom = lowest label), sampled every 250 rpm by linear interpolation. Axis units lb-ft / hp (shared axis), torque converted x1.35582 to Nm. Chart hp trace vs chart torque trace (hp = lb-ft*rpm/5252): mean 1.1 %, max 3.8 %. Traced peaks 442 lb-ft @ 4500 rpm / 427 hp vs callouts 445 lb-ft @ 4600 / 435 hp @ 5600. The chart is an idealised few-marker representation of a crate-engine dyno run (Chevrolet Performance: SAE J1349 net / J1995 gross, test headers, no accessories); declared/idealised, not a raw trace. Points 2750-5750 rpm.",
+    split: 'holdout',
+  },
+  {
+    engineId: 'gm-sp350-357',
+    source: {
+      url: 'https://www.chevrolet.com/content/dam/chevrolet/na/us/english/index/performance/powertrain/engines/new/crate-engines/350/dynos/Dyno-Chart-SP350-357.gif',
+      title: 'Chevrolet Performance (chevrolet.com) SP350/357 crate engine page, DYNO CHART',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'unknown', confidence: 'medium',
+    points: [{ rpm: 3000, torqueNm: 524, hp: 221 }, { rpm: 3250, torqueNm: 532, hp: 243 }, { rpm: 3500, torqueNm: 536, hp: 264 }, { rpm: 3750, torqueNm: 541, hp: 285 }, { rpm: 4000, torqueNm: 546, hp: 307 }, { rpm: 4250, torqueNm: 543, hp: 324 }, { rpm: 4500, torqueNm: 538, hp: 340 }, { rpm: 4750, torqueNm: 524, hp: 349 }, { rpm: 5000, torqueNm: 507, hp: 356 }, { rpm: 5250, torqueNm: 477, hp: 352 }, { rpm: 5500, torqueNm: 459, hp: 354 }],
+    notes: "Raster (animated GIF) chart traced by colour at 3440x1566 (or 1720x783): final frame, white (torque) and yellow (hp) marker/line centroids per pixel column, axes calibrated from detected gridlines (labels read visually; x axis starts at the axis line = first label, y bottom = lowest label), sampled every 250 rpm by linear interpolation. Axis units lb-ft / hp (shared axis), torque converted x1.35582 to Nm. Chart hp trace vs chart torque trace (hp = lb-ft*rpm/5252): mean 0.8 %, max 2.2 %. Traced peaks 403 lb-ft @ 4000 rpm / 356 hp vs callouts 407 lb-ft @ 4000 / 357 hp @ 5500. The chart is an idealised few-marker representation of a crate-engine dyno run (Chevrolet Performance: SAE J1349 net / J1995 gross, test headers, no accessories); declared/idealised, not a raw trace. Points 3000-5500 rpm.",
+    split: 'train',
+  },
+  {
+    engineId: 'gm-sp350-385',
+    source: {
+      url: 'https://www.chevrolet.com/content/dam/chevrolet/na/us/english/index/performance/powertrain/engines/new/crate-engines/350/dynos/Dyno-Chart-SP350-385.gif',
+      title: 'Chevrolet Performance (chevrolet.com) SP350/385 crate engine page, DYNO CHART',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'unknown', confidence: 'medium',
+    points: [{ rpm: 3000, torqueNm: 543, hp: 229 }, { rpm: 3250, torqueNm: 543, hp: 248 }, { rpm: 3500, torqueNm: 544, hp: 267 }, { rpm: 3750, torqueNm: 543, hp: 286 }, { rpm: 4000, torqueNm: 543, hp: 305 }, { rpm: 4250, torqueNm: 543, hp: 324 }, { rpm: 4500, torqueNm: 542, hp: 342 }, { rpm: 4750, torqueNm: 539, hp: 359 }, { rpm: 5000, torqueNm: 534, hp: 375 }, { rpm: 5250, torqueNm: 518, hp: 382 }, { rpm: 5500, torqueNm: 499, hp: 386 }, { rpm: 5750, torqueNm: 475, hp: 383 }],
+    notes: "Raster (animated GIF) chart traced by colour at 3440x1566 (or 1720x783): final frame, white (torque) and yellow (hp) marker/line centroids per pixel column, axes calibrated from detected gridlines (labels read visually; x axis starts at the axis line = first label, y bottom = lowest label), sampled every 250 rpm by linear interpolation. Axis units lb-ft / hp (shared axis), torque converted x1.35582 to Nm. Chart hp trace vs chart torque trace (hp = lb-ft*rpm/5252): mean 1.1 %, max 2.0 %. Traced peaks 401 lb-ft @ 3500 rpm / 386 hp vs callouts 405 lb-ft @ 3600 / 385 hp @ 5600. The chart is an idealised few-marker representation of a crate-engine dyno run (Chevrolet Performance: SAE J1349 net / J1995 gross, test headers, no accessories); declared/idealised, not a raw trace. Points 3000-5750 rpm.",
+    split: 'train',
+  },
+  {
+    engineId: 'gm-350-ho',
+    source: {
+      url: 'https://www.chevrolet.com/content/dam/chevrolet/na/us/english/index/performance/powertrain/engines/new/crate-engines/350/Dyno-Chart-350_HO.gif',
+      title: 'Chevrolet Performance (chevrolet.com) 350 HO crate engine page, DYNO CHART',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'unknown', confidence: 'medium',
+    points: [{ rpm: 3000, torqueNm: 495, hp: 208 }, { rpm: 3250, torqueNm: 501, hp: 229 }, { rpm: 3500, torqueNm: 510, hp: 251 }, { rpm: 3750, torqueNm: 517, hp: 272 }, { rpm: 4000, torqueNm: 512, hp: 287 }, { rpm: 4250, torqueNm: 509, hp: 303 }, { rpm: 4500, torqueNm: 499, hp: 315 }, { rpm: 4750, torqueNm: 484, hp: 323 }, { rpm: 5000, torqueNm: 471, hp: 331 }, { rpm: 5250, torqueNm: 424, hp: 312 }],
+    notes: "Raster (animated GIF) chart traced by colour at 3440x1566 (or 1720x783): final frame, white (torque) and yellow (hp) marker/line centroids per pixel column, axes calibrated from detected gridlines (labels read visually; x axis starts at the axis line = first label, y bottom = lowest label), sampled every 250 rpm by linear interpolation. Axis units lb-ft / hp (shared axis), torque converted x1.35582 to Nm. Chart hp trace vs chart torque trace (hp = lb-ft*rpm/5252): mean 1.6 %, max 3.9 %. Traced peaks 381 lb-ft @ 3750 rpm / 331 hp vs callouts 381 lb-ft @ 3700 / 333 hp @ 5100. The chart is an idealised few-marker representation of a crate-engine dyno run (Chevrolet Performance: SAE J1349 net / J1995 gross, test headers, no accessories); declared/idealised, not a raw trace. Points 3000-5250 rpm.",
+    split: 'train',
+  },
+  {
+    engineId: 'gm-zz454',
+    source: {
+      url: 'https://www.chevrolet.com/content/dam/chevrolet/na/us/english/index/performance/powertrain/engines/new/big-block/454-engines/01-images/Dyno-Chart-ZZ454.gif',
+      title: 'Chevrolet Performance (chevrolet.com) ZZ454 crate engine page, DYNO CHART',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'unknown', confidence: 'medium',
+    points: [{ rpm: 2750, torqueNm: 599, hp: 231 }, { rpm: 3000, torqueNm: 665, hp: 280 }, { rpm: 3250, torqueNm: 686, hp: 313 }, { rpm: 3500, torqueNm: 689, hp: 339 }, { rpm: 3750, torqueNm: 688, hp: 362 }, { rpm: 4000, torqueNm: 688, hp: 387 }, { rpm: 4250, torqueNm: 684, hp: 408 }, { rpm: 4500, torqueNm: 673, hp: 426 }, { rpm: 4750, torqueNm: 662, hp: 442 }, { rpm: 5000, torqueNm: 650, hp: 457 }, { rpm: 5250, torqueNm: 634, hp: 467 }, { rpm: 5500, torqueNm: 607, hp: 469 }],
+    notes: "Raster (animated GIF) chart traced by colour at 3440x1566 (or 1720x783): final frame, white (torque) and yellow (hp) marker/line centroids per pixel column, axes calibrated from detected gridlines (labels read visually; x axis starts at the axis line = first label, y bottom = lowest label), sampled every 250 rpm by linear interpolation. Axis units lb-ft / hp (shared axis), torque converted x1.35582 to Nm. Chart hp trace vs chart torque trace (hp = lb-ft*rpm/5252): mean 1.1 %, max 3.8 %. Traced peaks 508 lb-ft @ 3500 rpm / 469 hp vs callouts 519 lb-ft @ 3700 / 469 hp @ 5500. The chart is an idealised few-marker representation of a crate-engine dyno run (Chevrolet Performance: SAE J1349 net / J1995 gross, test headers, no accessories); declared/idealised, not a raw trace. Points 2750-5500 rpm.",
+    split: 'holdout',
+  },
+  {
+    engineId: 'gm-454-ho',
+    source: {
+      url: 'https://www.chevrolet.com/content/dam/chevrolet/na/us/english/index/performance/powertrain/engines/new/big-block/454-engines/01-images/vthree/2026_Dyno-Chart_454HO-v2.gif',
+      title: 'Chevrolet Performance (chevrolet.com) 454 HO crate engine page, DYNO CHART',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'unknown', confidence: 'medium',
+    points: [{ rpm: 2750, torqueNm: 624, hp: 241 }, { rpm: 3000, torqueNm: 653, hp: 275 }, { rpm: 3250, torqueNm: 671, hp: 306 }, { rpm: 3500, torqueNm: 675, hp: 332 }, { rpm: 3750, torqueNm: 673, hp: 354 }, { rpm: 4000, torqueNm: 668, hp: 375 }, { rpm: 4250, torqueNm: 651, hp: 388 }, { rpm: 4500, torqueNm: 644, hp: 407 }, { rpm: 4750, torqueNm: 624, hp: 416 }, { rpm: 5000, torqueNm: 604, hp: 424 }, { rpm: 5250, torqueNm: 579, hp: 427 }],
+    notes: "Raster (animated GIF) chart traced by colour at 3440x1566 (or 1720x783): final frame, white (torque) and yellow (hp) marker/line centroids per pixel column, axes calibrated from detected gridlines (labels read visually; x axis starts at the axis line = first label, y bottom = lowest label), sampled every 250 rpm by linear interpolation. Axis units lb-ft / hp (shared axis), torque converted x1.35582 to Nm. Chart hp trace vs chart torque trace (hp = lb-ft*rpm/5252): mean 0.9 %, max 1.8 %. Traced peaks 498 lb-ft @ 3500 rpm / 427 hp vs callouts 500 lb-ft @ 3500 / 438 hp @ 5300. The chart is an idealised few-marker representation of a crate-engine dyno run (Chevrolet Performance: SAE J1349 net / J1995 gross, test headers, no accessories); declared/idealised, not a raw trace. Points 2750-5250 rpm.",
+    split: 'train',
+  },
+  {
+    engineId: 'gm-zz502',
+    source: {
+      url: 'https://www.chevrolet.com/content/dam/chevrolet/na/us/english/index/performance/powertrain/engines/new/big-block/502-engine/dynos/Dyno-Chart-ZZ502.gif',
+      title: 'Chevrolet Performance (chevrolet.com) ZZ502 crate engine page, DYNO CHART',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'unknown', confidence: 'medium',
+    points: [{ rpm: 3000, torqueNm: 767, hp: 323 }, { rpm: 3250, torqueNm: 781, hp: 357 }, { rpm: 3500, torqueNm: 789, hp: 388 }, { rpm: 3750, torqueNm: 790, hp: 416 }, { rpm: 4000, torqueNm: 778, hp: 437 }, { rpm: 4250, torqueNm: 766, hp: 457 }, { rpm: 4500, torqueNm: 748, hp: 472 }, { rpm: 4750, torqueNm: 725, hp: 484 }, { rpm: 5000, torqueNm: 715, hp: 502 }, { rpm: 5250, torqueNm: 691, hp: 510 }, { rpm: 5500, torqueNm: 650, hp: 502 }],
+    notes: "Raster (animated GIF) chart traced by colour at 3440x1566 (or 1720x783): final frame, white (torque) and yellow (hp) marker/line centroids per pixel column, axes calibrated from detected gridlines (labels read visually; x axis starts at the axis line = first label, y bottom = lowest label), sampled every 250 rpm by linear interpolation. Axis units lb-ft / hp (shared axis), torque converted x1.35582 to Nm. Chart hp trace vs chart torque trace (hp = lb-ft*rpm/5252): mean 0.7 %, max 2.0 %. Traced peaks 583 lb-ft @ 3750 rpm / 510 hp vs callouts 580 lb-ft @ 3600 / 508 hp @ 5200. The chart is an idealised few-marker representation of a crate-engine dyno run (Chevrolet Performance: SAE J1349 net / J1995 gross, test headers, no accessories); declared/idealised, not a raw trace. Points 3000-5500 rpm.",
+    split: 'train',
+  },
+  {
+    engineId: 'gm-ht502',
+    source: {
+      url: 'https://www.chevrolet.com/content/dam/chevrolet/na/us/english/index/performance/powertrain/engines/new/big-block/502-engine/dynos/newv/2026_Dyno-Chart_HT502-v2.gif',
+      title: 'Chevrolet Performance (chevrolet.com) HT502 crate engine page, DYNO CHART',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'unknown', confidence: 'medium',
+    points: [{ rpm: 2000, torqueNm: 646, hp: 182 }, { rpm: 2250, torqueNm: 653, hp: 206 }, { rpm: 2500, torqueNm: 676, hp: 237 }, { rpm: 2750, torqueNm: 694, hp: 268 }, { rpm: 3000, torqueNm: 712, hp: 300 }, { rpm: 3250, torqueNm: 724, hp: 330 }, { rpm: 3500, torqueNm: 710, hp: 349 }, { rpm: 3750, torqueNm: 706, hp: 372 }, { rpm: 4000, torqueNm: 700, hp: 393 }, { rpm: 4250, torqueNm: 681, hp: 406 }, { rpm: 4500, torqueNm: 643, hp: 406 }, { rpm: 4750, torqueNm: 594, hp: 396 }, { rpm: 5000, torqueNm: 541, hp: 380 }],
+    notes: "Raster (animated GIF) chart traced by colour at 3440x1566 (or 1720x783): final frame, white (torque) and yellow (hp) marker/line centroids per pixel column, axes calibrated from detected gridlines (labels read visually; x axis starts at the axis line = first label, y bottom = lowest label), sampled every 250 rpm by linear interpolation. Axis units lb-ft / hp (shared axis), torque converted x1.35582 to Nm. Chart hp trace vs chart torque trace (hp = lb-ft*rpm/5252): mean 1.4 %, max 3.2 % (1 stray hp reading excluded). Traced peaks 534 lb-ft @ 3250 rpm / 406 hp vs callouts 541 lb-ft @ 3200 / 406 hp @ 4200. The chart is an idealised few-marker representation of a crate-engine dyno run (Chevrolet Performance: SAE J1349 net / J1995 gross, test headers, no accessories); declared/idealised, not a raw trace. Points 2000-5000 rpm.",
+    split: 'train',
+  },
+  {
+    engineId: 'gm-sp502-605',
+    source: {
+      url: 'https://www.chevrolet.com/content/dam/chevrolet/na/us/english/index/performance/powertrain/engines/new/big-block/502-engine/dynos/Dyno-Chart-SP502.gif',
+      title: 'Chevrolet Performance (chevrolet.com) SP502/605 crate engine page, DYNO CHART',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'unknown', confidence: 'medium',
+    points: [{ rpm: 3250, torqueNm: 714, hp: 326 }, { rpm: 3500, torqueNm: 746, hp: 367 }, { rpm: 3750, torqueNm: 774, hp: 408 }, { rpm: 4000, torqueNm: 790, hp: 444 }, { rpm: 4250, torqueNm: 787, hp: 470 }, { rpm: 4500, torqueNm: 785, hp: 496 }, { rpm: 4750, torqueNm: 782, hp: 522 }, { rpm: 5000, torqueNm: 781, hp: 548 }, { rpm: 5250, torqueNm: 764, hp: 563 }, { rpm: 5500, torqueNm: 753, hp: 581 }, { rpm: 5750, torqueNm: 743, hp: 600 }, { rpm: 6000, torqueNm: 717, hp: 604 }, { rpm: 6250, torqueNm: 694, hp: 609 }],
+    notes: "Raster (animated GIF) chart traced by colour at 3440x1566 (or 1720x783): final frame, white (torque) and yellow (hp) marker/line centroids per pixel column, axes calibrated from detected gridlines (labels read visually; x axis starts at the axis line = first label, y bottom = lowest label), sampled every 250 rpm by linear interpolation. Axis units lb-ft / hp (shared axis), torque converted x1.35582 to Nm. Chart hp trace vs chart torque trace (hp = lb-ft*rpm/5252): mean 0.6 %, max 1.5 %. Traced peaks 583 lb-ft @ 4000 rpm / 609 hp vs callouts 580 lb-ft @ 4000 / 605 hp @ 6000. The chart is an idealised few-marker representation of a crate-engine dyno run (Chevrolet Performance: SAE J1349 net / J1995 gross, test headers, no accessories); declared/idealised, not a raw trace. Points 3250-6250 rpm.",
+    split: 'train',
+  },
+  {
+    engineId: 'gm-zz572-720',
+    source: {
+      url: 'https://www.chevrolet.com/content/dam/chevrolet/na/us/english/index/performance/powertrain/engines/new/big-block/572-engines/01-images/v2/2026-dyno-chart-zz572-720-v2.gif',
+      title: 'Chevrolet Performance (chevrolet.com) ZZ572/720 crate engine page, DYNO CHART',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'unknown', confidence: 'medium',
+    points: [{ rpm: 3500, torqueNm: 782, hp: 384 }, { rpm: 3750, torqueNm: 800, hp: 421 }, { rpm: 4000, torqueNm: 819, hp: 460 }, { rpm: 4250, torqueNm: 850, hp: 507 }, { rpm: 4500, torqueNm: 882, hp: 557 }, { rpm: 4750, torqueNm: 899, hp: 599 }, { rpm: 5000, torqueNm: 916, hp: 643 }, { rpm: 5250, torqueNm: 906, hp: 668 }, { rpm: 5500, torqueNm: 888, hp: 686 }, { rpm: 5750, torqueNm: 865, hp: 698 }, { rpm: 6000, torqueNm: 843, hp: 710 }, { rpm: 6250, torqueNm: 818, hp: 718 }, { rpm: 6500, torqueNm: 790, hp: 721 }],
+    notes: "Raster (animated GIF) chart traced by colour at 3440x1566 (or 1720x783): final frame, white (torque) and yellow (hp) marker/line centroids per pixel column, axes calibrated from detected gridlines (labels read visually; x axis starts at the axis line = first label, y bottom = lowest label), sampled every 250 rpm by linear interpolation. Axis units lb-ft / hp (shared axis), torque converted x1.35582 to Nm. Chart hp trace vs chart torque trace (hp = lb-ft*rpm/5252): mean 1.5 %, max 6.0 %. Traced peaks 676 lb-ft @ 5000 rpm / 721 hp vs callouts 680 lb-ft @ 4900 / 727 hp @ 6300. The chart is an idealised few-marker representation of a crate-engine dyno run (Chevrolet Performance: SAE J1349 net / J1995 gross, test headers, no accessories); declared/idealised, not a raw trace. Points 3500-6500 rpm.",
+    split: 'train',
+  },
+  {
+    engineId: 'gm-zz632-1000',
+    source: {
+      url: 'https://www.chevrolet.com/content/dam/chevrolet/na/us/english/index/performance/powertrain/engines/new/big-block/632-engine/01-images/new/v-3/2026_Dyno-Chart_ZZ632-1000_v2.gif',
+      title: 'Chevrolet Performance (chevrolet.com) ZZ632/1000 crate engine page, DYNO CHART',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'unknown', confidence: 'medium',
+    points: [{ rpm: 3250, torqueNm: 858, hp: 392 }, { rpm: 3500, torqueNm: 931, hp: 458 }, { rpm: 3750, torqueNm: 981, hp: 516 }, { rpm: 4000, torqueNm: 1051, hp: 591 }, { rpm: 4250, torqueNm: 1096, hp: 654 }, { rpm: 4500, torqueNm: 1117, hp: 706 }, { rpm: 4750, torqueNm: 1124, hp: 750 }, { rpm: 5000, torqueNm: 1147, hp: 805 }, { rpm: 5250, torqueNm: 1155, hp: 851 }, { rpm: 5500, torqueNm: 1163, hp: 898 }, { rpm: 5750, torqueNm: 1162, hp: 938 }, { rpm: 6000, torqueNm: 1146, hp: 966 }, { rpm: 6250, torqueNm: 1121, hp: 984 }, { rpm: 6500, torqueNm: 1095, hp: 999 }, { rpm: 6750, torqueNm: 1054, hp: 999 }, { rpm: 7000, torqueNm: 1016, hp: 999 }],
+    notes: "Raster (animated GIF) chart traced by colour at 3440x1566 (or 1720x783): final frame, white (torque) and yellow (hp) marker/line centroids per pixel column, axes calibrated from detected gridlines (labels read visually; x axis starts at the axis line = first label, y bottom = lowest label), sampled every 250 rpm by linear interpolation. Axis units lb-ft / hp (shared axis), torque converted x1.35582 to Nm. Chart hp trace vs chart torque trace (hp = lb-ft*rpm/5252): mean 0.9 %, max 2.5 %. Traced peaks 858 lb-ft @ 5500 rpm / 999 hp vs callouts 876 lb-ft @ 5600 / 1004 hp @ 6600. The chart is an idealised few-marker representation of a crate-engine dyno run (Chevrolet Performance: SAE J1349 net / J1995 gross, test headers, no accessories); declared/idealised, not a raw trace. Points 3250-7000 rpm.",
+    split: 'holdout',
+  },
 ];
 
 /** All engines (peak-calibration set + extended set) by id. */
