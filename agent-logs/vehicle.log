@@ -1,0 +1,2 @@
+2026-11-05T05:43:17Z vehicle agent start: reading arch, designing src/vehicle
+2026-11-05T05:51:38Z vehicle: core model (accelerate/topSpeed/optimize), 9 reference cars, tests passing; globals fitted on train (mu 1.36, util .9, eta .92)
