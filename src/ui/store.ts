@@ -6,6 +6,9 @@ import { PRESETS } from '../sim/presets';
 import { oemLimitOptions } from '../sim/customBuild';
 import { SUPPORTED_CYLINDERS } from '../sim/layout';
 import type { Units } from './units';
+import { DEFAULT_DESIGN, mergeDesign, type VehicleDesign } from './vehicle/design';
+
+export type AppMode = 'engine' | 'vehicle';
 
 export type ViewMode = 'solid' | 'cutaway' | 'xray';
 
@@ -31,9 +34,12 @@ export interface SavedEngine {
   peakHp: number;
   peakTorqueNm: number;
   displacementL: number;
+  /** Vehicle design saved with the build. Absent on saves made before Vehicle mode existed. */
+  vehicle?: VehicleDesign;
 }
 export type GarageSlot = SavedEngine | null;
 const LS_PREFS = 'engine-forge:prefs:v1';
+const LS_VEHICLE = 'engine-forge:vehicle:v1';
 
 export interface UIState {
   config: EngineConfig;
@@ -51,6 +57,13 @@ export interface UIState {
   running: boolean;
   viewMode: ViewMode;
   units: Units;
+  appMode: AppMode;
+  vehicle: VehicleDesign;
+  setAppMode: (m: AppMode) => void;
+  /** Replace the whole vehicle design (preset / garage load). */
+  loadVehicle: (v: VehicleDesign) => void;
+  /** Patch the design; `spec` patches merge into design.spec. */
+  setVehicle: (patch: Partial<Omit<VehicleDesign, 'spec'>> & { spec?: Partial<VehicleDesign['spec']> }) => void;
   snapshots: Snapshot[];
   garage: GarageSlot[];
   dynoActive: boolean;
@@ -161,28 +174,44 @@ function configFromHash(): EngineConfig | null {
   }
 }
 
+/** Validate one garage entry from storage. Old saves have no `vehicle`; that stays undefined. */
+export function parseSavedEngine(e: unknown): SavedEngine | null {
+  if (!e || typeof e !== 'object' || !(e as SavedEngine).config) return null;
+  const r = e as Record<string, unknown>;
+  const config = mergeConfig(r.config);
+  const out: SavedEngine = {
+    name: typeof r.name === 'string' && r.name.trim() ? r.name : config.name,
+    config,
+    savedAt: Number(r.savedAt) || Date.now(),
+    peakHp: Number(r.peakHp) || 0,
+    peakTorqueNm: Number(r.peakTorqueNm) || 0,
+    displacementL: Number(r.displacementL) || 0,
+  };
+  if (r.vehicle && typeof r.vehicle === 'object') out.vehicle = mergeDesign(r.vehicle);
+  return out;
+}
+
 function initialGarage(): GarageSlot[] {
   const empty: GarageSlot[] = Array.from({ length: GARAGE_SLOTS }, () => null);
   if (typeof window === 'undefined') return empty;
   try {
     const raw = JSON.parse(localStorage.getItem(LS_GARAGE) ?? 'null');
     if (!Array.isArray(raw)) return empty;
-    return empty.map((_, i) => {
-      const e = raw[i];
-      if (!e || typeof e !== 'object' || !e.config) return null;
-      const config = mergeConfig(e.config);
-      return {
-        name: typeof e.name === 'string' && e.name.trim() ? e.name : config.name,
-        config,
-        savedAt: Number(e.savedAt) || Date.now(),
-        peakHp: Number(e.peakHp) || 0,
-        peakTorqueNm: Number(e.peakTorqueNm) || 0,
-        displacementL: Number(e.displacementL) || 0,
-      };
-    });
+    return empty.map((_, i) => parseSavedEngine(raw[i]));
   } catch {
     return empty;
   }
+}
+
+function initialVehicle(): VehicleDesign {
+  if (typeof window === 'undefined') return DEFAULT_DESIGN;
+  try {
+    const raw = localStorage.getItem(LS_VEHICLE);
+    if (raw) return mergeDesign(JSON.parse(raw));
+  } catch {
+    /* ignore */
+  }
+  return DEFAULT_DESIGN;
 }
 
 function initialConfig(): EngineConfig {
@@ -198,16 +227,17 @@ function initialConfig(): EngineConfig {
   return DEFAULT_CONFIG;
 }
 
-function initialPrefs(): { units: Units; viewMode: ViewMode; panelCollapsed: boolean } {
+function initialPrefs(): { units: Units; viewMode: ViewMode; panelCollapsed: boolean; appMode: AppMode } {
   try {
     const p = JSON.parse(localStorage.getItem(LS_PREFS) ?? '{}');
     return {
       units: p.units === 'imperial' ? 'imperial' : 'metric',
       viewMode: ['solid', 'cutaway', 'xray'].includes(p.viewMode) ? p.viewMode : 'solid',
       panelCollapsed: !!p.panelCollapsed,
+      appMode: p.appMode === 'vehicle' ? 'vehicle' : 'engine',
     };
   } catch {
-    return { units: 'metric', viewMode: 'solid', panelCollapsed: false };
+    return { units: 'metric', viewMode: 'solid', panelCollapsed: false, appMode: 'engine' };
   }
 }
 
@@ -239,6 +269,14 @@ export const useStore = create<UIState>()((set, get) => {
     running: true,
     viewMode: prefs0.viewMode,
     units: prefs0.units,
+    appMode: prefs0.appMode,
+    vehicle: initialVehicle(),
+    setAppMode: (appMode) => set({ appMode }),
+    loadVehicle: (v) => set({ vehicle: mergeDesign(structuredClone(v)) }),
+    setVehicle: (patch) => {
+      const cur = get().vehicle;
+      set({ vehicle: { ...cur, ...patch, spec: { ...cur.spec, ...(patch.spec ?? {}) } } });
+    },
     snapshots: [],
     garage: initialGarage(),
     dynoActive: false,
@@ -290,6 +328,7 @@ export const useStore = create<UIState>()((set, get) => {
         peakHp: result.peakHp,
         peakTorqueNm: result.peakTorqueNm,
         displacementL: result.displacementL,
+        vehicle: structuredClone(get().vehicle),
       };
       const next = garage.slice();
       next[i] = saved;
@@ -300,7 +339,10 @@ export const useStore = create<UIState>()((set, get) => {
     },
     loadFromGarage: (slot) => {
       const e = get().garage[slot];
-      if (e) get().loadConfig({ ...e.config, name: e.name });
+      if (!e) return;
+      get().loadConfig({ ...e.config, name: e.name });
+      // Old saves carry no vehicle: keep the current design rather than resetting it.
+      if (e.vehicle) get().loadVehicle(e.vehicle);
     },
     renameGarageSlot: (slot, name) => {
       const nm = name.trim();
@@ -328,6 +370,7 @@ export const useStore = create<UIState>()((set, get) => {
 // ---- persistence -------------------------------------------------------------
 if (typeof window !== 'undefined') {
   let t: number | undefined;
+  let tv: number | undefined;
   useStore.subscribe((s, prev) => {
     if (s.config !== prev.config) {
       window.clearTimeout(t);
@@ -348,11 +391,21 @@ if (typeof window !== 'undefined') {
         /* quota */
       }
     }
-    if (s.units !== prev.units || s.viewMode !== prev.viewMode || s.panelCollapsed !== prev.panelCollapsed) {
+    if (s.vehicle !== prev.vehicle) {
+      window.clearTimeout(tv);
+      tv = window.setTimeout(() => {
+        try {
+          localStorage.setItem(LS_VEHICLE, JSON.stringify(s.vehicle));
+        } catch {
+          /* quota */
+        }
+      }, 250);
+    }
+    if (s.units !== prev.units || s.viewMode !== prev.viewMode || s.panelCollapsed !== prev.panelCollapsed || s.appMode !== prev.appMode) {
       try {
         localStorage.setItem(
           LS_PREFS,
-          JSON.stringify({ units: s.units, viewMode: s.viewMode, panelCollapsed: s.panelCollapsed }),
+          JSON.stringify({ units: s.units, viewMode: s.viewMode, panelCollapsed: s.panelCollapsed, appMode: s.appMode }),
         );
       } catch {
         /* ignore */
