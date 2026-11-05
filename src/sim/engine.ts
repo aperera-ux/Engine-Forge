@@ -207,22 +207,37 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
 
 /**
  * Breathing (gas-exchange) tables cached per configuration. The table is a
- * pure function of the sanitised config and the global calibration CAL, so
- * the key is both serialised: any change to either rebuilds it. Repeated
- * simulations of one config (OEM-limit toggle, unlimited curve, UI edits of
- * other fields cancelled/redone, benchmarks) reuse it. Small LRU.
+ * pure function of the sanitised config and the global calibration CAL; the
+ * key is both serialised, minus config fields the breathing model provably
+ * never reads (BREATHING_IRRELEVANT; guarded by src/sim/__tests__/breathingCache.test.ts, which
+ * perturbs each and checks cached == uncached results). So boost target, ECU
+ * limits, intercooler, turbo sizing, throttle, fuel-system and bottom-end
+ * edits reuse the table. Small LRU.
  */
 const BREATHING_CACHE = new Map<string, BreathingModel>();
 const BREATHING_CACHE_MAX = 12;
 let breathingCacheEnabled = true;
+/** Config fields the breathing model never reads (top level, and inside `turbo`). */
+export const BREATHING_IRRELEVANT = {
+  top: ['name', 'ecu', 'throttleMm', 'intakeSystem', 'directInjection', 'blockMaterial', 'pistons', 'rods', 'crank', 'supercharger'] as const,
+  turbo: ['targetBoostBar', 'compressorInducerMm', 'turbineAR', 'intercoolerEffectiveness'] as const,
+};
 /** Test/benchmark hook: disable (and clear) the breathing-table cache. */
 export function setBreathingCache(on: boolean): void {
   breathingCacheEnabled = on;
   BREATHING_CACHE.clear();
 }
+function breathingKey(c: EngineConfig): string {
+  const k: Record<string, unknown> = { ...c };
+  for (const f of BREATHING_IRRELEVANT.top) delete k[f];
+  const t: Record<string, unknown> = { ...c.turbo };
+  for (const f of BREATHING_IRRELEVANT.turbo) delete t[f];
+  k.turbo = t;
+  return JSON.stringify(k) + '\u0000' + JSON.stringify(CAL);
+}
 function breathingFor(c: EngineConfig, build: () => BreathingModel): BreathingModel {
   if (!breathingCacheEnabled) return build();
-  const key = JSON.stringify(c) + '\u0000' + JSON.stringify(CAL);
+  const key = breathingKey(c);
   const hit = BREATHING_CACHE.get(key);
   if (hit) {
     BREATHING_CACHE.delete(key);
