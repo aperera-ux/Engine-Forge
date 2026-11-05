@@ -123,6 +123,8 @@ export function applyPost(r: SimResult, p: PostCorrection): SimResult {
     ...r,
     curve,
     unlimited: undefined,
+    // The model's validation-residual band describes the uncalibrated model; it does not apply to a fitted curve.
+    uncertainty: undefined,
     peakTorqueNm: pkT,
     peakTorqueLbFt: pkT * 0.737562,
     peakTorqueRpm: tRange[0],

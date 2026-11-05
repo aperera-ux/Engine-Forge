@@ -22,6 +22,7 @@ const PATHS = {
   check: 'M5 12.5l4.5 4.5L19 7',
   sheet: 'M8 4h8v3H8zM6 5.5H5v15h14v-15h-1M8.5 11h7M8.5 14.5h7M8.5 18h4',
   garage: 'M3 10l9-6 9 6v10H3zM7 20v-6h10v6M7 17h10',
+  calibrate: 'M3 20h18M5 16l4-5 3 3 4-7 3 4M12 3v3M12 18v2',
   link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
 } as const;
 

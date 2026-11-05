@@ -6,10 +6,10 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { DYNO_CURVES } from '../../sim/validation/dynoCurves';
-import { importDyno } from '../parse';
+import { DYNO_CURVES } from '../../src/sim/validation/dynoCurves';
+import { importDyno } from '../../src/calibrate/parse';
 
-const DIR = resolve(__dirname, '../../../public/samples');
+const DIR = resolve(__dirname, '../../public/samples');
 const curve = (id: string) => DYNO_CURVES.find((c) => c.engineId === id)!;
 
 function lcg(seed: number) {

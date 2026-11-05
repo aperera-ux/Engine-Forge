@@ -3,7 +3,9 @@ import { hardwareDiff } from '../sim/customBuild';
 import { useStore } from './store';
 import { DynoChart, Delta } from './charts/DynoChart';
 import { C, SNAP_COLORS } from './charts/common';
-import { conv } from './units';
+import { conv, fmt } from './units';
+import { isCalibrationStale } from '../calibrate';
+import { useCalib } from './calibrateStore';
 
 /** Factory-limit status, hardware-only toggle and prediction-uncertainty badge. */
 function DynoNotes() {
@@ -29,8 +31,39 @@ function DynoNotes() {
   const hasReasons = !!u && u.reasons.length > 0;
   const strong = !!u && u.extrapolation >= 0.5;
   const bandPct = u ? (u.peakHpPct ?? 0) : 0;
+  const cal = useStore((s) => s.calibration);
+  const calStale = !!cal && isCalibrationStale(config, cal);
+  const rangeTxt = (r: [number, number] | undefined, rpm: number) => (r && r[1] - r[0] > 1 ? `${fmt(r[0])}–${fmt(r[1])}` : fmt(rpm));
+  const tPlateau = !!result.peakTorqueRpmRange && result.peakTorqueRpmRange[1] - result.peakTorqueRpmRange[0] > 1;
+  const pPlateau = !!result.peakPowerRpmRange && result.peakPowerRpmRange[1] - result.peakPowerRpmRange[0] > 1;
   return (
     <div className="dyno-notes" data-testid="dyno-notes">
+      {cal && (
+        <span
+          className={`dn-chip cal ${cal.verdict === 'poor' ? 'poor' : ''}`}
+          data-testid="calibrated-badge"
+          title={`Fitted to ${cal.sourceName}: RMS torque error ${cal.rmsBeforePct.toFixed(1)} % to ${cal.rmsAfterPct.toFixed(1)} %.${cal.verdict === 'poor' ? ' The fit stayed above 5 %.' : ''}${calStale ? ' The build was edited after the fit; the fitted corrections still apply.' : ''} The model's validation band does not apply to a fitted curve.`}
+        >
+          Calibrated to {cal.sourceName}
+          <small>
+            RMS {cal.rmsBeforePct.toFixed(1)} → {cal.rmsAfterPct.toFixed(1)} %{calStale ? ' · build edited since fit' : ''}
+          </small>
+        </span>
+      )}
+      {(tPlateau || pPlateau) && (
+        <span className="dn-peaks" data-testid="dyno-peak-ranges">
+          {tPlateau && (
+            <span data-testid="peak-torque-range">
+              Peak torque {fmt(T.to(result.peakTorqueNm))} {T.label} @ {rangeTxt(result.peakTorqueRpmRange, result.peakTorqueRpm)} rpm
+            </span>
+          )}
+          {pPlateau && (
+            <span data-testid="peak-power-range">
+              Peak power {fmt(P.to(result.peakPowerKw))} {P.label} @ {rangeTxt(result.peakPowerRpmRange, result.peakPowerRpm)} rpm
+            </span>
+          )}
+        </span>
+      )}
       {lim.present && lim.applied && (
         <span className="dn-chip lim" data-testid="oem-limits-label" title={`The factory ECU in the published rating limits this stock engine: ${limTxt}.`}>
           Factory ECU limits (from published rating)
@@ -109,6 +142,8 @@ export function DynoCard() {
   const snapshots = useStore((s) => s.snapshots);
   const units = useStore((s) => s.units);
   const dyno = useStore((s) => s.dynoActive);
+  const measured = useCalib((s) => s.imported?.ok ?? false);
+  const calName = useStore((s) => s.calibration?.sourceName);
   const P = conv('power', units);
   const T = conv('torque', units);
   return (
@@ -127,6 +162,12 @@ export function DynoCard() {
             <i style={{ background: C.torque }} />
             Torque
           </span>
+          {(measured || calName) && (
+            <span className="lg" data-testid="measured-legend" title="Measured dyno curve (crank basis, resampled)">
+              <i className="dot" style={{ background: '#1f2937' }} />
+              Measured
+            </span>
+          )}
           {snapshots.map((s) => {
             const dp = P.to(result.peakPowerKw) - P.to(s.result.peakPowerKw);
             const dt = T.to(result.peakTorqueNm) - T.to(s.result.peakTorqueNm);
