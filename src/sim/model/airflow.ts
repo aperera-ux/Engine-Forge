@@ -311,7 +311,11 @@ export class BreathingModel {
       const v0 = memo[b];
       return wq === 0 ? v0 : v0 + wq * (memo[b + 1] - v0);
     };
+    const obj = (v: number, x: number, q: number) => v - CAL.ecuResidualWeight * x - q / CAL.ecuImepPerVe;
     let best = { ve: -1, xr: 0, pm: 0, l: 0, s: 0 };
+    let bestObj = -Infinity;
+    let second = { ve: -1, xr: 0, pm: 0, l: 0, s: 0 };
+    let secondObj = -Infinity;
     for (let l = 0; l < this.lobes.length; l++) {
       let ve: number;
       let xr: number;
@@ -351,8 +355,28 @@ export class BreathingModel {
         pm = wm * pmm + w0 * pm0 + wp * pmp;
       }
       // ECU torque model: brake MEP ∝ trapped charge × (imep per unit VE) − pumping.
-      const obj = (v: number, x: number, q: number) => v - CAL.ecuResidualWeight * x - q / CAL.ecuImepPerVe;
-      if (best.ve < 0 || obj(ve, xr, pm) > obj(best.ve, best.xr, best.pm)) best = { ve, xr, pm, l, s: ph };
+      const o = obj(ve, xr, pm);
+      if (best.ve < 0 || o > bestObj) {
+        second = best;
+        secondObj = bestObj;
+        best = { ve, xr, pm, l, s: ph };
+        bestObj = o;
+      } else if (second.ve < 0 || o > secondObj) {
+        second = { ve, xr, pm, l, s: ph };
+        secondObj = o;
+      }
+    }
+    // Lift-stage switch (variable lift): the ECU picks the stage with the better
+    // objective. A hard argmax makes VE / residual jump where the objectives
+    // cross, and since the objective depends on the exhaust pressure ratio the
+    // operating point (a fixed point in exhaust state) then may not exist at the
+    // switch. The two stages are blended over |Δobjective| < CAL.ecuLobeBlend
+    // (C¹ smoothstep, 50/50 at the tie, pure choice outside): the engine-average
+    // of a switch that real ECUs spread over a small speed/load window.
+    if (second.ve >= 0 && bestObj - secondObj < CAL.ecuLobeBlend) {
+      const u = (bestObj - secondObj) / CAL.ecuLobeBlend;
+      const w = 0.5 * (1 - u * u * (3 - 2 * u));
+      best = { ve: best.ve + w * (second.ve - best.ve), xr: best.xr + w * (second.xr - best.xr), pm: best.pm + w * (second.pm - best.pm), l: best.l, s: best.s };
     }
     // Analytic correction from the tabulated to the actual pressure ratio.
     if (Math.abs(pr - prRef) > 1e-6) {

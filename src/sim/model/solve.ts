@@ -9,6 +9,7 @@
  * Returns the bracket point with the smaller |f| interpolated root.
  * `pure`: f has no side effects, so the final (result-independent) evaluation
  * can be skipped; the returned root is bit-identical either way.
+ * `fTol`: also stop at the first evaluated x with |f(x)| ≤ fTol (default 0).
  */
 export function illinois(
   f: (x: number) => number,
@@ -19,6 +20,7 @@ export function illinois(
   fLo?: number,
   fHi?: number,
   pure = false,
+  fTol = 0,
 ): number {
   let a = lo;
   let b = hi;
@@ -37,7 +39,7 @@ export function illinois(
     // tolerance: for side-effect-free f skip that last evaluation (same result).
     if (pure && Math.abs(b - a) < tol) return x;
     const fx = f(x);
-    if (fx === 0 || Math.abs(b - a) < tol) return x;
+    if (Math.abs(fx) <= fTol || Math.abs(b - a) < tol) return x;
     if (fx * fb > 0) {
       b = x;
       fb = fx;

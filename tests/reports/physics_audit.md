@@ -710,7 +710,7 @@ Only the Rule 4 premise was changed.
    - **Guarantee:** torque ≤ limit + 0.05 N·m. The one exception is a limit below the unboosted torque at t = 0. A real ECU would then pull throttle or spark, which is not modelled. No reference config hits this case.
 2. **The torque limit is re-applied after the knock trim and component protection.**
    - Those steps re-solve the point from the exhaust-state warm start of the limited point (its EGT and back-pressure). That changes knock retard at identical boost: B58 at 1600 rpm, same 0.615 bar, retard 10.0° → 9.5°.
-   - So they could land up to 1.5 N·m above the limit. This is a model artefact: `evalPoint` is not a fixed point in EGT. It is left for a follow-up.
+   - So they could land up to 1.5 N·m above the limit. This is a model artefact: `evalPoint` is not a fixed point in EGT. It is left for a follow-up. (Superseded by §16: the point is now a fixed point and this re-limit is removed.)
 3. **Peak rpm on a limited plateau.** If any point within `PEAK_PLATEAU_BAND_NM` = 0.1 N·m (2 × tol) of the peak torque is held by the torque limit:
    - `peakTorqueRpm` = the **lowest** rpm in that band, which is the plateau start.
    - New `peakTorqueRpmRange` = [first, last] rpm in the band. It is the OEM quote, "450 N·m @ 1400–5000 rpm"; its single-number form ("from 1400 rpm") is the start.
@@ -767,3 +767,135 @@ Only the Rule 4 premise was changed.
   - New file `src/sim/__tests__/torqueLimiter.test.ts`, 45 tests. The pre-fix limiter fails 28 of them.
   - Full suite: 44 → 43 failures, with no new ones. Fixed: `envelopes › vw-ea888-gen3-gti › peak-power rpm within tolerance (or within published hp plateau)`, because peakPowerRpm is now the power-band start.
 - `CAL.ecuTorqueIters` (§13a item 3, §14.4) is replaced by `ecuTorqueMaxIters` and `ecuTorqueTolNm`.
+
+## 16. Self-consistent operating point and continuous ECU solves
+
+### 16.1 What was wrong
+§15.5 left this open: Ford 1.0 EcoBoost moved by up to 1.5 % and its peakTorqueRpm flipped 2800 ↔ 2350 rpm (3 grid steps) under 1e-3 relative input changes. Five causes were found, each a jump in an inner solve:
+
+1. **Not a fixed point in exhaust state.** `evalPoint` takes EGT (residual-gas and turbine-inlet temperature) and exhaust or turbine-inlet pressure as guesses and returns the values they produce. It was evaluated once from the previous rpm's state (or from a limited iterate's state in the ECU steps). So the same boost target gave a different retard depending on history (B58 1600 rpm: 10.0° vs 9.5°).
+   - Twin-scroll turbos also fed back the wrong variable: p3 × 0.95 went in where p3 was expected, so the flow was evaluated at p3 × 0.95².
+2. **Turbo PR solve.** The compressor flow fraction φ was lagged by one PR iterate (`turboFlowPasses = 1`), so the margin the PR search saw was not a function of PR. Illinois was also capped at 10 iterations, and could stop up to 2.5 % away from the root (B58 6800 rpm: PR 1.609 vs 1.644). Together these made boost a discontinuous function of the exhaust-pressure guess.
+3. **Knock integral saw-tooth.** The knock integral included a 1° step only if xb < 0.95 at its end. Whenever the 95 % burn angle crossed a grid node, the hottest step dropped out, so KI was a saw-tooth in spark timing. The knock-limited retard jumped by up to 0.5° (Ford 1.0 at 2650 rpm: 10.27° vs 9.80° for a 0.2 K change in EGT input).
+4. **Knock search, knock trim and protection stops.**
+   - The retard search returned the bracket end, a staircase of steps up to 0.05°.
+   - The knock trim stopped at 0.1° or after 4 iterations, and then took the low-boost bracket end. This biased it low by up to 0.15° (Ford 3.5 at 5500 rpm).
+   - Protection used a 9-step bisection, a staircase of 1/512 of boost.
+5. **Discrete switches inside the fixed point.**
+   - The variable-lift stage argmax depends on the exhaust/intake pressure ratio. At the switch, the operating point had no fixed point (N55 2400 rpm oscillated between 395.0 and 396.9 N·m).
+   - The wastegate model switched between "shut" and "regulating" at turbine power = 1.05 × compressor power, which made p3 jump by the 5 % margin (EA888 gen 3 at 6400 rpm).
+   - The torque limiter's 16-iteration cap was hit where torque is flat in the target (speed-line-limited boost), and it returned a path-dependent bracket end (EA888 gen 3 at 6400 rpm: jumps of 0.4 N·m).
+
+### 16.2 What it does now
+**Operating point (`solvePoint`, engine.ts).**
+- The point is the solution of F(x) = G(x) − x = 0 for x = (EGT, exhaust state), solved by 2-D Broyden.
+  - The pressure is scaled at 100 Pa per K.
+  - The Jacobian is warm-started from the previous solve.
+  - Steps are capped and kept inside a search box: EGT 400–1600 K, 0.5–30 bar.
+  - A step that raises the residual is rejected (the Jacobian still learns from it). After four rejections in a row the Jacobian restarts from −I.
+  - The iteration stops early if the best residual moves < 1 % in 12 evaluations; this happens only for degenerate points such as zero brake torque on absurd fuzz configs.
+  - A failed solve returns its lowest-residual evaluation and does not pass its Jacobian on to the next solve.
+  - Two robustness bugs were found by the full suite and fixed this way:
+    - fuzz configs got NaN from a −7500 K extrapolated warm start;
+    - EA888 at CR 6.1 gave a +21 % hp spike when the old "accept after 3 rejections" rule walked away from the root.
+- Converged when:
+  - the residual is ≤ 2× tolerance, and
+  - the next quasi-Newton step is ≤ 1× tolerance (`CAL.pointEgtTolK` = 0.01 K, `pointPExhTolRel` = 2e-5).
+  - The step criterion matters where the loop gain is near 1: a spool-limited turbo has EGT → turbine power → boost → EGT gain near +1, and back-pressure → flow gain down to about −4. There |F| alone understates the distance to the root.
+- Normally 2–3 evaluations per point. Cap `pointMaxIters` = 30.
+- Every point of all 67 configs converges (tested). The warm start (previous rpm, previous target, extrapolated) changes only the iteration count.
+
+**ECU target.**
+- The ECU target is the lowest of: the schedule, the torque limit, the knock trim and protection. Each is a bracketed Illinois on converged points, so each is a function of the target alone:
+  - torque limit: |T − limit| ≤ `ecuTorqueSolveTolNm` = 0.002 N·m, cap 40;
+  - knock trim: |retard − accepted| ≤ `ecuKnockTolDeg` = 2e-4°, cap 20;
+  - protection: |excess| ≤ `ecuProtectTol` = 1e-4, cap 20.
+- Each step can only lower the target, and torque rises with boost, so a constraint already met stays met. **The re-limit patch (§15.2 item 2) is removed.**
+- The guarantee torque ≤ limit + 0.05 N·m (`ecuTorqueTolNm`) still holds. It is tested on the 12 limited configs, 4 user caps, and every ±1e-3 perturbation of Ford 1.0, B58 and EA888 gen 3.
+- `pointSolveStats.ecuUnconverged` counts ECU solves that stop at their cap. It is 0 on every config (tested).
+- The torque limit starts from the previous rpm's limited target, extrapolated. If torque there is already above the limit, the limit binds at the scheduled target too, so the scheduled-target point is skipped.
+
+**Knock-limited spark (combustion.ts).**
+- The knock integral ends at the 95 % burn angle with a 1° ramp, w = clamp(θ95 + ½ − θ, 0, 1). This is the old hard cut averaged over the sub-grid position of θ95: the same KI on average, but continuous.
+- The retard is the linear interpolation in ln KI across the final bracket (≤ 0.05° wide; interpolation error about 1e-5°).
+- It is warm-started from the last retard and slope. A Newton step of ≤ 0.01° is accepted without bracketing.
+- Hint and cold solves agree to < 2e-3° (tested).
+
+**Turbo (boost.ts).**
+- φ is solved to 1e-5 per PR evaluation, secant-accelerated and extrapolated in PR.
+- PR Illinois: cap 60, tolerance 1e-7, warm-started from the previous root.
+- The wastegate p3 is always min(p3c, max(p3 where turbine power = compressor power, p3 with the gate fully open)). This is continuous, and equals p3c when spool-limited.
+- **Several spool roots.** When the turbine term binds, the margin can have several roots (Audi 2.7T at 1600 rpm: PR 1.23 and 1.49). The **lowest** root is taken: the equilibrium a turbo spooling up from rest reaches.
+  - The highest root was tried first. It leaves the coupled fixed point without a solution, because that root exists only at a back-pressure lower than the one it produces.
+- The diagnostic `limit` probe is evaluated lazily.
+
+**Variable lift.** The two stages are blended by a C¹ smoothstep where their cam-selection objectives differ by less than `CAL.ecuLobeBlend` = 0.005 (≈ VE units). Outside that band it is the pure choice. This is the engine-average of a switch that real ECUs spread over a small speed/load window.
+
+### 16.3 Smoothness (1e-3 relative perturbations of bore, stroke, CR, intercooler effectiveness, boost target)
+Metric: max over rpm of max(|d(ε) − 2 d(ε/2)|, |d(+ε) + d(−ε)|) / torque, where d = Δtorque. It is 0 for a linear response, and of order J / torque for a jump J. Kinks where a limit starts to bind also count.
+
+| Config | Before (worst parameter) | After (worst parameter) | Peak-rpm moves, before → after |
+|---|---|---|---|
+| Ford 1.0 | 2.0e-2 (bore, stroke) | 7.4e-4 (bore, a kink where the limit starts to bind); IC / boost ≤ 5e-6 | peakTorqueRpm −3 steps → ≤ 1 step |
+| B58 | 1.8e-2 (stroke) | 5.9e-5 | ±1 step → 0 |
+| EA888 gen 3 | 8.6e-3 (bore) | 8.7e-4 (bore, breathing tables); others ≤ 2.5e-5 | ±1 step → 0 |
+| All 20 boosted, excluding EJ257 | 2.2e-2 | 2.6e-3 (bore, several configs) | none beyond 1 grid step |
+
+- The residual bore sensitivity of about 1e-3 is in the breathing tables, which are rebuilt when bore changes. It is outside the operating-point solve and does not appear for the other parameters.
+- **Known jump: Subaru EJ257 at 1600 rpm, bore +1e-3: +88 N·m.** The low spool equilibrium disappears there (a fold of the turbine/compressor power balance). This is physical for a steady-state model with spool positive feedback, so it is documented, not smoothed. The 2.7T and TT RS spool points sit close to such folds.
+- New tests are in `src/sim/__tests__/pointSolve.test.ts` (86 tests):
+  - every config converges (FP and ECU solves, residuals ≤ 2× tolerance);
+  - knock retard is continuous in charge temperature and independent of the hint;
+  - for Ford 1.0, B58 and EA888 gen 3 × 5 parameters, on 9 configs from −ε to +ε: no torque increment exceeds 3× its neighbours (plus 2e-5 relative), elasticity < 20, peak-hp increments are smooth, and peak rpms move ≤ 1 grid step;
+  - torque ≤ limit + 0.05 N·m on the perturbed configs.
+- The old torque-limiter tests (`torqueLimiter.test.ts`, 45) still pass.
+- Full suite after merging main f9bdfe9: 886 tests, 43 failed. These are the same 43 as main (envelopes, sanity rules, fuzz plausibility counts, EA888 cam-duration and throttle continuity, "bigger cam"). There are no new failures.
+- `tests/unit/continuity.test.ts`: the EA888 bore, CR, inducer and turbine-A/R sweeps and the Hellcat exhaust-valve sweep pass. They had failed or timed out with intermediate versions of this work.
+
+### 16.4 Accuracy before → after (`SIM_STATS=1`)
+| Statistic | Before | After |
+|---|---|---|
+| 21-set median / mean / max \|peak hp err\| | 4.566 / 5.453 / 13.790 % | 4.564 / 5.509 / 13.796 % |
+| 21-set max \|peak torque err\|; torque-peak rpm within ±10 % | 8.57 %; 12/21 | 8.49 %; 12/21 |
+| Train RMS, all / NA / boosted | 5.920 / 6.846 / 3.142 | 5.898 / 6.845 / 3.055 |
+| Holdout RMS, all / NA / boosted | 7.781 / 8.237 / 7.143 | 7.818 / 8.232 / 7.238 |
+
+**Not met: two headline numbers got slightly worse.** The 21-set mean |hp err| rose by 0.06 pt (5.453 → 5.509) and holdout RMS by 0.04 pt (7.781 → 7.818). The max |hp err| rose by 0.006 pt. Median, max torque error and train RMS improved.
+- **Mean hp.** Ford 3.5 +0.70 % and Ford 1.0 +0.38 % peak hp, both already over-predicted. The old knock trim stopped up to 0.15° short of its own accepted retard, on the low-boost side, and the old retard search returned the upper bracket end. That bias had been absorbed in the calibration.
+- **Holdout.** The spool-limited low-rpm points moved to their self-consistent state: N74 4.96 → 5.15 (1000–1200 rpm), 2.7T 10.12 → 10.25, TT RS 9.64 → 9.75, LT4 6.91 → 6.96.
+- **Not retuned.** The holdout must stay unseen by the fit. A train-only refit of the knock or ECU constants is the obvious next step.
+- A knock-window ramp ending at θ95 instead of centred on it was tried. It is worse on every statistic.
+- The spool-root rule and the twin-scroll fix were each checked by reverting. Neither changes the holdout or 21-set numbers; the twin-scroll fix improves train N55 and N20.
+- Three 21-set torque-peak rpms changed, all by one grid step: EA888 gen 3 2200 → 2350, Ford 1.0 2800 → 2650, Mazda 4000 → 4150 (the knock retard at the flat top).
+
+### 16.5 Outputs that moved by more than 0.1 % (67 configs × default / unlimited / oemOff, every SimResult leaf, vs the snapshot written before any change)
+- **NA engines.**
+  - knockRetardDeg moves on lightly knocking points. The relative changes are large on values of 0.01–0.3°. This is the effect of causes 3–4 of §16.1, the saw-tooth and staircase removed.
+  - Spark and pMax move ≤ 3 %.
+  - Torque moves > 0.1 % at ≤ 6 points per engine. The largest are K20A +0.67 % at 2500 rpm and F20C +0.55 % at 4750 rpm, both variable-lift blend points.
+  - NA peak values: only Mazda peakTorqueRpm, 4000 → 4150.
+- **Boosted engines.**
+
+| Config | Torque points > 0.1 % (worst) | Peaks | Reason |
+|---|---|---|---|
+| B58 | 6/31 (−11.6 % @1000) | oemOff: hp 363.8 → 369.0, power rpm 6000 → 5800 | First point: was iterated twice from a fixed 1050 K / 1.05 bar guess, now converged (spool); twin-scroll fix |
+| Ford 1.0 | 37/38 (+10.9 % @1600) | hp 127.20 → 127.69; peakTorqueRpm 2800 → 2650 | Spool point self-consistent; knock-trim bias removed |
+| EA888 gen 3 | 25/38 (+3.7 % @1300) | Tq 350.05 → 349.54; rpm 2200 → 2350 | Self-consistent point; continuous wastegate |
+| Ford 3.5 | 34/35 (+2.1 % @1450) | hp 405.9 → 408.7 | Knock-trim bias removed |
+| N20 | 23/31 (−8.4 % @1000) | hp 237.6 → 240.1; power rpm 5400 → 5600 | Spool first point; twin-scroll fix |
+| N55 | 11/31 (−2.4 % @6000) | hp 291.2 → 294.4; power rpm 5200 → 5400 | Twin-scroll fix; lift blend |
+| 2.7T S4 | 15/30 (−11.8 % @1600) | peakTorqueRpm 2000 → 1800 | Lowest spool root (was a path-dependent mix of branches) |
+| TT RS, EA113, EJ257, N63, N74, CAEB, 1.8 TFSI | ≤ 16 (≤ 2.6 %, at spool or knock-trim points) | CAEB power rpm 5400 → 5200 | Same causes |
+| Hypercar, drag build | 26–29 (≤ 1.7 %) | hp −0.8 % / +0.6 %; power rpm 7400 → 7000 / 7750 → 8000 | Knock trim and PR solve converged |
+| SC (Hellcat, LSA, LS9, LT4) | ≤ 16 (≤ 1.3 %) | LT4 Tq −0.18 %; LSA power rpm 6200 → 6000 | Knock trim and protection converged |
+
+- Other leaves at the same points follow from the same causes: boost, MAP, EGT, exhaust pressure, pmep, retard, spark, BSFC.
+- `uncertainty` follows the curve.
+
+### 16.6 Cost
+- Warm medians of 31 (`SIM_SNAPSHOT=time`):
+  - Max 5.98 → 7.37 ms (B58). EA113 7.25, Ford 3.5 6.65, EA888 gen 3 6.26 ms.
+  - Median over configs 0.47 → 0.65 ms.
+- Cold (breathing cache off): max 9.1 ms (B58).
+- All presets are under 10 ms.
+- What brings it within budget: warm-start hints that change only the iteration path. These are the retard and its slope, PR and φ, the fixed-point Jacobian, and the previous rpm's torque-limited target.

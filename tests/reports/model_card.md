@@ -7,7 +7,14 @@ A 0-D cycle-resolved wide-open-throttle engine model. It evaluates one cylinder 
 - **Combustion:** Wiebe burn duration, an indicated-efficiency correlation and a Douaud–Eyzat knock integral for spark retard.
 - **Losses:** Chen–Flynn friction plus valvetrain and accessory terms. Pumping work comes from the gas-exchange cycle.
 - **Forced induction:** compressor and turbine maps, wastegate, intercooler and supercharger.
-- **ECU layer:** torque and power management (bracketed solve on the boost target, torque ≤ limit + 0.05 N·m; on a limited plateau the peak rpm is the plateau start, see `physics_audit.md` §15), knock-limited boost trim, EGT enrichment, and component protection that cuts boost above 1090 °C EGT or 220 bar peak cylinder pressure.
+- **Operating point:** every rpm point is a converged fixed point in exhaust state (EGT and exhaust or turbine-inlet pressure), solved by 2-D Broyden. Results do not depend on the previous rpm or on the solver path beyond about 1e-5 relative (`physics_audit.md` §16).
+- **ECU layer:** the boost target is the lowest of four, each solved on converged points:
+  - the schedule;
+  - torque and power management: a bracketed solve on the target, torque ≤ limit + 0.05 N·m; on a limited plateau the peak rpm is the plateau start (§15);
+  - a knock-limited boost trim, continuous in its inputs;
+  - component protection, which cuts boost above 1090 °C EGT or 220 bar peak cylinder pressure.
+
+  EGT enrichment is applied as well.
 - **Output:** a dyno curve plus `SimResult.uncertainty`, a ±% band per point.
 
 ## What is an input and what is a prediction
@@ -35,14 +42,14 @@ A 0-D cycle-resolved wide-open-throttle engine model. It evaluates one cylinder 
 | Group | n | RMS |
 |---|---|---|
 | Train, all | 32 | 5.9% |
-| Train, NA | 24 | 6.9% |
+| Train, NA | 24 | 6.8% |
 | Train, boosted | 8 | 3.1% |
 | Holdout, all | 12 | 7.8% |
 | Holdout, NA | 7 | 8.2% |
-| Holdout, boosted | 5 | 7.1% |
+| Holdout, boosted | 5 | 7.2% |
 
 - **Peaks, 21 reference engines:**
-  - Median |hp error| 4.6%, mean 5.5%, max 13.8% (target: median ≤ 3%, max ≤ 8%, not met).
+  - Median |hp error| 4.6%, mean 5.5%, max 13.8% (target: median ≤ 3%, max ≤ 8%, not met). The §16 self-consistency work moved the mean from 5.45 to 5.51% and holdout RMS from 7.78 to 7.82%, with no retune.
   - Torque-peak rpm within ±10% for 12 of 21 (target ≥ 85%, not met).
   - Holdout curve RMS 7.8% against a target of ≤ 5%, not met.
 - **Holdout was scored once per round,** after the constants were frozen.
@@ -67,6 +74,8 @@ All tuned scalars sit inside literature ranges: valve Cd 0.65–0.81, port-refle
 - **Taylor valve-choking** for undersized valves is too weak.
 - **ITB top-end gain** is not reproduced.
 - **ECU-limited turbo engines:** the plateau end and the peak-power rpm depend on the estimated turbo hardware.
+- **Turbo spool folds:** where the turbine/compressor power balance has two equilibria (spool-limited low rpm), the model takes the lower one, the equilibrium reached when spooling up from rest. Near the fold the curve can jump under tiny input changes (Subaru EJ257 at 1600 rpm: +88 N·m for bore +0.1%). The 2.7T and TT RS low-rpm points sit near such folds.
+- **Variable lift** is two-stage, blended over a narrow band of the ECU objective at the switch.
 - **Boundary configs:** fuzz fails for absurd combinations (BMEP above 30 bar, EGT at the model's 1227 °C clamp, adjacent-point jumps on NA).
 - **Mass model:** ±15% fails on three engines.
 - **Cylinder counts and layouts** outside the reference set are not validated.
