@@ -7,7 +7,7 @@ A 0-D cycle-resolved wide-open-throttle engine model. It evaluates one cylinder 
 - **Combustion:** Wiebe burn duration, an indicated-efficiency correlation and a Douaud–Eyzat knock integral for spark retard.
 - **Losses:** Chen–Flynn friction plus valvetrain and accessory terms. Pumping work comes from the gas-exchange cycle.
 - **Forced induction:** compressor and turbine maps, wastegate, intercooler and supercharger.
-- **ECU layer:** torque and power management, knock-limited boost trim, EGT enrichment, and component protection that cuts boost above 1090 °C EGT or 220 bar peak cylinder pressure.
+- **ECU layer:** torque and power management (bracketed solve on the boost target, torque ≤ limit + 0.05 N·m; on a limited plateau the peak rpm is the plateau start, see `physics_audit.md` §15), knock-limited boost trim, EGT enrichment, and component protection that cuts boost above 1090 °C EGT or 220 bar peak cylinder pressure.
 - **Output:** a dyno curve plus `SimResult.uncertainty`, a ±% band per point.
 
 ## What is an input and what is a prediction
@@ -39,7 +39,7 @@ A 0-D cycle-resolved wide-open-throttle engine model. It evaluates one cylinder 
 | Train, boosted | 8 | 3.1% |
 | Holdout, all | 12 | 7.8% |
 | Holdout, NA | 7 | 8.2% |
-| Holdout, boosted | 5 | 7.2% |
+| Holdout, boosted | 5 | 7.1% |
 
 - **Peaks, 21 reference engines:**
   - Median |hp error| 4.6%, mean 5.5%, max 13.8% (target: median ≤ 3%, max ≤ 8%, not met).
