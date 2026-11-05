@@ -19,6 +19,7 @@ Stack: Vite + React 19 + TypeScript, three.js via @react-three/fiber + drei +
 | `research/**` | research agent | formulas, sources, notes |
 | `src/render/**` | render agent | `<EngineScene />` procedural animated 3D engine |
 | `src/ui/**`, `src/App.tsx`, `src/main.tsx`, `src/index.css`, `index.html` | UI agent | app shell, controls, charts, store |
+| `src/ui/vehicle/**` | UI agent (Vehicle mode) | car designer, KPIs, charts, optimiser UI; sims run in `vehicle.worker.ts` via `client.ts` (main-thread fallback), calling `src/vehicle` public API only |
 | `tests/**`, `src/**/__tests__` | test agent (+ module owners for their unit tests) | validation and e2e |
 
 ## Integration points
