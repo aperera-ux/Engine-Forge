@@ -456,15 +456,55 @@ export function orificeFlow(cdA: number, pUp: number, tUp: number, pDown: number
  * demandPerPa: engine mass flow per Pa of manifold pressure (kg/s/Pa).
  */
 export function solveThrottle(cdA: number, pUp: number, tUp: number, demandPerPa: number): number {
-  const f = (pm: number) => demandPerPa * pm - orificeFlow(cdA, pUp, tUp, pm);
   // Narrow bracket from the incompressible estimate of the throttle drop (WOT: small).
   const rho = pUp / (R_AIR * tUp);
   const m0 = demandPerPa * pUp;
   const dp0 = (m0 * m0) / (2 * rho * cdA * cdA);
   const lo = Math.max(0.1 * pUp, pUp - 2.5 * dp0);
-  const fLo = f(lo);
-  if (lo > 0.1 * pUp && fLo < 0) return illinois(f, lo, pUp, 40, 1e-8, fLo, undefined, true);
-  return illinois(f, 0.1 * pUp, pUp, 40, 1e-8, undefined, undefined, true);
+  const fLo = throttleResidual(cdA, pUp, tUp, demandPerPa, lo);
+  if (lo > 0.1 * pUp && fLo < 0) return throttleRoot(cdA, pUp, tUp, demandPerPa, lo, pUp, fLo);
+  return throttleRoot(cdA, pUp, tUp, demandPerPa, 0.1 * pUp, pUp, throttleResidual(cdA, pUp, tUp, demandPerPa, 0.1 * pUp));
+}
+
+function throttleResidual(cdA: number, pUp: number, tUp: number, demandPerPa: number, pm: number): number {
+  return demandPerPa * pm - orificeFlow(cdA, pUp, tUp, pm);
+}
+
+/**
+ * illinois(f, a, b, 40, 1e-8, fa, undefined, pure = true) for the throttle
+ * residual, written out so the hot residual is inlined (same iterates and
+ * result as the generic solver, operation for operation).
+ */
+function throttleRoot(cdA: number, pUp: number, tUp: number, demandPerPa: number, lo: number, hi: number, fLo: number): number {
+  let a = lo;
+  let b = hi;
+  let fa = fLo;
+  let fb = throttleResidual(cdA, pUp, tUp, demandPerPa, b);
+  if (fa === 0) return a;
+  if (fb === 0) return b;
+  if (fa * fb > 0) return Math.abs(fa) < Math.abs(fb) ? a : b;
+  let side = 0;
+  const tol = 1e-8 * Math.max(Math.abs(a), Math.abs(b), 1e-12);
+  let x = 0.5 * (a + b);
+  for (let i = 0; i < 40; i++) {
+    x = (a * fb - b * fa) / (fb - fa);
+    if (!(x > Math.min(a, b) && x < Math.max(a, b))) x = 0.5 * (a + b);
+    if (Math.abs(b - a) < tol) return x;
+    const fx = throttleResidual(cdA, pUp, tUp, demandPerPa, x);
+    if (fx === 0) return x;
+    if (fx * fb > 0) {
+      b = x;
+      fb = fx;
+      if (side === -1) fa /= 2;
+      side = -1;
+    } else {
+      a = x;
+      fa = fx;
+      if (side === 1) fb /= 2;
+      side = 1;
+    }
+  }
+  return x;
 }
 
 /**
