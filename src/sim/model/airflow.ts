@@ -6,10 +6,9 @@
  * index is kept as a diagnostic.
  */
 import type { EngineConfig } from '../types';
-import { CAL, CP_AIR, GAMMA_AIR, P_AMB_PA, R_AIR, R_EXH } from './constants';
+import { CAL, CP_AIR, GAMMA_AIR, GAMMA_EXH, P_AMB_PA, R_AIR, R_EXH } from './constants';
 import type { Geometry } from './geometry';
 import { prepareGxEngine, prepareGxStatic, runGasExchange } from './gasExchange';
-import { illinois } from './solve';
 
 export interface CamProfile {
   durI: number;
@@ -361,25 +360,79 @@ export class BreathingModel {
       best.xr *= Math.pow(pr / prRef, 1 / 1.3);
       best.pm += pr - prRef;
     }
-    const lobe = this.lobes[best.l];
-    const profile: CamProfile = { ...lobe, icl: lobe.icl + best.s };
-    const ev = camEvents(profile);
-
     // Valve float: control of the valve is lost, VE collapses.
     const xf = inp.rpm / inp.valveFloatRpm - 1;
     // Past float the valves bounce and close late: steep but bounded loss
     // (≈30 % by 25 % over float, floor 50 %).
     const fFloat = xf > 0 ? Math.max(0.5, 1 - 0.3 * Math.pow(Math.min(1.5, xf / 0.25), 1.5)) : 1;
-    return {
-      ve: this.base * Math.max(0.05, best.ve) * fFloat,
-      z: inletMachIndex(this.g, this.c, profile, inp.sp, inp.tMan),
-      zExh: exhaustMachIndex(this.g, this.c, profile, inp.sp, inp.tExh),
-      overlap: ev.overlap,
-      profile,
-      xr: Math.min(0.35, Math.max(0.005, best.xr)),
-      pmepRel: best.pm,
+    return new LazyVe(
+      this,
+      this.lobes[best.l],
+      best.s,
+      inp.sp,
+      inp.tMan,
+      inp.tExh,
+      this.base * Math.max(0.05, best.ve) * fFloat,
+      Math.min(0.35, Math.max(0.005, best.xr)),
+      best.pm,
       fFloat,
-    };
+    );
+  }
+
+  /** @internal Mach indices of a chosen profile (LazyVe). */
+  machIndices(profile: CamProfile, sp: number, tMan: number, tExh: number): [number, number] {
+    return [inletMachIndex(this.g, this.c, profile, sp, tMan), exhaustMachIndex(this.g, this.c, profile, sp, tExh)];
+  }
+}
+
+/**
+ * VeResult whose diagnostic fields (chosen cam profile, overlap, Mach indices)
+ * are computed on first access: the boost and throttle solvers call lookup()
+ * many times per rpm and only read ve / xr / pmepRel. Values are identical to
+ * eager evaluation.
+ */
+class LazyVe implements VeResult {
+  private _profile: CamProfile | null = null;
+  private _overlap = NaN;
+  private _z = NaN;
+  private _zExh = NaN;
+  private readonly bm: BreathingModel;
+  private readonly lobe: CamProfile;
+  private readonly phase: number;
+  private readonly sp: number;
+  private readonly tMan: number;
+  private readonly tExh: number;
+  readonly ve: number;
+  readonly xr: number;
+  readonly pmepRel: number;
+  readonly fFloat: number;
+  constructor(bm: BreathingModel, lobe: CamProfile, phase: number, sp: number, tMan: number, tExh: number, ve: number, xr: number, pmepRel: number, fFloat: number) {
+    this.bm = bm;
+    this.lobe = lobe;
+    this.phase = phase;
+    this.sp = sp;
+    this.tMan = tMan;
+    this.tExh = tExh;
+    this.ve = ve;
+    this.xr = xr;
+    this.pmepRel = pmepRel;
+    this.fFloat = fFloat;
+  }
+  get profile(): CamProfile {
+    if (!this._profile) this._profile = { ...this.lobe, icl: this.lobe.icl + this.phase };
+    return this._profile;
+  }
+  get overlap(): number {
+    if (Number.isNaN(this._overlap)) this._overlap = camEvents(this.profile).overlap;
+    return this._overlap;
+  }
+  get z(): number {
+    if (Number.isNaN(this._z)) [this._z, this._zExh] = this.bm.machIndices(this.profile, this.sp, this.tMan, this.tExh);
+    return this._z;
+  }
+  get zExh(): number {
+    if (Number.isNaN(this._zExh)) [this._z, this._zExh] = this.bm.machIndices(this.profile, this.sp, this.tMan, this.tExh);
+    return this._zExh;
   }
 }
 
@@ -394,10 +447,14 @@ function lowLobe(base: CamProfile): CamProfile {
   };
 }
 
+/** Critical (choking) pressure ratio and 1/γ for the two gases used, precomputed. */
+const CRIT_AIR = Math.pow(2 / (GAMMA_AIR + 1), GAMMA_AIR / (GAMMA_AIR - 1));
+const CRIT_EXH = Math.pow(2 / (GAMMA_EXH + 1), GAMMA_EXH / (GAMMA_EXH - 1));
+
 /** Compressible orifice mass flow, kg/s. */
 export function orificeFlow(cdA: number, pUp: number, tUp: number, pDown: number, gamma = GAMMA_AIR, R = R_AIR): number {
   const pr = Math.min(1, Math.max(0, pDown / pUp));
-  const crit = Math.pow(2 / (gamma + 1), gamma / (gamma - 1));
+  const crit = gamma === GAMMA_AIR ? CRIT_AIR : gamma === GAMMA_EXH ? CRIT_EXH : Math.pow(2 / (gamma + 1), gamma / (gamma - 1));
   const prE = Math.max(pr, crit);
   const psi = Math.sqrt(((2 * gamma) / (gamma - 1)) * (Math.pow(prE, 2 / gamma) - Math.pow(prE, (gamma + 1) / gamma)));
   return (cdA * pUp * psi) / Math.sqrt(R * tUp);
@@ -408,16 +465,23 @@ export function orificeFlow(cdA: number, pUp: number, tUp: number, pDown: number
  * demandPerPa: engine mass flow per Pa of manifold pressure (kg/s/Pa).
  */
 export function solveThrottle(cdA: number, pUp: number, tUp: number, demandPerPa: number): number {
-  const f = (pm: number) => demandPerPa * pm - orificeFlow(cdA, pUp, tUp, pm);
-  // Narrow bracket from the incompressible estimate of the throttle drop (WOT: small).
-  const rho = pUp / (R_AIR * tUp);
-  const m0 = demandPerPa * pUp;
-  const dp0 = (m0 * m0) / (2 * rho * cdA * cdA);
-  const lo = Math.max(0.1 * pUp, pUp - 2.5 * dp0);
-  const fLo = f(lo);
-  if (lo > 0.1 * pUp && fLo < 0) return illinois(f, lo, pUp, 40, 1e-8, fLo);
-  return illinois(f, 0.1 * pUp, pUp, 40, 1e-8);
+  // Closed form. With x = pMan/pUp the balance D·pUp·x = CdA·pUp·ψ(x)/√(RT)
+  // reads ψ(x) = A·x, A = D√(RT)/CdA. Subsonic: ψ² = k(x^(2/γ) − x^((γ+1)/γ)),
+  // k = 2γ/(γ−1); dividing by x² and setting y = x^((1−γ)/γ) ≥ 1 gives
+  // k(y² − y) = A², so y = (1 + √(1 + 4A²/k))/2 and x = y^(γ/(1−γ)).
+  // Below the critical ratio the throttle is choked: ψ = ψ* and x = ψ*/A.
+  // Lower bound 0.1·pUp as before (the previous bracketed solver's range).
+  const A = (demandPerPa * Math.sqrt(R_AIR * tUp)) / cdA;
+  const k = (2 * GAMMA_AIR) / (GAMMA_AIR - 1);
+  const y = 0.5 * (1 + Math.sqrt(1 + (4 * A * A) / k));
+  let x = Math.pow(y, GAMMA_AIR / (1 - GAMMA_AIR));
+  if (x < CRIT_AIR) x = PSI_CRIT_AIR / A;
+  return pUp * Math.min(1, Math.max(0.1, x));
 }
+
+const PSI_CRIT_AIR = Math.sqrt(
+  ((2 * GAMMA_AIR) / (GAMMA_AIR - 1)) * (Math.pow(CRIT_AIR, 2 / GAMMA_AIR) - Math.pow(CRIT_AIR, (GAMMA_AIR + 1) / GAMMA_AIR)),
+);
 
 /**
  * Wall heating of the fresh charge, K: heat transfer from the ports/valves at

@@ -7,8 +7,19 @@
  * (modified regula falsi) method. Converges super-linearly; `iters` is a
  * hard cap and `relTol` the bracket width (relative to |hi|) at which it stops.
  * Returns the bracket point with the smaller |f| interpolated root.
+ * `pure`: f has no side effects, so the final (result-independent) evaluation
+ * can be skipped; the returned root is bit-identical either way.
  */
-export function illinois(f: (x: number) => number, lo: number, hi: number, iters = 30, relTol = 1e-7, fLo?: number, fHi?: number): number {
+export function illinois(
+  f: (x: number) => number,
+  lo: number,
+  hi: number,
+  iters = 30,
+  relTol = 1e-7,
+  fLo?: number,
+  fHi?: number,
+  pure = false,
+): number {
   let a = lo;
   let b = hi;
   let fa = fLo ?? f(a);
@@ -22,6 +33,9 @@ export function illinois(f: (x: number) => number, lo: number, hi: number, iters
   for (let i = 0; i < iters; i++) {
     x = (a * fb - b * fa) / (fb - fa);
     if (!(x > Math.min(a, b) && x < Math.max(a, b))) x = 0.5 * (a + b);
+    // The returned x does not depend on f(x) once the bracket is within
+    // tolerance: for side-effect-free f skip that last evaluation (same result).
+    if (pure && Math.abs(b - a) < tol) return x;
     const fx = f(x);
     if (fx === 0 || Math.abs(b - a) < tol) return x;
     if (fx * fb > 0) {

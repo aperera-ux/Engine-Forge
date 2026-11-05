@@ -154,7 +154,7 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   const egtLimK = CAL.ecuEgtLimitC + 273.15;
   if (CAL.ecuEgtLimitC > 0 && egtAt(lam) > egtLimK) {
     const lamMin = Math.min(c.lambda, CAL.ecuLambdaMin);
-    lam = egtAt(lamMin) > egtLimK ? lamMin : illinois((x) => egtAt(x) - egtLimK, lamMin, c.lambda, 20, 1e-5);
+    lam = egtAt(lamMin) > egtLimK ? lamMin : illinois((x) => egtAt(x) - egtLimK, lamMin, c.lambda, 20, 1e-5, undefined, undefined, true);
   }
   const lamF = lambdaPowerFactor(lam);
   const wInd = eta * lamF * spark.workRatio * eStoich; // J/cyl-cycle
@@ -205,6 +205,51 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   return { point, boost, egtK, pExhCyl: boost && turbo ? boost.pExhCyl : pExhCyl };
 }
 
+/**
+ * Breathing (gas-exchange) tables cached per configuration. The table is a
+ * pure function of the sanitised config and the global calibration CAL; the
+ * key is both serialised, minus config fields the breathing model provably
+ * never reads (BREATHING_IRRELEVANT; guarded by src/sim/__tests__/breathingCache.test.ts, which
+ * perturbs each and checks cached == uncached results). So boost target, ECU
+ * limits, intercooler, turbo sizing, throttle, fuel-system and bottom-end
+ * edits reuse the table. Small LRU.
+ */
+const BREATHING_CACHE = new Map<string, BreathingModel>();
+const BREATHING_CACHE_MAX = 12;
+let breathingCacheEnabled = true;
+/** Config fields the breathing model never reads (top level, and inside `turbo`). */
+export const BREATHING_IRRELEVANT = {
+  top: ['name', 'ecu', 'throttleMm', 'intakeSystem', 'directInjection', 'blockMaterial', 'pistons', 'rods', 'crank', 'supercharger'] as const,
+  turbo: ['targetBoostBar', 'compressorInducerMm', 'turbineAR', 'intercoolerEffectiveness'] as const,
+};
+/** Test/benchmark hook: disable (and clear) the breathing-table cache. */
+export function setBreathingCache(on: boolean): void {
+  breathingCacheEnabled = on;
+  BREATHING_CACHE.clear();
+}
+function breathingKey(c: EngineConfig): string {
+  const k: Record<string, unknown> = { ...c };
+  for (const f of BREATHING_IRRELEVANT.top) delete k[f];
+  const t: Record<string, unknown> = { ...c.turbo };
+  for (const f of BREATHING_IRRELEVANT.turbo) delete t[f];
+  k.turbo = t;
+  return JSON.stringify(k) + '\u0000' + JSON.stringify(CAL);
+}
+function breathingFor(c: EngineConfig, build: () => BreathingModel): BreathingModel {
+  if (!breathingCacheEnabled) return build();
+  const key = breathingKey(c);
+  const hit = BREATHING_CACHE.get(key);
+  if (hit) {
+    BREATHING_CACHE.delete(key);
+    BREATHING_CACHE.set(key, hit);
+    return hit;
+  }
+  const bm = build();
+  BREATHING_CACHE.set(key, bm);
+  if (BREATHING_CACHE.size > BREATHING_CACHE_MAX) BREATHING_CACHE.delete(BREATHING_CACHE.keys().next().value as string);
+  return bm;
+}
+
 export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult {
   const applyOem = opts.applyOemLimits !== false;
   const c = sanitize(config);
@@ -215,16 +260,18 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
   const ctx: PointCtx = {
     c,
     g,
-    breathing: new BreathingModel(g, c, {
-      rpmLo: Math.min(...grid),
-      rpmHi: c.redlineRpm,
-      exhaustWaveFactor: c.induction === 'turbo' ? (c.turbo.twinScroll ? 0.5 : 0.3) : 1,
-      peOverPiAt: (rpm) => {
-        // NA: mean exhaust back pressure at a typical trapped flow (VE ≈ 0.95).
-        const mExh = 0.95 * RHO_AMB * g.vdTotal * (rpm / 120) * (1 + 1 / (fuelOf(c).afr * c.lambda));
-        return exhaustBackPressure(c, mExh, 1100) / (0.97 * P_AMB_PA);
-      },
-    }),
+    breathing: breathingFor(c, () =>
+      new BreathingModel(g, c, {
+        rpmLo: Math.min(...grid),
+        rpmHi: c.redlineRpm,
+        exhaustWaveFactor: c.induction === 'turbo' ? (c.turbo.twinScroll ? 0.5 : 0.3) : 1,
+        peOverPiAt: (rpm) => {
+          // NA: mean exhaust back pressure at a typical trapped flow (VE ≈ 0.95).
+          const mExh = 0.95 * RHO_AMB * g.vdTotal * (rpm / 120) * (1 + 1 / (fuelOf(c).afr * c.lambda));
+          return exhaustBackPressure(c, mExh, 1100) / (0.97 * P_AMB_PA);
+        },
+      }),
+    ),
     vFloat,
     cdAThrottle: CAL.throttleCd * (Math.PI / 4) * (c.throttleMm / 1000) ** 2,
     evapVe: evapCooling(c, c.directInjection ? 0.22 : 0.1),
