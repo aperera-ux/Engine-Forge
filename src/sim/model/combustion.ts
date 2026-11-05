@@ -284,6 +284,11 @@ export interface SparkResult {
   knockIntegralMbt: number;
 }
 
+/** Knock-limited spark search: stop at |ln KI| below this (≈ 1e-4° of retard). */
+const KNOCK_LNKI_TOL = 2e-5;
+/** …or when the bracket on retard is narrower than this, deg. */
+const KNOCK_BRACKET_DEG = 2e-3;
+
 /**
  * Knock-limited spark: start at MBT, retard until the end-gas auto-ignition
  * integral stays below 1. Returns the work ratio vs MBT.
@@ -304,46 +309,57 @@ export function knockLimitedSpark(
   const maxRetard = Math.min(40, mbt + 15);
   const ki = (r: number) => runCycle({ ...base, thetaStart: start(mbt - r), wantKnock: true, needWork: false }, pre);
   let retard = maxRetard;
-  let best = ki(maxRetard);
-  if (best.knockIntegral <= 1) {
+  const atMax = ki(maxRetard);
+  let pMaxPa = atMax.pMaxPa;
+  if (atMax.knockIntegral <= 1) {
     // Illinois (modified regula falsi) on ln(KI) — ln KI is nearly linear in
-    // retard, so this converges to ~0.01° in a few cycles and keeps curves smooth.
+    // retard. Stops when |ln KI| < KNOCK_LNKI_TOL or the bracket is narrower
+    // than KNOCK_BRACKET_DEG; the returned retard (and pMax) is then the
+    // linear interpolation between the final bracket ends, using their true
+    // ln KI (not the Illinois-halved weights). Returning an evaluated end
+    // instead made the retard a staircase in the inputs (steps up to the old
+    // 0.05° stop width); the interpolated root is continuous, and the residual
+    // jump where the iteration path changes is O(1e-4°).
+    const lnKi = (k: number) => Math.max(-3, Math.log(Math.max(1e-12, k)));
     let a = 0;
     let fa = Math.log(atMbt.knockIntegral);
+    let faT = fa;
+    let pA = atMbt.pMaxPa;
     let b = maxRetard;
-    let fb = Math.max(-3, Math.log(Math.max(1e-12, best.knockIntegral)));
+    let fb = lnKi(atMax.knockIntegral);
+    let fbT = fb;
+    let pB = atMax.pMaxPa;
     let side = 0;
-    for (let i = 0; i < 24 && b - a > 0.05; i++) {
+    for (let i = 0; i < 24 && b - a > KNOCK_BRACKET_DEG; i++) {
       let r = (a * fb - b * fa) / (fb - fa);
       // Guard: fall back to bisection if the secant step stalls near a bracket end.
       if (!(r > a + 0.02 * (b - a) && r < b - 0.02 * (b - a))) r = 0.5 * (a + b);
       const out = ki(r);
-      const fr = Math.max(-3, Math.log(Math.max(1e-12, out.knockIntegral)));
+      const fr = lnKi(out.knockIntegral);
       if (fr > 0) {
         a = r;
-        fa = fr;
+        fa = faT = fr;
+        pA = out.pMaxPa;
         if (side === -1) fb /= 2;
         side = -1;
       } else {
         b = r;
-        fb = fr;
-        best = out;
+        fb = fbT = fr;
+        pB = out.pMaxPa;
         if (side === 1) fa /= 2;
         side = 1;
       }
-      if (Math.abs(fr) < 5e-3) {
-        b = r;
-        best = out;
-        break;
-      }
+      if (Math.abs(fr) < KNOCK_LNKI_TOL) break;
     }
-    retard = b;
+    const w = faT - fbT > 0 ? faT / (faT - fbT) : 1;
+    retard = a + w * (b - a);
+    pMaxPa = pA + w * (pB - pA);
   }
   return {
     sparkBtdc: mbt - retard,
     retard,
     workRatio: sparkWorkRatio(retard),
-    pMaxBar: best.pMaxPa / 1e5,
+    pMaxBar: pMaxPa / 1e5,
     knockIntegralMbt: atMbt.knockIntegral,
   };
 }
