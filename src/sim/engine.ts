@@ -94,7 +94,6 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   const manifoldLoss = (mExh: number) => (turbo ? CAL.turboManifoldLossFrac * (exhaustBackPressure(c, mExh, tExhPort) - P_AMB_PA) : 0);
 
   const flowAt = (pUp: number, tUp: number, pExhTurb: number): FlowAt => {
-    (globalThis as any).__cnt && (globalThis as any).__cnt.flow++;
     const pExhCyl = pExhTurb + manifoldLoss(lastMExh);
     const tFresh = Math.max(200, tUp + chargeWallHeating(rpm, c.itb, tUp) - ctx.evapVe);
     // VE depends only weakly on the throttle drop (via pe/pi): one evaluation.
@@ -250,8 +249,6 @@ export const pointSolveStats = { solves: 0, evals: 0, maxIters: 0, unconverged: 
  * within those tolerances, ≈ 1e-6 relative in torque.
  */
 const PEXH_SCALE = 100;
-const DBG = typeof process !== 'undefined' && !!process.env?.SIM_FPDBG;
-const dbgBuf: string[] = [];
 function solvePoint(ctx: PointCtx, rpm: number, egt0: number, p0: number): PointOut {
   const tolE = CAL.pointEgtTolK;
   const tolP = CAL.pointPExhTolRel;
@@ -282,7 +279,6 @@ function solvePoint(ctx: PointCtx, rpm: number, egt0: number, p0: number): Point
   let rejects = 0;
   pointSolveStats.solves++;
   for (let it = 1; ; it++) {
-    if (DBG) dbgBuf.push(`fp rpm ${rpm} it ${it} e ${x0.toFixed(4)} -> ${r.egtK.toFixed(4)}  p ${(x1 * PEXH_SCALE).toFixed(2)} -> ${r.pExhCyl.toFixed(2)} tq ${r.point.torqueNm.toFixed(4)} lim ${r.boost?.limit} kr ${r.point.knockRetardDeg.toFixed(4)} b ${r.point.boostBar.toFixed(5)} ve ${r.point.volumetricEfficiency.toFixed(5)} pm ${r.point.pmepBar?.toFixed(4)} lam ${r.point.lambda?.toFixed(4)} pmax ${r.point.peakCylinderPressureBar.toFixed(3)}`);
     if (n < bestN) {
       bestN = n;
       best = r;
@@ -298,8 +294,6 @@ function solvePoint(ctx: PointCtx, rpm: number, egt0: number, p0: number): Point
     let d1 = (-f1 * j00 + f0 * j10) / det;
     const conv = n <= 2 && norm(d0, d1, x1 * PEXH_SCALE) <= 1;
     if (conv || it >= CAL.pointMaxIters) {
-      if (DBG && (!conv || it >= Number(process.env.SIM_FPDBG))) console.log(dbgBuf.join('\n'));
-      dbgBuf.length = 0;
       pointSolveStats.evals += it;
       pointSolveStats.maxIters = Math.max(pointSolveStats.maxIters, it);
       if (!conv) pointSolveStats.unconverged++;
@@ -316,7 +310,6 @@ function solvePoint(ctx: PointCtx, rpm: number, egt0: number, p0: number): Point
     const t0 = x0 + d0;
     const t1 = Math.max(pMin, x1 + d1);
     d1 = t1 - x1;
-    if (process.env.SIM_PRSCAN && rpm === Number(process.env.SIM_PRSCAN) && it === 6) (globalThis as any).__prscan = 1;
     const rt = evalPoint(ctx, rpm, t0, t1 * PEXH_SCALE);
     const g0 = rt.egtK - t0;
     const g1 = rt.pExhCyl / PEXH_SCALE - t1;
@@ -678,7 +671,6 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
       //    ecuKnockTolDeg (bracketed Illinois on the boost scale), so the trim
       //    is a continuous function of every input (no stop-width stair-steps).
       if (r.point.knockRetardDeg > maxRetard && r.point.boostBar > 0.05) {
-        const s0k = pointSolveStats.solves; (globalThis as any).__ph && (globalThis as any).__ph.kn0++;
         const bA0 = r.point.boostBar;
         // Turbo: scale the achieved boost (a target above it would not bite when spool-limited).
         const tgtA = c.induction === 'turbo' ? bA0 : boostTargetOf(r);
@@ -710,7 +702,7 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
         const rB = res.rr;
         const kB = rB.point.knockRetardDeg;
         if (k0 - kB > 0.5) knockSens = Math.min(0.2, Math.max(0.005, (1 - rB.point.boostBar / bA0) / (k0 - kB)));
-        r = rB; (globalThis as any).__ph && ((globalThis as any).__ph.kn += pointSolveStats.solves - s0k);
+        r = rB;
         if (r.boost) r.boost.limit = 'knock';
       }
     }

@@ -156,7 +156,6 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number, hin
   let phiA = NaN;
   let prB = NaN;
   const evalPr = (pr: number, p3: number) => {
-    (globalThis as any).__cnt && (globalThis as any).__cnt.pr++;
     let phi = phiWarm;
     if (Math.abs(prB - prA) > 1e-9) phi = Math.min(2, Math.max(0, phiWarm + ((pr - prB) * (phiWarm - phiA)) / (prB - prA)));
     let eta = compressorEta(phi, pr);

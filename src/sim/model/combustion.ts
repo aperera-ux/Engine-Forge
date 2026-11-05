@@ -87,7 +87,6 @@ export function newCyclePrefix(): CyclePrefix {
 const SPARK_PREFIX = newCyclePrefix();
 
 export function runCycle(inp: CycleInputs, pre?: CyclePrefix): CycleOut {
-  (globalThis as any).__cnt && (globalThis as any).__cnt.cyc++;
   const { vol, polyStep } = inp.g;
   const needWork = inp.needWork !== false;
   const wantKnock = inp.wantKnock;
@@ -343,10 +342,6 @@ function knockLimitedSparkImpl(base: Omit<CycleInputs, 'thetaStart' | 'wantKnock
   const maxRetard = Math.min(40, mbt + 15);
   const ki = (r: number) => runCycle({ ...base, thetaStart: start(mbt - r), wantKnock: true, needWork: false }, pre);
   const lnKi = (k: number) => Math.max(-3, Math.log(Math.max(1e-12, k)));
-  if (process.env.SIM_KISCAN && base.rpm === Number(process.env.SIM_KISCAN) && !(globalThis as any).__kis) {
-    (globalThis as any).__kis = 1;
-    for (let r = 1.5; r <= 3.5; r += 0.02) { const o = ki(r); console.log(`kis r ${r.toFixed(3)} lnKI ${Math.log(o.knockIntegral).toFixed(6)} th0 ${start(mbt - r).toFixed(3)} th95 ${(start(mbt - r) + X95 * base.burnDeg).toFixed(3)}`); }
-  }
   let kiMbt = NaN;
   // Bracket [a, b] on retard with ln KI(a) > 0 ≥ ln KI(b) (a = 0 is MBT).
   let a = -1;

@@ -202,7 +202,7 @@ export const CAL = {
   /** …and accepted |pExh out − pExh in| / pExh. */
   pointPExhTolRel: 2e-5,
   /** Max evaluations per operating-point fixed point (normally 1–3 from a warm start). */
-  pointMaxIters: 12,
+  pointMaxIters: 30,
   /** Max extra retard (deg) the ECU accepts above ecuMaxRetardDeg for severe knock before trimming boost further. */
   ecuRetardSoftCapDeg: 5,
   /** Fraction of the excess retard (beyond ecuMaxRetardDeg) the ECU still accepts. */
