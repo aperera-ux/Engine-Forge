@@ -6,6 +6,7 @@
 import type { EngineConfig } from '../types';
 import { CAL, CP_EXH, GAMMA_EXH, P_AMB_PA, R_EXH, T_AMB_K } from './constants';
 import { compressPower, compressTemp, orificeFlow } from './airflow';
+import { illinois } from './solve';
 
 export interface FlowAt {
   mAir: number;
@@ -38,7 +39,7 @@ export interface BoostState {
   /** Boost limited by turbine power (not yet at target). */
   spoolLimited: boolean;
   /** What stops boost reaching target at this rpm ('none' when at target). */
-  limit: 'none' | 'turbine' | 'speed-line' | 'choke' | 'exhaust-pressure' | 'knock';
+  limit: 'none' | 'turbine' | 'speed-line' | 'choke' | 'exhaust-pressure' | 'knock' | 'torque' | 'protection';
   flow: FlowAt;
 }
 
@@ -73,14 +74,13 @@ export function surgePr(phi: number): number {
 
 /** Turbine-inlet pressure that passes mExh through an effective nozzle area. */
 function turbineInletPressure(cdA: number, mExh: number, t3: number, p4: number): number {
-  let lo = p4;
-  let hi = 20 * P_AMB_PA;
-  for (let i = 0; i < 18; i++) {
-    const mid = 0.5 * (lo + hi);
-    if (orificeFlow(cdA, mid, t3, p4, GAMMA_EXH, R_EXH) < mExh) lo = mid;
-    else hi = mid;
-  }
-  return 0.5 * (lo + hi);
+  // Lower bound: the pressure that passes mExh at sonic (choked) conditions.
+  const crit = Math.pow(2 / (GAMMA_EXH + 1), GAMMA_EXH / (GAMMA_EXH - 1));
+  const psiC = Math.sqrt(((2 * GAMMA_EXH) / (GAMMA_EXH - 1)) * (Math.pow(crit, 2 / GAMMA_EXH) - Math.pow(crit, (GAMMA_EXH + 1) / GAMMA_EXH)));
+  const pCh = (mExh * Math.sqrt(R_EXH * t3)) / (Math.max(1e-9, cdA) * psiC);
+  if (p4 / pCh <= crit) return pCh; // choked: exact
+  // Subsonic: the root lies between p4 and the pressure at which the flow would choke.
+  return illinois((p3) => orificeFlow(cdA, p3, t3, p4, GAMMA_EXH, R_EXH) - mExh, Math.max(p4, pCh), p4 / crit, 40, 1e-7);
 }
 
 /** Exhaust-manifold pulse-energy factor on turbine work (log = small volume, best pulses). */
@@ -110,14 +110,17 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number): Bo
   const icDrop = (phi: number) => (0.04 + 0.08 * Math.min(1.2, t.intercoolerEffectiveness / 0.75)) * 1e5 * phi * phi;
   const twin = t.twinScroll ? 0.95 : 1;
 
+  // Compressor flow fraction warm-started from the previous evaluation (the
+  // PR search moves in small steps), so one engine-flow pass per PR suffices.
+  let phiWarm = 0.5;
   const evalPr = (pr: number, p3: number) => {
-    let phi = 0.5;
+    let phi = phiWarm;
     let eta = compressorEta(phi, pr);
     let flow: FlowAt = { mAir: 0, mExh: 0, pMan: P_AMB_PA, tExh: 1100 };
     let t2 = T_AMB_K;
     let tc = T_AMB_K;
     let pUp = P_AMB_PA;
-    for (let k = 0; k < 2; k++) {
+    for (let k = 0; k < CAL.turboFlowPasses; k++) {
       t2 = compressTemp(T_AMB_K, pr, eta);
       tc = intercool(t2, t.intercoolerEffectiveness);
       pUp = Math.max(0.5 * P_AMB_PA, P_AMB_PA * pr - icDrop(phi));
@@ -125,6 +128,7 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number): Bo
       phi = flow.mAir / n / mChokeEach;
       eta = compressorEta(phi, pr);
     }
+    phiWarm = phi;
     const pc = compressPower(flow.mAir, T_AMB_K, pr, eta);
     const p4 = P_AMB_PA + 0.05e5 * Math.min(2, phi) ** 2;
     const p3c = turbineInletPressure(at, flow.mExh, flow.tExh, p4);
@@ -134,52 +138,55 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number): Bo
     return { pr, phi, eta, flow, t2, tc, pUp, pc, p3c, ptc, p4, p3wg };
   };
 
+  // p3 is warm-started from the previous rpm point, so one pass suffices.
   let p3 = p3Guess;
-  let res = evalPr(1, p3);
-  let spoolLimited = false;
-  let choke = false;
   let limit: BoostState['limit'] = 'none';
-  // p3 is warm-started from the previous rpm point, so one refinement pass suffices.
-  for (let pass = 0; pass < 1; pass++) {
+  let res: ReturnType<typeof evalPr>;
+  {
     const prMax = Math.max(1.0001, (pTarget / P_AMB_PA) * 1.35);
-    // Feasible: turbine can drive the compressor, the compressor is inside its
-    // maximum wheel-speed (tip-speed) line, and boost control keeps the
-    // turbine-inlet pressure below its limit (ECU/wastegate strategy).
-    const feasible = (r: ReturnType<typeof evalPr>) =>
-      r.ptc >= r.pc && r.pr <= compressorMaxPr(r.phi, t.compressorInducerMm) && r.flow.pMan <= pTarget && Math.min(r.p3c, r.p3wg) <= CAL.turbineInletMaxBar * 1e5;
-    let lo = 1;
-    let hi = prMax;
+    const p3Max = CAL.turbineInletMaxBar * 1e5;
+    // Feasibility margin (≥ 0 = feasible): the turbine can drive the compressor,
+    // the compressor is inside its maximum wheel-speed (tip-speed) line, boost
+    // is at or below target, and boost control keeps the turbine-inlet pressure
+    // below its limit. Each term falls with PR, so the highest feasible PR is
+    // the root of the (continuous) margin — found by Illinois, not bisection.
+    const margin = (r: ReturnType<typeof evalPr>) =>
+      Math.min(
+        (r.ptc - r.pc) / Math.max(r.pc, 100),
+        (compressorMaxPr(r.phi, t.compressorInducerMm) - r.pr) / r.pr,
+        (pTarget - r.flow.pMan) / pTarget,
+        (p3Max - Math.min(r.p3c, r.p3wg)) / p3Max,
+      );
     let best = evalPr(1, p3);
-    const top = evalPr(hi, p3);
-    if (feasible(top)) best = top;
-    else {
-      for (let i = 0; i < 9; i++) {
-        const mid = 0.5 * (lo + hi);
-        const r = evalPr(mid, p3);
-        if (feasible(r)) {
-          lo = mid;
-          best = r;
-        } else hi = mid;
-      }
+    const top = evalPr(prMax, p3);
+    const mTop = margin(top);
+    const mLo = margin(best);
+    if (mTop >= 0) best = top;
+    else if (mLo > 0) {
+      const prRoot = illinois((pr) => margin(evalPr(pr, p3)), 1, prMax, 10, 2e-5, mLo, mTop);
+      best = evalPr(prRoot, p3);
     }
     res = best;
-    const atTarget = res.flow.pMan >= pTarget - 0.03e5;
-    spoolLimited = !atTarget && res.ptc < res.pc * 1.05;
-    // Genuinely past choke: flow pinned at the speed line with collapsed efficiency.
-    choke = res.phi > 0.97 && res.eta < 0.58;
+  }
+  const atTarget = res.flow.pMan >= pTarget - 0.03e5;
+  const spoolLimited = !atTarget && res.ptc < res.pc * 1.05;
+  // Genuinely past choke: flow pinned at the speed line with collapsed efficiency.
+  const choke = res.phi > 0.97 && res.eta < 0.58;
+  {
+    const prMax = Math.max(1.0001, (pTarget / P_AMB_PA) * 1.35);
     if (!atTarget) {
       const up = evalPr(Math.min(prMax, res.pr * 1.03), p3);
       limit = up.ptc < up.pc ? 'turbine' : up.pr > compressorMaxPr(up.phi, t.compressorInducerMm) ? (up.phi > 0.9 ? 'choke' : 'speed-line') : Math.min(up.p3c, up.p3wg) > CAL.turbineInletMaxBar * 1e5 ? 'exhaust-pressure' : 'none';
     }
     if (atTarget || !spoolLimited) {
       // Wastegate regulating: turbine only has to supply compressor power.
-      let lo3 = res.p4;
-      let hi3 = Math.max(res.p3c, res.p4 * 1.0001);
-      for (let i = 0; i < 14; i++) {
-        const mid = 0.5 * (lo3 + hi3);
-        if (turbinePower(c, res.flow.mExh, res.flow.tExh, mid, res.p4, res.phi) < res.pc) lo3 = mid;
-        else hi3 = mid;
-      }
+      const hi3 = illinois(
+        (p) => turbinePower(c, res.flow.mExh, res.flow.tExh, p, res.p4, res.phi) - res.pc,
+        res.p4,
+        Math.max(res.p3c, res.p4 * 1.0001),
+        40,
+        1e-6,
+      );
       // Wastegate port + turbine nozzle together still restrict flow.
       p3 = Math.min(res.p3c, Math.max(hi3, res.p3wg));
     } else {

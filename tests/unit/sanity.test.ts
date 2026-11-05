@@ -102,9 +102,10 @@ describe('physics identities on every curve point', () => {
       .filter((p) => Math.abs(p.bsfcGkWh - (p.fuelFlowKgH * 1000) / p.powerKw) > 0.01 * p.bsfcGkWh)
       .map((p) => `${p.rpm} rpm bsfc=${r3(p.bsfcGkWh)} vs ${r3((p.fuelFlowKgH * 1000) / p.powerKw)}`),
   );
+  // λ actually run at the point (ECU EGT-protection enrichment, physics v4) — see physics_audit.md §11.
   check('fuel flow = air flow / (λ·AFR_stoich) (1%)', (r, c) =>
     r.curve
-      .filter((p) => Math.abs(p.fuelFlowKgH - (p.airFlowKgS * 3600) / (c.lambda * FUELS[c.fuel].afr)) > 0.01 * p.fuelFlowKgH)
+      .filter((p) => Math.abs(p.fuelFlowKgH - (p.airFlowKgS * 3600) / ((p.lambda ?? c.lambda) * FUELS[c.fuel].afr)) > 0.01 * p.fuelFlowKgH)
       .map((p) => `${p.rpm} rpm`),
   );
   check('BTE = P/(ṁf·LHV) within 2%', (r, c) =>

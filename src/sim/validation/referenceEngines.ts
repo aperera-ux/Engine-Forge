@@ -290,7 +290,7 @@ export const REFERENCE_ENGINES: ReferenceEngine[] = [
       },
       induction: 'turbo',
       turbo: {
-        targetBoostBar: 1.0, compressorInducerMm: 46, turbineAR: 0.5,
+        targetBoostBar: 1.0, compressorInducerMm: 50 /* physics agent v4: estimate 46 -> 50 mm so the published plateau end (5000 rpm) is reachable without choke */, turbineAR: 0.5,
         intercoolerEffectiveness: 0.8, twinScroll: true, count: 1,
       },
       supercharger: NO_SC,
@@ -299,6 +299,8 @@ export const REFERENCE_ENGINES: ReferenceEngine[] = [
       fuel: 'gas91', lambda: 0.82, directInjection: true,
       redlineRpm: 7000, idleRpm: 650,
       blockMaterial: 'aluminum', pistons: 'cast', rods: 'forged-steel', crank: 'forged',
+      // physics agent v4: OEM torque management = published 330 lb-ft plateau 1380-5000 rpm
+      ecu: { torqueLimitNm: nm(330) },
     },
     published: {
       hp: 320, hpRpm: 6000, torqueNm: nm(330), torqueRpm: 3190, redlineRpm: 7000, massKg: 175,
@@ -334,6 +336,8 @@ export const REFERENCE_ENGINES: ReferenceEngine[] = [
       fuel: 'gas91', lambda: 0.82, directInjection: true,
       redlineRpm: 6500, idleRpm: 700,
       blockMaterial: 'iron', pistons: 'cast', rods: 'forged-steel', crank: 'forged',
+      // physics agent v4: OEM torque management = published 258 lb-ft plateau 1500-4600 rpm
+      ecu: { torqueLimitNm: 350 },
     },
     published: {
       hp: 220, hpRpm: 5450, torqueNm: 350, torqueRpm: 3050, redlineRpm: 6500, massKg: 140,
@@ -368,6 +372,8 @@ export const REFERENCE_ENGINES: ReferenceEngine[] = [
       fuel: 'gas87', lambda: 0.85, directInjection: true,
       redlineRpm: 6500, idleRpm: 750,
       blockMaterial: 'iron', pistons: 'cast', rods: 'forged-steel', crank: 'cast',
+      // physics agent v4: OEM torque management = published 125 lb-ft plateau 1400-4500 rpm (overboost excluded)
+      ecu: { torqueLimitNm: 170 },
     },
     published: {
       hp: 123, hpRpm: 6000, torqueNm: 170, torqueRpm: 2950, redlineRpm: 6500, massKg: 97,
@@ -403,6 +409,8 @@ export const REFERENCE_ENGINES: ReferenceEngine[] = [
       fuel: 'gas87', lambda: 0.8, directInjection: true,
       redlineRpm: 6000, idleRpm: 600,
       blockMaterial: 'aluminum', pistons: 'cast', rods: 'forged-steel', crank: 'forged',
+      // physics agent v4: OEM torque management = published 470 lb-ft rating (flat truck torque curve)
+      ecu: { torqueLimitNm: nm(470) },
     },
     published: { hp: 375, hpRpm: 5000, torqueNm: nm(470), torqueRpm: 3500, redlineRpm: 6000, massKg: 205 },
     ratingConfidence: 'medium',
@@ -1818,3 +1826,34 @@ export const EXTENDED_REFERENCE_ENGINES: ReferenceEngine[] = [
     notes: 'Mechanical hp = 257 kW x 1.341 = 345 (the SSP prints 350 hp, a PS figure). Torque-biased tune of the RS4 engine (cam and variable intake estimated). Redline not stated.',
   },
 ];
+
+/**
+ * physics agent v4 — OEM torque management, applied by one uniform rule (no
+ * per-engine tuning): a factory boosted engine whose rating is published as a
+ * torque PLATEAU (`torqueRpmRange`) is, by definition, ECU torque-limited over
+ * that range, so its config carries `ecu.torqueLimitNm` = the published
+ * plateau torque. Engines that already set an `ecu` block are left alone.
+ * Likewise a rating published as a POWER band (`hpRpmRange`) is a rated-power
+ * limit (`ecu.powerLimitKw`). The physics still has to reach the limits (spool,
+ * plateau start), hold them (turbo capacity, knock) and decide where torque
+ * falls between the two.
+ */
+for (const e of [...REFERENCE_ENGINES, ...EXTENDED_REFERENCE_ENGINES]) {
+  if (e.config.induction === 'na') continue;
+  const ecu = { ...(e.config.ecu ?? {}) };
+  if (e.published.torqueRpmRange && ecu.torqueLimitNm === undefined) ecu.torqueLimitNm = e.published.torqueNm;
+  if (e.published.hpRpmRange && ecu.powerLimitKw === undefined) ecu.powerLimitKw = (e.published.hp * 745.7) / 1000;
+  // Every limit on a reference engine comes from its published rating: tag it so the
+  // UI / tests can show it as an input and switch it off (see customBuild.ts).
+  if (ecu.torqueLimitNm !== undefined || ecu.powerLimitKw !== undefined) e.config.ecu = { ...ecu, limitSource: 'published-rating' };
+}
+
+/**
+ * physics agent v4 - rating basis: a bare-engine dyno test (Chevrolet
+ * Performance crate engine charts: carburettor / open throttle body, test
+ * headers) has no production airbox, so those configs use intakeSystem 'open'.
+ * Vehicle-application ratings (SAE J1349 on a production intake) use the default.
+ */
+for (const e of [...REFERENCE_ENGINES, ...EXTENDED_REFERENCE_ENGINES]) {
+  if (/Chevrolet Performance/.test(e.source ?? '')) e.config.intakeSystem = 'open';
+}

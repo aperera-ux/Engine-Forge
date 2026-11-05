@@ -50,7 +50,7 @@ export const CAL = {
   /** Base volumetric efficiency (re. manifold density, before tuning gains). */
   veBase: { pushrod: 0.99, sohc: 0.99, dohc: 1.01 } as Record<'pushrod' | 'sohc' | 'dohc', number>,
   /** VE penalty for 2-valve heads (shrouding, single port). */
-  ve2ValvePenalty: 0.02,
+  ve2ValvePenalty: 0,
   /** Taylor inlet Mach index at which choking begins to bite. */
   zChoke: 0.85,
   zChokeExp: 4,
@@ -68,7 +68,7 @@ export const CAL = {
   /** Inertia-ram VE gain near the cam's tuned speed, × push-back volume fraction. */
   ramGain: 0.35,
   /** Intake cam-phaser authority used at WOT, ± crank deg about the nominal centerline. */
-  vvtRangeDeg: 24,
+  vvtRangeDeg: 22,
   /** Variable-lift low-speed lobe: duration reduction (deg) and lift ratio. */
   lowLobeDurDelta: 45,
   lowLobeLiftRatio: 0.65,
@@ -84,6 +84,61 @@ export const CAL = {
   /** Exhaust loss coefficient (header + system), multiples of dynamic head. */
   exhZeta: { log: 5.0, shorty: 3.2, 'long-tube': 2.4, 'tuned-equal': 2.2 } as Record<string, number>,
   throttleCd: 0.82,
+  // ── gas exchange / wave action (gasExchange.ts) ──
+  /** Integration steps per gas-exchange period (EVO → IVC). */
+  gxSteps: 150,
+  /** Ratio between adjacent rpm nodes of the breathing table (fixed log lattice). */
+  gxRpmNodeRatio: 1.16,
+  /** Neighbour weight of the binomial smear of wave-tuning features along log-rpm (0 = none, 0.25 = [¼ ½ ¼]). */
+  gxRpmSmear: 0,
+  /** Global scale on the gas-exchange VE (port losses, in-cylinder heat pick-up not resolved). */
+  gxVeScale: 1.0,
+  /** Lift-profile shape exponent: L = Lmax·(1 − x²)^n over the seat duration. */
+  liftShapeExp: 1.85,
+  /** Valve curtain discharge coefficient and port-throat discharge coefficients (re. valve head area). */
+  /** Airbox + filter + duct loss coefficient (dynamic head through a duct the size of the throttle body), 'stock' intake. */
+  /** Cylinder-to-cylinder / cycle-to-cycle spread of the acoustic tuning rpm (fraction), see airflow.lookup. */
+  waveRpmSpread: 0.02,
+  /** ECU component protection: boost is cut above this EGT (deg C) / peak cylinder pressure (bar). */
+  ecuEgtMaxC: 1090,
+  ecuPmaxCapBar: 220,
+  intakeSysZeta: 2.5,
+  valveCurtainCd: 0.78,
+  /** p-norm exponent of the curtain/throat series combination (see gasExchange.valveArea). */
+  valveSeriesExp: 4,
+  intakeThroatCd: 0.785,
+  exhaustThroatCd: 0.665,
+  /** Runner cross-section / total intake-valve head area. */
+  runnerAreaRatio: 0.975,
+  /** Port length added to the runner / primary acoustic length, × bore. */
+  intakePortLenBore: 1.2,
+  exhaustPortLenBore: 0.7,
+  /** Magnitude of the (inverting) open-end reflection at the plenum / bellmouth. */
+  intakeReflect: 0.9785,
+  intakeReflectItb: 0.75,
+  /** Magnitude of the (inverting) reflection at the collector, by exhaust type. */
+  exhReflect: { log: 0.15, shorty: 0.4, 'long-tube': 0.4, 'tuned-equal': 0.4 } as Record<string, number>,
+  /** Fraction of another cylinder's blowdown pulse that reaches this valve through a shared (log/turbine) manifold. */
+  sharedPulseTransmit: { log: 0.35, shorty: 0.06, 'long-tube': 0.04, 'tuned-equal': 0.0 } as Record<string, number>,
+  /** Turbine housings / manifold volume attenuate the cross-talk relative to an NA log manifold. */
+  turboPulseTransmitFactor: 0.6,
+  /** Intake port/valve wall temperature for charge heating, K, and heating effectiveness at 3000 rpm. */
+  intakeWallTempK: 420,
+  chargeHeatEff: 0.256,
+  /** Runner entry + friction loss, multiples of runner dynamic head. */
+  runnerLoss: 0.6,
+  runnerLossItb: 1.2,
+  /** Nominal exhaust gas temperature for wave speed, K; cylinder temperature at EVO / that. */
+  gxExhaustTempK: 1250,
+  gxEvoTempFactor: 1.2,
+  /** Time constant separating the mean (fully reflected) from the pulsating part of returning waves, ms. */
+  waveMeanTauMs: 11.3,
+  /** ... or this fraction of the cycle period (120/rpm s), whichever is shorter. */
+  waveMeanCycleFrac: 0.3,
+  /** Fraction of the closed-valve wave ringing carried into the next cycle (plenum/collector interaction damps it). */
+  gxRingCarry: 0,
+  /** Use the gas-exchange cycle's pumping work (true) or the mean-pressure + Mach-index correlation. */
+  gxPumpingFromCycle: true,
   // ── combustion ──
   /** Indicated gross efficiency = etaScale * (1 - CR^-etaExp) at MBT, stoich-ish. */
   etaScale: 0.8,
@@ -102,7 +157,7 @@ export const CAL = {
   /** Ignition / flame-development delay, crank deg. */
   delayDeg: 10,
   /** Douaud–Eyzat induction-time multiplier (global knock calibration). */
-  knockTauScale: 1.3,
+  knockTauScale: 1.33,
   /** Knock time-base exponent β: 0 = wall-clock time (∝1/rpm), 1 = crank-angle based. */
   knockRpmExp: 0.6,
   /** Pressure exponent of the induction-time correlation (Douaud–Eyzat 1.7). */
@@ -111,16 +166,28 @@ export const CAL = {
   crPenalty: 0.0015,
   /** Torque loss coefficient per deg² of retard from MBT. */
   sparkLossK: 0.0005,
+  /** Exponent on (1 − residual fraction) in the auto-ignition delay: burned-gas dilution slows end-gas chemistry. */
+  knockDilutionExp: 1.0,
+  /** ECU cam-phasing objective: maximise VE − weight × residual fraction (residual costs burn rate / knock margin). */
+  ecuResidualWeight: 2,
+  /** ECU torque model for cam selection: indicated MEP per unit of trapped-charge VE, bar (per bar MAP). */
+  ecuImepPerVe: 14,
   /** Knock-aware boost control: max spark retard the ECU accepts before trimming boost, deg. */
   ecuMaxRetardDeg: 10,
+  /** Torque-management correction steps per rpm point (each re-solves the boost loop). */
+  ecuTorqueIters: 6,
+  /** Max Illinois evaluations of the knock-aware boost trim per rpm point (stops at 0.05° from the target). */
+  ecuKnockIters: 4,
+  /** Max extra retard (deg) the ECU accepts above ecuMaxRetardDeg for severe knock before trimming boost further. */
+  ecuRetardSoftCapDeg: 5,
   /** Fraction of the excess retard (beyond ecuMaxRetardDeg) the ECU still accepts. */
-  ecuRetardSoft: 0.5,
+  ecuRetardSoft: 0.7,
   /** Relative reduction of the end-gas compression exponent at 1000 rpm (wall heat loss). */
   endGasHeatLoss: 0.0,
   /** Residual blow-through rate when intake pressure exceeds exhaust pressure. */
   scavengeK: 1,
   /** Octane-index weighting K in OI = RON − K·S. */
-  octaneK: 0.25,
+  octaneK: 0,
   /** Reduction of K per bar of boost (Kalghatgi: K < 0 under boosted conditions). */
   octaneKPerBar: 1.0,
   /** Fraction of fuel heat of vaporisation that cools the charge (PFI / DI). */
@@ -129,9 +196,9 @@ export const CAL = {
   /** Fraction of fuel energy actually released as pressure in the 1-zone model. */
   pressureHeatFrac: 0.78,
   // ── friction (Chen–Flynn, bar, m/s) ──
-  fA: 0.36,
+  fA: 0.323,
   fB: 0.004,
-  fC: 0.045,
+  fC: 0.04,
   fD: 0.0006,
   valvetrainFmep: { pushrod: 0.12, sohc: 0.1, dohc: 0.12 } as Record<'pushrod' | 'sohc' | 'dohc', number>,
   // ── turbo ──
@@ -148,13 +215,32 @@ export const CAL = {
   /** Compressor top-speed line: max PR and the flow fraction where it starts rolling off. */
   compPrMax: 3.9,
   compPrMaxPerMm: 0.01,
-  compSpeedLineKnee: 0.75,
+  compSpeedLineKnee: 0.85,
   /** Turbine frame size exponent on inducer diameter (turbine area ∝ A/R · D^exp). */
   turbineFrameExp: 1.5,
   /** Extra low-flow turbine efficiency from twin-scroll pulse separation. */
   twinScrollPulse: 0.5,
   /** Supercharger pulley sizing: crank rpm where targetBoostBar is reached (default). */
   scReferenceRpm: 6000,
+  /** Engine-flow passes per compressor-PR evaluation (flow fraction warm-started). */
+  turboFlowPasses: 1,
+  /** ECU exhaust-temperature protection: enrich above this EGT, °C (0 = off), down to this lambda. */
+  ecuEgtLimitC: 980,
+  ecuLambdaMin: 0.72,
+  // ── uncertainty (uncertainty.ts) ──
+  /** Base ±% band at the torque peak ≈ RMS peak-hp residual vs published figures (update after recalibration). */
+  uncBasePct: 7,
+  /** Extra relative width per unit |ln(rpm / torque-peak rpm)| (curve shape less certain than peaks). */
+  uncShapePerLn: 0.5,
+  /** Extra ±% below 2000 rpm (lugging: knock, heat transfer, wave tuning least certain). */
+  uncLowRpmPct: 2,
+  /** Extra ±% per degree of knock retard, and for boosted points. */
+  uncKnockPctPerDeg: 0.25,
+  uncBoostPct: 1.5,
+  /** Extrapolation score = 1 − exp(−K·Σ d²), d = distance outside each validated range / range width. */
+  uncExtrapK: 2,
+  /** Band multiplier at full extrapolation (band × (1 + this · score)). */
+  uncExtrapWiden: 2,
   /** Turbine-inlet (exhaust manifold) pressure limit enforced by boost control, bar abs. */
   turbineInletMaxBar: 4.5,
 };

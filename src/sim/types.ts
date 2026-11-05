@@ -61,7 +61,55 @@ export interface SuperchargerConfig {
   intercoolerEffectiveness: number;
 }
 
+/**
+ * Optional (physics agent, v4): OEM engine-management calibration at wide-open
+ * throttle. Absent fields mean "no explicit limit" (an aftermarket-style map
+ * that only respects knock and hardware limits).
+ */
+export interface EcuConfig {
+  /**
+   * Where torqueLimitNm / powerLimitKw come from.
+   *  - 'published-rating': copied from the manufacturer's published torque
+   *    plateau / power band for a stock preset. This is an INPUT, not a
+   *    prediction: with it applied, the stock engine's peak torque and power
+   *    are the published ones by construction. It is meaningful only while the
+   *    hardware equals the stock hardware (see customBuild.ts).
+   *  - 'hardware' (or absent): a limit the user or the hardware imposes
+   *    (e.g. a deliberate torque cap to protect a gearbox); always applied.
+   */
+  limitSource?: 'published-rating' | 'hardware';
+  /**
+   * Brake-torque limit, N·m (OEM torque management / "torque structure").
+   * Boosted engines: the ECU lowers the boost target until brake torque is at
+   * the limit. This is how factory turbo engines produce flat plateaus.
+   * 0 or absent = no limit.
+   */
+  torqueLimitNm?: number;
+  /**
+   * Rated-power limit, kW (OEM power management: boost is tapered above the
+   * rpm where torque × ω would exceed it, giving the published flat power
+   * band). Boosted engines only. 0 or absent = no limit.
+   */
+  powerLimitKw?: number;
+  /**
+   * Boost target schedule, bar gauge vs rpm (linear interpolation, clamped at
+   * the ends). Turbo only; replaces turbo.targetBoostBar where given.
+   */
+  boostSchedule?: { rpm: number; bar: number }[];
+  /** Knock retard (deg) the ECU accepts before trimming boost. Default 10. */
+  maxKnockRetardDeg?: number;
+}
+
 export interface EngineConfig {
+  /**
+   * Intake system the power is measured / modelled with (optional).
+   *  - 'stock' (default): production airbox, filter and ducting (~3 % total-pressure
+   *    loss at rated flow; loss grows with flow squared).
+   *  - 'open': bare-engine dyno (crate-engine test: carburettor or open
+   *    throttle body, no airbox).
+   * NA engines only; boosted engines' inlet loss is inside the compressor map.
+   */
+  intakeSystem?: 'stock' | 'open';
   name: string;
   layout: Layout;
   /** 1–16. Allowed counts depend on layout (see layout.ts SUPPORTED_CYLINDERS). */
@@ -114,6 +162,8 @@ export interface EngineConfig {
   pistons: PistonType;
   rods: RodType;
   crank: CrankType;
+  /** Optional (physics agent, v4): ECU torque management / boost schedule. */
+  ecu?: EcuConfig;
 }
 
 /** One row of the dyno sweep. */
@@ -160,6 +210,8 @@ export interface DynoPoint {
   exhaustPressureBar?: number;
   /** Pumping MEP (part of fmepBar), bar. Optional (physics agent). */
   pmepBar?: number;
+  /** Lambda actually run (ECU EGT-protection enrichment may richen the requested value). Optional (physics agent, v4). */
+  lambda?: number;
 }
 
 export type WarningSeverity = 'info' | 'warn' | 'critical';
@@ -171,9 +223,58 @@ export interface SimWarning {
   message: string;
 }
 
+/**
+ * Optional (physics agent, v4): prediction uncertainty (data only).
+ * Bands are ≈1σ, in % of the predicted value, from validation residuals against
+ * published figures, widened when the configuration is outside the validated
+ * envelope.
+ */
+export interface SimUncertainty {
+  /** ±% band on torque (and power) for each curve point (same order as `curve`). */
+  torquePct: number[];
+  /** ±% on peak power and peak torque. */
+  peakHpPct: number;
+  peakTorquePct: number;
+  /** 0 = inside the envelope of the validated reference engines, → 1 far outside. */
+  extrapolation: number;
+  /** Why the band is wide (which inputs are outside the validated range, etc.). */
+  reasons: string[];
+}
+
+/** Options for simulate(). All optional. */
+export interface SimOptions {
+  /**
+   * Apply ecu.torqueLimitNm / ecu.powerLimitKw (default true). When false both
+   * are ignored; boost schedule, knock control and EGT protection stay on, so
+   * the curve is what the hardware can do under a normal safe tune.
+   */
+  applyOemLimits?: boolean;
+  /**
+   * Also return SimResult.unlimited (the curve with the OEM limits ignored).
+   * Costs a second solve only when the config actually carries a limit.
+   */
+  includeUnlimited?: boolean;
+}
+
 export interface SimResult {
   config: EngineConfig;
   curve: DynoPoint[];
+  /** Which OEM limits were in force for `curve`. */
+  oemLimits: {
+    /** true when a torque and/or power limit was present AND applied. */
+    applied: boolean;
+    /** true when the config carries a limit at all (applied or not). */
+    present: boolean;
+    torqueLimitNm?: number;
+    powerLimitKw?: number;
+    source?: 'published-rating' | 'hardware';
+  };
+  /**
+   * Hardware-only curve (OEM limits ignored). Present only when
+   * SimOptions.includeUnlimited was set; identical to `curve` when no limit is
+   * present or applied.
+   */
+  unlimited?: DynoPoint[];
 
   displacementCc: number;
   displacementL: number;
@@ -221,4 +322,6 @@ export interface SimResult {
   /** 0–100 reliability score; 100 = stock-like margins. */
   reliabilityScore: number;
   warnings: SimWarning[];
+  /** Optional (physics agent, v4): prediction uncertainty band and extrapolation score. */
+  uncertainty?: SimUncertainty;
 }

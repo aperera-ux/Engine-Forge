@@ -49,7 +49,21 @@ export const BASES = {
   scV8: 'dodge-hellcat-62',
 } as const;
 export type BaseKey = keyof typeof BASES;
-export const base = (k: BaseKey) => ref(BASES[k]);
+/**
+ * Base engines for hardware sanity/continuity tests. The OEM torque and
+ * rated-power limits (EngineConfig.ecu.torqueLimitNm / powerLimitKw, physics
+ * v4) are removed: these rules test hardware physics (boost, intercooler,
+ * cams, ...), which a torque/power-limited
+ * factory ECU legitimately hides by design. See physics_audit.md §11.
+ */
+export const base = (k: BaseKey) => {
+  const c = ref(BASES[k]);
+  if (c.ecu) {
+    delete c.ecu.torqueLimitNm;
+    delete c.ecu.powerLimitKw;
+  }
+  return c;
+};
 
 /** Value interpolated at rpm on the curve. */
 export function at(r: SimResult, rpm: number, key: keyof DynoPoint = 'torqueNm'): number {

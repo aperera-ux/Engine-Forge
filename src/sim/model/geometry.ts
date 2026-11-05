@@ -67,6 +67,7 @@ export function sanitize(c: EngineConfig): EngineConfig {
     intakeRunnerMm: clamp(num(c.intakeRunnerMm, 300), 0, 1500),
     throttleMm: clamp(num(c.throttleMm, 60), 10, 400),
     itb: !!c.itb,
+    intakeSystem: c.intakeSystem === 'open' ? 'open' : 'stock',
     exhaust: ['log', 'shorty', 'long-tube', 'tuned-equal'].includes(c.exhaust) ? c.exhaust : 'shorty',
     headerPrimaryMm: clamp(num(c.headerPrimaryMm, 600), 50, 3000),
     headerDiameterMm: clamp(num(c.headerDiameterMm, 40), 10, 150),
@@ -79,6 +80,24 @@ export function sanitize(c: EngineConfig): EngineConfig {
     pistons: c.pistons === 'cast' || c.pistons === 'hypereutectic' ? c.pistons : 'forged',
     rods: ['cast', 'forged-steel', 'billet-steel', 'titanium'].includes(c.rods) ? c.rods : 'forged-steel',
     crank: c.crank === 'cast' || c.crank === 'billet' ? c.crank : 'forged',
+    ecu: sanitizeEcu(c.ecu),
+  };
+}
+
+function sanitizeEcu(e: EngineConfig['ecu']): EngineConfig['ecu'] {
+  if (!e) return undefined;
+  const sched = Array.isArray(e.boostSchedule)
+    ? e.boostSchedule
+        .filter((p) => p && Number.isFinite(p.rpm) && Number.isFinite(p.bar))
+        .map((p) => ({ rpm: clamp(p.rpm, 0, 25000), bar: clamp(p.bar, 0, 5) }))
+        .sort((a, b) => a.rpm - b.rpm)
+    : undefined;
+  return {
+    limitSource: e.limitSource === 'published-rating' || e.limitSource === 'hardware' ? e.limitSource : undefined,
+    torqueLimitNm: typeof e.torqueLimitNm === 'number' && Number.isFinite(e.torqueLimitNm) && e.torqueLimitNm > 0 ? e.torqueLimitNm : undefined,
+    powerLimitKw: typeof e.powerLimitKw === 'number' && Number.isFinite(e.powerLimitKw) && e.powerLimitKw > 0 ? e.powerLimitKw : undefined,
+    boostSchedule: sched && sched.length ? sched : undefined,
+    maxKnockRetardDeg: typeof e.maxKnockRetardDeg === 'number' && Number.isFinite(e.maxKnockRetardDeg) ? clamp(e.maxKnockRetardDeg, 0, 30) : undefined,
   };
 }
 
