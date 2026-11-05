@@ -368,8 +368,8 @@ export class BreathingModel {
     // Valve float: control of the valve is lost, VE collapses.
     const xf = inp.rpm / inp.valveFloatRpm - 1;
     // Past float the valves bounce and close late: steep but bounded loss
-    // (≈35 % by 25 % over float, floor 50 %).
-    const fFloat = xf > 0 ? Math.max(0.5, 1 - 0.35 * Math.pow(Math.min(1.5, xf / 0.25), 1.5)) : 1;
+    // (≈30 % by 25 % over float, floor 50 %).
+    const fFloat = xf > 0 ? Math.max(0.5, 1 - 0.3 * Math.pow(Math.min(1.5, xf / 0.25), 1.5)) : 1;
     return {
       ve: this.base * Math.max(0.05, best.ve) * fFloat,
       z: inletMachIndex(this.g, this.c, profile, inp.sp, inp.tMan),
