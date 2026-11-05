@@ -151,8 +151,18 @@ export interface VehicleGlobals {
   etaAWD: number;
   /** Peak mu by tyre class. */
   muByClass: Record<TireClass, number>;
-  /** Fraction of peak grip actually used when launching (driver / TC quality). */
-  launchTractionUtilization: number;
+  /**
+   * Slip ratio at which a spinning driven axle settles (driver / traction-control
+   * quality). Sets the sliding grip D(kappa_spin) relative to peak.
+   */
+  spinSlipRatio: number;
+  /** Slip-curve shape (Pacejka-like, E = 0): Fx = mu Fz sin(C atan(B kappa)). Peak at kappa = tan(pi/(2C))/B. */
+  slipB: number;
+  slipC: number;
+  /** Master switch for the tyre slip model (false = legacy hard grip cap, no slip in rpm). */
+  slipModel: boolean;
+  /** Default torque-converter stall torque ratio for automatics (a priori, no per-car value). */
+  converterStallRatioDefault: number;
   /** Tyre load sensitivity: mu falls by this fraction per fractional increase of static load per mm of width above tireLoadRef. */
   tireLoadSensitivity: number;
   /** Reference static load per mm tread width, N/mm. */

@@ -17,7 +17,11 @@ export const GLOBALS: VehicleGlobals = {
     'max-performance': 1.36,
     'semi-slick': 1.55,
   },
-  launchTractionUtilization: 0.9, // FITTED (train)
+  spinSlipRatio: 0.2, // FITTED (train); wheelspin settles on the falling branch of the slip curve
+  slipB: 11.7, // a priori: peak slip ~0.12, typical road/performance radial
+  slipC: 1.65, // a priori
+  slipModel: true,
+  converterStallRatioDefault: 1.8, // a priori: performance converters 1.6-2.2
   tireLoadSensitivity: 0, // FITTED (train)
   tireLoadRef: 14,
   crr0: 0.011,

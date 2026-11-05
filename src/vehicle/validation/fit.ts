@@ -12,11 +12,11 @@ import { REFERENCE_CARS } from './referenceCars';
  *   etaRWD drivetrain efficiency for RWD (FWD/AWD keep their offsets)
  * Objective: sum over train cars of squared relative errors of 0-60, 1/4 ET and trap.
  */
-export function makeGlobals(muMax: number, etaRWD: number, util = GLOBALS.launchTractionUtilization, ks = 0): Partial<VehicleGlobals> {
+export function makeGlobals(muMax: number, etaRWD: number, spinKappa = GLOBALS.spinSlipRatio, ks = 0): Partial<VehicleGlobals> {
   const k = muMax / GLOBALS.muByClass['max-performance'];
   return {
     etaRWD,
-    launchTractionUtilization: util,
+    spinSlipRatio: spinKappa,
     tireLoadSensitivity: ks,
     etaFWD: etaRWD + 0.02,
     etaAWD: etaRWD - 0.05,
