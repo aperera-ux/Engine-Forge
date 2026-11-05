@@ -487,6 +487,7 @@ function ResultSection({ fit }: { fit: FitOk }) {
 function AppliedSection() {
   const cal = useStore((s) => s.calibration);
   const revert = useStore((s) => s.revertCalibration);
+  const linkNote = useStore((s) => s.calibrationLinkNote);
   if (!cal) return null;
   const cls = cal.verdict === 'good' ? 'ok' : cal.verdict === 'fair' ? 'warn' : 'bad';
   return (
@@ -503,6 +504,11 @@ function AppliedSection() {
           </div>
           <span className={`cal-verdict ${cls}`}>{cal.verdict === 'poor' ? 'Poor fit' : cal.verdict === 'fair' ? 'Fair fit' : 'Good fit'}</span>
         </div>
+        {linkNote && (
+          <div className="cal-msg info" data-testid="calibrate-link-note">
+            {linkNote}
+          </div>
+        )}
         {cal.verdict === 'poor' && <div className="cal-msg bad">The fit stayed above 5 % RMS; the fitted values are not reliable.</div>}
         {cal.atBound.length > 0 && <div className="cal-msg warn">At bound: {cal.atBound.map((id) => PARAM_DEFS[id].label).join(', ')}.</div>}
         <ul className="cal-applied-list">

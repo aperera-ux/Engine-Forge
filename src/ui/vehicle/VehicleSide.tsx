@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { DEFAULT_FINAL_DRIVE_RANGE, DEFAULT_RATIO_SCALE_RANGE, type Objective } from '../../vehicle';
 import { REFERENCE_CARS } from '../../vehicle/validation/referenceCars';
 import { Select, Toggle } from '../controls';
+import { isCalibrationStale } from '../../calibrate';
 import { useStore } from '../store';
 import { fmt } from '../units';
 import type { OptimizeOutput } from './compute';
@@ -286,10 +287,32 @@ function Accuracy() {
   );
 }
 
+/** Which engine curve the car runs on: shown only when a calibration is applied. */
+function EngineSource() {
+  const cal = useStore((s) => s.calibration);
+  const config = useStore((s) => s.config);
+  if (!cal) return null;
+  const stale = isCalibrationStale(config, cal);
+  return (
+    <div className="veh-eng" data-testid="vehicle-engine-calibrated">
+      <span className={`dn-chip cal ${cal.verdict === 'poor' ? 'poor' : ''}`} title={`The torque curve comes from the calibrated engine (fitted to ${cal.sourceName}, RMS ${cal.rmsBeforePct.toFixed(1)} % to ${cal.rmsAfterPct.toFixed(1)} %).`}>
+        engine: calibrated
+        <small>{cal.sourceName}</small>
+      </span>
+      {stale && (
+        <span className="veh-eng-warn" data-testid="vehicle-engine-stale">
+          Build edited since the fit; the fitted corrections still apply.
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function VehicleSide() {
   return (
     <aside className="panel side veh-side" data-testid="vehicle-side">
       <div className="veh-side-scroll">
+        <EngineSource />
         <Kpis />
         <Reference />
         <Optimizer />
