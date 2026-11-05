@@ -275,7 +275,8 @@ export const useStore = create<UIState>()((set, get) => {
     loadVehicle: (v) => set({ vehicle: mergeDesign(structuredClone(v)) }),
     setVehicle: (patch) => {
       const cur = get().vehicle;
-      set({ vehicle: { ...cur, ...patch, spec: { ...cur.spec, ...(patch.spec ?? {}) } } });
+      // Any edit makes the design a custom one (measured-vs-model comparisons no longer apply).
+      set({ vehicle: { ...cur, ...patch, spec: { ...cur.spec, ...(patch.spec ?? {}) }, presetId: 'presetId' in patch ? (patch.presetId ?? null) : null } });
     },
     snapshots: [],
     garage: initialGarage(),
