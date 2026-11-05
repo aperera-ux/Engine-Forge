@@ -174,6 +174,17 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number, hin
   // Charge-air piping + intercooler core loss: continuous in core size (effectiveness).
   const icDrop = (phi: number) => (0.04 + 0.08 * Math.min(1.2, t.intercoolerEffectiveness / 0.75)) * 1e5 * phi * phi;
   const twin = t.twinScroll ? 0.95 : 1;
+  // Turbocharger mechanical (bearing) loss, W, all turbos. Hydrodynamic journal
+  // and thrust bearings dissipate ∝ μ·N² (Petroff); along the operating line
+  // the shaft speed N² ∝ compressor isentropic work Δh_is ∝ PR^((γ−1)/γ) − 1,
+  // and for geometrically similar bearings the loss at a given tip speed
+  // scales with wheel size (∝ D). CAL.turboBearingLossW is the loss of one
+  // 50 mm-inducer turbo at PR 2. It is a small fraction of compressor power at
+  // rated flow (~3–5 %) but a large one in the spool region (~10–20 %), where
+  // the compressor absorbs only a few kW.
+  const kAir = 0.2857;
+  const bearingRef = Math.pow(2, kAir) - 1;
+  const bearingLoss = (pr: number) => (CAL.turboBearingLossW * n * (t.compressorInducerMm / 50) * Math.max(0, Math.pow(pr, kAir) - 1)) / bearingRef;
 
   // Compressor flow fraction φ: the compressor efficiency and the charge-air
   // pressure loss depend on φ, and φ on the engine flow they produce, so each
@@ -219,7 +230,9 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number, hin
     phiA = phiWarm;
     prB = pr;
     phiWarm = phi;
-    const pc = compressPower(flow.mAir, T_AMB_K, pr, eta);
+    // Shaft power the turbine must supply: compressor work plus the turbo's
+    // bearing (journal + thrust) friction loss.
+    const pc = compressPower(flow.mAir, T_AMB_K, pr, eta) + bearingLoss(pr);
     const p4 = P_AMB_PA + 0.05e5 * Math.min(2, phi) ** 2;
     const p3c = turbineInletPressure(at, flow.mExh, flow.tExh, p4);
     const ptc = turbinePower(c, flow.mExh, flow.tExh, p3c, p4, phi);

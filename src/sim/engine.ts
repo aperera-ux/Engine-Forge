@@ -823,6 +823,47 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
   /** Torque-limited boost targets of the previous rpm points (warm start). */
   const limT: { rpm: number; t: number }[] = [];
   let knockSens = 0.03;
+  /** The previous rpm point ended knock-limited (chooses the ECU solve order only). */
+  let knockBoundPrev = false;
+  /** Accepted retard for knock severity k0 (retard at the scheduled target): rises softly, at most ecuRetardSoftCapDeg above the limit. */
+  const acceptedRetard = (k0: number, maxR: number) => maxR + CAL.ecuRetardSoftCapDeg * Math.tanh((CAL.ecuRetardSoft * (k0 - maxR)) / CAL.ecuRetardSoftCapDeg);
+  /**
+   * Knock-aware boost trim from r0: the boost target at which the retard equals
+   * the accepted retard `lim`, by bracketed Illinois on the boost scale to
+   * |retard − lim| ≤ tolK. Returns r0 itself when it already satisfies it.
+   */
+  const knockTrim = (rpm: number, r0: PointOut, lim: number, tolK: number): PointOut => {
+    const kR = r0.point.knockRetardDeg;
+    if (!(kR - lim > tolK)) return r0;
+    const bA0 = r0.point.boostBar;
+    // Turbo: scale the achieved boost (a target above it would not bite when spool-limited).
+    const tgtA = c.induction === 'turbo' ? bA0 : boostTargetOf(r0);
+    // Boost scale x in [xMin, 1]: retard is monotone in boost but saturates at
+    // the retard limit, so the root is bracketed before Illinois.
+    const xMin = 0.02;
+    const evalX = (x: number): Pt => {
+      const rr = atBoost(rpm, tgtA * x);
+      return { t: x, rr, f: rr.point.knockRetardDeg - lim };
+    };
+    let hi: Pt = { t: 1, rr: r0, f: kR - lim };
+    let lo: Pt | null = null;
+    let res: Pt | null = null;
+    // First guess from the previous rpm's retard-per-boost sensitivity (affects the iteration count only).
+    const cur = evalX(Math.min(0.999, Math.max(0.3, 1 - (kR - lim) * knockSens)));
+    if (Math.abs(cur.f) <= tolK) res = cur;
+    else if (cur.f > 0) hi = cur;
+    else lo = cur;
+    if (!res && !lo) {
+      lo = evalX(xMin);
+      if (lo.f > 0) res = lo; // knock-limited even with no boost: run at minimum boost
+    }
+    if (!res) res = bracketRoot(evalX, lo as Pt, hi, tolK, CAL.ecuKnockMaxIters);
+    const rB = res.rr;
+    const kB = rB.point.knockRetardDeg;
+    if (kR - kB > 0.5) knockSens = Math.min(0.2, Math.max(0.005, (1 - rB.point.boostBar / bA0) / (kR - kB)));
+    if (rB.boost) rB.boost.limit = 'knock';
+    return rB;
+  };
   let shortfall: { ratio: number; rpm: number; reason: string; reachedAnywhere: boolean } | null = null;
   let spoolScan = c.induction === 'turbo';
   const unconverged: NonNullable<SimResult['solverUnconverged']> = [];
@@ -851,6 +892,8 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     // scheduled target too and the solve can start from it (one operating
     // point fewer); otherwise the scheduled target is evaluated as usual.
     let r: PointOut;
+    /** The operating point at the scheduled target, if evaluated. */
+    let rSched: PointOut | null = null;
     let limited = false;
     const nl = limT.length;
     const grid1 = grid.indexOf(rpm) - 1;
@@ -864,84 +907,75 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
       }
       if (!(tPred > 0 && tPred < tgt0 - 1e-6)) tPred = NaN;
     }
-    if (tPred === tPred) {
-      const rp = atBoost(rpm, tPred);
-      const pp: Pt = { t: tPred, rr: rp, f: rp.point.torqueNm - torqueLimit };
-      if (pp.f > 0 && rp.point.boostBar > 0.01) {
-        r = limitTorque(rpm, torqueLimit, pp, null);
-        limited = true;
-      } else {
-        r = atBoost(rpm, tgt0);
-        if (r.point.torqueNm > torqueLimit && r.point.boostBar > 0.01) {
-          const hiP: Pt = { t: tgt0, rr: r, f: r.point.torqueNm - torqueLimit };
-          r = Math.abs(pp.f) <= CAL.ecuTorqueSolveTolNm ? rp : limitTorque(rpm, torqueLimit, hiP, pp);
-          limited = true;
-        }
-      }
-    } else r = boosted ? atBoost(rpm, tgt0) : solveFirst(rpm, ctx);
     // ── ECU at WOT (boosted engines) ──
     // The ECU's boost target is the lowest of: the schedule, the torque
     // limit, the knock-aware trim and component protection. Each is solved
     // on converged operating points (one function of the target), and each
     // step can only lower the target from the previous one, so a constraint
-    // already met stays met (torque rises with boost). The torque limit
-    // therefore needs no re-application after steps 2–3.
-    if (boosted) {
-      // 1) Torque management ("torque structure"): the ECU converts the torque
-      //    limit into a required air charge, using its torque model (indicated
-      //    torque ∝ air charge at the current spark efficiency, minus friction),
-      //    and lowers the boost target to it (limitTorque: bracketed solve on the target).
-      if (!limited && torqueLimit > 0 && r.point.torqueNm > torqueLimit && r.point.boostBar > 0.01) {
+    // already met stays met (torque rises with boost).
+    //  1) Torque management ("torque structure"): the ECU converts the torque
+    //     limit into a required air charge, using its torque model (indicated
+    //     torque ∝ air charge at the current spark efficiency, minus friction),
+    //     and lowers the boost target to it (limitTorque: bracketed solve on the target).
+    //  2) Knock-aware boost control: when holding the target would need more
+    //     than the accepted retard, the boost target is lowered until the
+    //     retard is back at that limit (knockTrim). The trim is partial (a
+    //     torque-based ECU balances retard against boost): the accepted retard
+    //     still rises slowly with knock severity. The severity is measured at
+    //     the SCHEDULED target (§18.2), not at a point the torque limit already
+    //     lowered: the knock-aware target is a property of the schedule, and the
+    //     final target is the lower of it and the torque-limited one. (Measuring
+    //     it at the limited point made a lightly knocking limited point trim
+    //     itself below the torque limit: path dependence, §17.1.)
+    //  The two are solved in either order, with the same result to the solve
+    //  tolerances: knock first when the previous rpm ended knock-limited (then
+    //  the torque solve, if still needed, brackets below the knock target),
+    //  else torque first (then the knock trim, if still needed, starts at the
+    //  limited point). Only the number of operating points solved differs.
+    const tolK = CAL.ecuKnockTolDeg;
+    if (boosted && knockBoundPrev) {
+      r = rSched = atBoost(rpm, tgt0);
+      if (r.point.knockRetardDeg > maxRetard && r.point.boostBar > 0.05) r = knockTrim(rpm, r, acceptedRetard(r.point.knockRetardDeg, maxRetard), tolK);
+      if (torqueLimit > 0 && r.point.torqueNm > torqueLimit && r.point.boostBar > 0.01) {
         r = limitTorque(rpm, torqueLimit, { t: boostTargetOf(r), rr: r, f: r.point.torqueNm - torqueLimit }, null);
         limited = true;
       }
-      if (limited) {
-        if (r.boost) r.boost.limit = 'torque';
-        limT.push({ rpm, t: boostTargetOf(r) });
-      }
-      // 2) Knock-aware boost control: when holding the target would need more
-      //    than the accepted retard, the boost target is lowered until the
-      //    retard is back at that limit. The trim is partial (a torque-based
-      //    ECU balances retard against boost): the accepted retard still rises
-      //    slowly with knock severity. Solved to |retard − accepted| ≤
-      //    ecuKnockTolDeg (bracketed Illinois on the boost scale), so the trim
-      //    is a continuous function of every input (no stop-width stair-steps).
-      if (r.point.knockRetardDeg > maxRetard && r.point.boostBar > 0.05) {
-        const bA0 = r.point.boostBar;
-        // Turbo: scale the achieved boost (a target above it would not bite when spool-limited).
-        const tgtA = c.induction === 'turbo' ? bA0 : boostTargetOf(r);
-        const k0 = r.point.knockRetardDeg;
-        // Accepted retard: rises softly with knock severity, but never more than
-        // ecuRetardSoftCapDeg above the nominal limit.
-        const lim = maxRetard + CAL.ecuRetardSoftCapDeg * Math.tanh((CAL.ecuRetardSoft * (k0 - maxRetard)) / CAL.ecuRetardSoftCapDeg);
-        // Boost scale x ∈ [xMin, 1]: retard is monotone in boost but saturates at
-        // the retard limit, so the root is bracketed before Illinois.
-        const xMin = 0.02;
-        const evalX = (x: number): Pt => {
-          const rr = atBoost(rpm, tgtA * x);
-          return { t: x, rr, f: rr.point.knockRetardDeg - lim };
-        };
-        const tolK = CAL.ecuKnockTolDeg;
-        let hi: Pt = { t: 1, rr: r, f: k0 - lim };
-        let lo: Pt | null = null;
-        let res: Pt | null = null;
-        // First guess from the previous rpm's retard-per-boost sensitivity (affects the iteration count only).
-        const cur = evalX(Math.min(0.999, Math.max(0.3, 1 - (k0 - lim) * knockSens)));
-        if (Math.abs(cur.f) <= tolK) res = cur;
-        else if (cur.f > 0) hi = cur;
-        else lo = cur;
-        if (!res && !lo) {
-          lo = evalX(xMin);
-          if (lo.f > 0) res = lo; // knock-limited even with no boost: run at minimum boost
+    } else {
+      if (tPred === tPred) {
+        const rp = atBoost(rpm, tPred);
+        const pp: Pt = { t: tPred, rr: rp, f: rp.point.torqueNm - torqueLimit };
+        if (pp.f > 0 && rp.point.boostBar > 0.01) {
+          r = limitTorque(rpm, torqueLimit, pp, null);
+          limited = true;
+        } else {
+          r = rSched = atBoost(rpm, tgt0);
+          if (r.point.torqueNm > torqueLimit && r.point.boostBar > 0.01) {
+            const hiP: Pt = { t: tgt0, rr: r, f: r.point.torqueNm - torqueLimit };
+            r = Math.abs(pp.f) <= CAL.ecuTorqueSolveTolNm ? rp : limitTorque(rpm, torqueLimit, hiP, pp);
+            limited = true;
+          }
         }
-        if (!res) res = bracketRoot(evalX, lo as Pt, hi, tolK, CAL.ecuKnockMaxIters);
-        const rB = res.rr;
-        const kB = rB.point.knockRetardDeg;
-        if (k0 - kB > 0.5) knockSens = Math.min(0.2, Math.max(0.005, (1 - rB.point.boostBar / bA0) / (k0 - kB)));
-        r = rB;
-        if (r.boost) r.boost.limit = 'knock';
+      } else r = rSched = boosted ? atBoost(rpm, tgt0) : solveFirst(rpm, ctx);
+      if (boosted) {
+        if (!limited && torqueLimit > 0 && r.point.torqueNm > torqueLimit && r.point.boostBar > 0.01) {
+          r = limitTorque(rpm, torqueLimit, { t: boostTargetOf(r), rr: r, f: r.point.torqueNm - torqueLimit }, null);
+          limited = true;
+        }
+        if (r.point.knockRetardDeg > maxRetard && r.point.boostBar > 0.05) {
+          const k0 = (limited ? (rSched ?? atBoost(rpm, tgt0)) : r).point.knockRetardDeg;
+          const rK = knockTrim(rpm, r, acceptedRetard(k0, maxRetard), tolK);
+          if (rK !== r) {
+            r = rK;
+            limited = false;
+          }
+        }
       }
     }
+    if (limited) {
+      if (r.boost) r.boost.limit = 'torque';
+      limT.push({ rpm, t: boostTargetOf(r) });
+    }
+    knockBoundPrev = r.boost?.limit === 'knock';
     // 3) Component protection (boosted): even at the richest allowed mixture and the
     //    accepted retard, the ECU cuts boost when EGT would exceed the turbine /
     //    exhaust-valve limit or peak cylinder pressure the absolute ceiling.

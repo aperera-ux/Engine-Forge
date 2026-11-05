@@ -106,6 +106,12 @@ export function computeWarnings(w: WarningInputs): { warnings: SimWarning[]; rel
     // Tapering at the top end is normal OEM practice (info); never getting near target is a build problem.
     const sev = !bs.reachedAnywhere ? 'warn' : 'info';
     add(sev, 'boost-target', `Target boost not held: ${Math.round(100 * bs.ratio)} % of target at ${bs.rpm} rpm because ${why[bs.reason] ?? bs.reason}.`, sev === 'warn' ? 4 : 0);
+    // Knock shows up as boost cut, not only as retard: the ECU holds the
+    // retard near its accepted limit and trims boost instead (§18.2), so a
+    // knock-limited boost cut that never lets boost near target is a knock
+    // problem in its own right (top-end tapering on a stock engine is not).
+    if (bs.reason === 'knock' && bs.ratio < 0.8 && !bs.reachedAnywhere && !out.some((x) => x.code === 'knock' && x.severity !== 'info'))
+      add('warn', 'knock', `Knock-limited boost: the ECU cuts boost to ${Math.round(100 * bs.ratio)} % of target at ${bs.rpm} rpm to hold spark retard. Lower compression/boost, improve intercooling or use higher-octane fuel.`, 4 + 10 * (0.8 - bs.ratio));
   }
 
   // No usable output at all (e.g. enormous engine on a tiny throttle/turbo).

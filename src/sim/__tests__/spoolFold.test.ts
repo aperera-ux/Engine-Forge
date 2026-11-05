@@ -12,7 +12,12 @@
  *    with a 'solver-unconverged' warning (never silent);
  *  - spool-limited torque is non-decreasing in veScale (more air, more exhaust
  *    energy: the lowest equilibrium can only move up), so no branch hopping;
- *  - the median simulate() time stays under 10 ms at every veScale.
+ *  - cost: the operating-point evaluation count (deterministic) stays within
+ *    EVAL_BUDGET at every veScale, and the median simulate() time under 10 ms.
+ *    Wall-clock is checked against 10 ms when run alone (SIM_TIMING=1); in the
+ *    full parallel suite only against LOADED_MS, because other test files share
+ *    the CPU. One evaluation costs 13–18 µs on these engines (M-series laptop),
+ *    so EVAL_BUDGET = 650 is about 8–12 ms.
  */
 import { describe, expect, it } from 'vitest';
 import { pointSolveStats, simulate } from '../engine';
@@ -22,7 +27,9 @@ import type { SimResult } from '../types';
 const ALL = [...REFERENCE_ENGINES, ...EXTENDED_REFERENCE_ENGINES];
 const IDS = ['bmw-b58-340i', 'bmw-n74-760i', 'vw-ea888-gen3-gti', 'ford-10-ecoboost', 'subaru-ej257-sti'];
 const VES = Array.from({ length: 31 }, (_, i) => Math.round((0.85 + 0.01 * i) * 1000) / 1000);
-const BUDGET_MS = 10;
+const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
+const BUDGET_MS = env.SIM_TIMING ? 10 : 25;
+const EVAL_BUDGET = 650;
 
 function medianMs(f: () => void, n: number): number {
   const t: number[] = [];
@@ -50,6 +57,7 @@ describe('spool fold: veScale sweep 0.85–1.15', () => {
         // And on these engines nothing is left unconverged at all.
         expect({ ve, unconverged: s.unconverged, ecu: s.ecuUnconverged, listed: listed.length }).toEqual({ ve, unconverged: 0, ecu: 0, listed: 0 });
         expect(s.maxEgtResK).toBeLessThanOrEqual(0.02 + 1e-9);
+        expect(s.evals, `${id} ve ${ve}: operating-point evaluations`).toBeLessThanOrEqual(EVAL_BUDGET);
         rs.push(r);
       }
       // Below the plateau, torque is non-decreasing in veScale at every rpm
@@ -61,7 +69,7 @@ describe('spool fold: veScale sweep 0.85–1.15', () => {
           if (a.boostBar > 0 && b.knockRetardDeg < 1e-3 && a.knockRetardDeg < 1e-3) expect(b.torqueNm, `${id} ${a.rpm} rpm ve ${VES[i]}`).toBeGreaterThanOrEqual(a.torqueNm - 0.05);
         }
     }, 60_000);
-    it(`${id}: median time < ${BUDGET_MS} ms at every veScale`, () => {
+    it(`${id}: median time < ${BUDGET_MS} ms at every veScale${env.SIM_TIMING ? '' : ' (10 ms with SIM_TIMING=1)'}`, () => {
       let worst = 0;
       for (const ve of VES) {
         const o = { calibration: { veScale: ve } };
