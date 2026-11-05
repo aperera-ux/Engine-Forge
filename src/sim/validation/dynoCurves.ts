@@ -226,6 +226,95 @@ export const DYNO_CURVES: DynoCurve[] = [
     notes: 'Raster chart traced by colour at 4x. CAVEAT: the axis labels are US-unit conversions of a metric grid (lb-ft labels 22/44/.../243 = 30-330 Nm in 30 Nm steps; hp labels 20/41/.../224 = 15-165 kW in 15 kW steps, one label misprinted "109" for 122). Calibrated on the metric grid; verified by the 280 Nm plateau and 147 kW peak. Cross-check vs chart power 2000-6500 rpm: within 2.5 % (chart power slightly low at the top). Chart drawn to 7000 rpm; truncated at the 6500 rpm limit.',
     split: 'train',
   },
+  // ───────────────────────────── added in research round 2 ─────────────────────────────
+  {
+    engineId: 'gm-ls3',
+    source: {
+      url: 'https://www.crateenginedepot.com/Pdfs/19435098_Information.pdf',
+      title: 'Chevrolet Performance LS3 crate engine sell sheet P/N 19540155 (same chart as 2017 catalog p.200), DYNO CHART',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'SAE J1349', confidence: 'medium',
+    points: [{ rpm: 3000, torqueNm: 501, hp: 211 }, { rpm: 3250, torqueNm: 502, hp: 229 }, { rpm: 3500, torqueNm: 520, hp: 256 }, { rpm: 3750, torqueNm: 539, hp: 284 }, { rpm: 4000, torqueNm: 549, hp: 308 }, { rpm: 4250, torqueNm: 566, hp: 338 }, { rpm: 4500, torqueNm: 575, hp: 363 }, { rpm: 4750, torqueNm: 567, hp: 378 }, { rpm: 5000, torqueNm: 562, hp: 395 }, { rpm: 5250, torqueNm: 551, hp: 406 }, { rpm: 5500, torqueNm: 536, hp: 414 }, { rpm: 5750, torqueNm: 518, hp: 418 }, { rpm: 6000, torqueNm: 504, hp: 425 }, { rpm: 6250, torqueNm: 471, hp: 413 }],
+    notes: "Vector chart (PDF path vertices) BUT the x axis is CATEGORICAL, not linear: tick labels 800,1600,2400,3200,4000,4300,4500,4700,5400,5900,6400 are equally spaced, there are no vertical gridlines. Rpm along the axis was mapped by piecewise-linear interpolation between the equally spaced labels (traces begin/end on the first/last label), and checked independently: rpm implied by the chart own hp and torque traces (hp*5252/tq) agrees with the label mapping to within 1-3 % above 3000 rpm (peak torque lands at 4570 rpm vs the 4600 published; peak hp at 5750-5900 vs 5900). Below 3000 rpm the hp trace is too small to cross-check (differences 4-11 %), so those points were dropped; the chart ends at 6400 label (points above 6250 dropped). Peak 424 lb-ft (575 Nm) vs 425 published. Cross-check vs chart hp 3000-6250 rpm: mean 1.0 %, max 2.6 %. Vector (PDF path) chart: trace vertices read exactly from the PDF drawing operators, axes calibrated from the PDF gridlines; axis labels are outlined glyphs so tick values were read from the rendered page. Smoothed few-vertex representation of the dyno run (Chevrolet Performance: crate engines tested to SAE J1349 net / J1995 gross, with test headers and no accessories).",
+    split: 'train',
+  },
+  {
+    engineId: 'gm-ls376-525',
+    source: {
+      url: 'https://images.carid.com/gm-parts/products/pdf/chevrolet-performance-2017-catalog.pdf',
+      title: 'Chevrolet Performance Parts Catalog 2017 (crate engine DYNO CHART pages) p.206: LS376/525 crate P/N 19301360',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'SAE J1349', confidence: 'high',
+    points: [{ rpm: 3250, torqueNm: 563, hp: 257 }, { rpm: 3500, torqueNm: 562, hp: 276 }, { rpm: 3750, torqueNm: 574, hp: 302 }, { rpm: 4000, torqueNm: 599, hp: 336 }, { rpm: 4250, torqueNm: 641, hp: 382 }, { rpm: 4500, torqueNm: 662, hp: 419 }, { rpm: 4750, torqueNm: 644, hp: 430 }, { rpm: 5000, torqueNm: 654, hp: 459 }, { rpm: 5250, torqueNm: 655, hp: 483 }, { rpm: 5500, torqueNm: 649, hp: 501 }, { rpm: 5750, torqueNm: 630, hp: 509 }, { rpm: 6000, torqueNm: 618, hp: 521 }, { rpm: 6250, torqueNm: 600, hp: 526 }],
+    notes: "Vector (PDF path) chart: trace vertices read exactly from the PDF drawing operators, axes calibrated from the PDF gridlines; axis labels are outlined glyphs so tick values were read from the rendered page. Smoothed few-vertex representation of the dyno run (Chevrolet Performance: crate engines tested to SAE J1349 net / J1995 gross, with test headers and no accessories). Chart axes 3000-6300 rpm (300 steps), 200-550. Cross-check vs chart hp: mean 0.5 %, max 1.2 %. Chart peaks 489 lb-ft / 532 hp vs headline 486 lb-ft @ 5200 / 525 hp @ 6200.",
+    split: 'train',
+  },
+  {
+    engineId: 'gm-zz572-620',
+    source: {
+      url: 'https://images.carid.com/gm-parts/products/pdf/chevrolet-performance-2017-catalog.pdf',
+      title: 'Chevrolet Performance Parts Catalog 2017 (crate engine DYNO CHART pages) p.316: ZZ572/620 Deluxe big-block crate P/N 19331583',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'unknown', confidence: 'high',
+    points: [{ rpm: 3250, torqueNm: 841, hp: 384 }, { rpm: 3500, torqueNm: 870, hp: 428 }, { rpm: 3750, torqueNm: 880, hp: 463 }, { rpm: 4000, torqueNm: 880, hp: 494 }, { rpm: 4250, torqueNm: 880, hp: 525 }, { rpm: 4500, torqueNm: 880, hp: 556 }, { rpm: 4750, torqueNm: 873, hp: 582 }, { rpm: 5000, torqueNm: 851, hp: 598 }, { rpm: 5250, torqueNm: 832, hp: 613 }, { rpm: 5500, torqueNm: 809, hp: 625 }, { rpm: 5750, torqueNm: 776, hp: 626 }],
+    notes: "Vector (PDF path) chart: trace vertices read exactly from the PDF drawing operators, axes calibrated from the PDF gridlines; axis labels are outlined glyphs so tick values were read from the rendered page. Smoothed few-vertex representation of the dyno run (Chevrolet Performance: crate engines tested to SAE J1349 net / J1995 gross, with test headers and no accessories). Chart axes 3000-6000 rpm (250 steps), 300-700. Carbureted (850 cfm). Cross-check vs chart hp: mean 0.5 %, max 1.3 %. Chart peaks 649 lb-ft / 624 hp vs headline 645 lb-ft @ 4200 / 621 hp @ 5400.",
+    split: 'holdout',
+  },
+  {
+    engineId: 'gm-zz427-480',
+    source: {
+      url: 'https://images.carid.com/gm-parts/products/pdf/chevrolet-performance-2017-catalog.pdf',
+      title: 'Chevrolet Performance Parts Catalog 2017 (crate engine DYNO CHART pages) p.300: ZZ427/480 big-block crate P/N 19166393',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'unknown', confidence: 'high',
+    points: [{ rpm: 3000, torqueNm: 596, hp: 251 }, { rpm: 3250, torqueNm: 597, hp: 272 }, { rpm: 3500, torqueNm: 643, hp: 316 }, { rpm: 3750, torqueNm: 664, hp: 350 }, { rpm: 4000, torqueNm: 665, hp: 374 }, { rpm: 4250, torqueNm: 661, hp: 394 }, { rpm: 4500, torqueNm: 652, hp: 412 }, { rpm: 4750, torqueNm: 644, hp: 429 }, { rpm: 5000, torqueNm: 636, hp: 447 }, { rpm: 5250, torqueNm: 627, hp: 462 }, { rpm: 5500, torqueNm: 610, hp: 471 }, { rpm: 5750, torqueNm: 593, hp: 479 }, { rpm: 6000, torqueNm: 568, hp: 479 }],
+    notes: "Vector (PDF path) chart: trace vertices read exactly from the PDF drawing operators, axes calibrated from the PDF gridlines; axis labels are outlined glyphs so tick values were read from the rendered page. Smoothed few-vertex representation of the dyno run (Chevrolet Performance: crate engines tested to SAE J1349 net / J1995 gross, with test headers and no accessories). Chart axes 3000-6000 rpm (300 steps), 200-500. Carbureted (770 cfm). Cross-check vs chart hp: mean 0.8 %, max 2.0 %. Chart peaks 492 lb-ft / 482 hp vs headline 490 @ 3800 / 480 @ 6000.",
+    split: 'train',
+  },
+  {
+    engineId: 'vw-ea888-gen1-20tfsi',
+    source: {
+      url: 'https://www.vaglinks.com/Docs/SSP/VWUSA.COM_SSP_922903_2.0L_4V_TFSI_Engine.pdf',
+      title: 'Audi/VW SSP 922903 "2.0L 4V TFSI Engine", p.7 Torque/Power Curve (CAEB)',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'ECE', confidence: 'high',
+    points: [{ rpm: 1500, torqueNm: 246, hp: 52 }, { rpm: 1750, torqueNm: 281, hp: 69 }, { rpm: 2000, torqueNm: 281, hp: 79 }, { rpm: 2250, torqueNm: 281, hp: 89 }, { rpm: 2500, torqueNm: 281, hp: 98 }, { rpm: 2750, torqueNm: 281, hp: 108 }, { rpm: 3000, torqueNm: 281, hp: 118 }, { rpm: 3250, torqueNm: 281, hp: 128 }, { rpm: 3500, torqueNm: 281, hp: 138 }, { rpm: 3750, torqueNm: 281, hp: 148 }, { rpm: 4000, torqueNm: 281, hp: 158 }, { rpm: 4250, torqueNm: 281, hp: 167 }, { rpm: 4500, torqueNm: 281, hp: 177 }, { rpm: 4750, torqueNm: 281, hp: 187 }, { rpm: 5000, torqueNm: 281, hp: 197 }, { rpm: 5250, torqueNm: 268, hp: 198 }, { rpm: 5500, torqueNm: 256, hp: 198 }, { rpm: 5750, torqueNm: 245, hp: 198 }, { rpm: 6000, torqueNm: 235, hp: 198 }, { rpm: 6250, torqueNm: 224, hp: 196 }, { rpm: 6500, torqueNm: 213, hp: 194 }],
+    notes: "Declared (idealised, piecewise-linear) full-load curve from an Audi/VW Self Study Programme: vector chart, trace vertices read from the PDF path data, axes calibrated from the printed label positions. Dual-unit axes (lb ft (Nm), hp (kW)); metric scale used. Chart peaks 280.7 Nm / 147.5 kW vs spec 280 Nm @ 1700-5000 / 147 kW @ 5100-6000. Cross-check torque-derived power vs chart kW: mean 0.4 %, max 1.0 % (points from 1500 rpm; 1000-1250 rpm dropped, power trace inconsistent there). Torque plateau is ECU-limited (flat to 5000).",
+    split: 'train',
+  },
+  {
+    engineId: 'vw-18tfsi-byt',
+    source: {
+      url: 'https://www.vaglinks.com/Docs/SSP/VWUSA.COM_SSP_384_Audi_1.8l_4V_TSFI_Engine.pdf',
+      title: 'Audi SSP 384 "1.8l 4V TFSI Engine", p.7 Torque/power curve (BYT, 118 kW)',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'ECE', confidence: 'medium',
+    points: [{ rpm: 1500, torqueNm: 248, hp: 52 }, { rpm: 1750, torqueNm: 252, hp: 62 }, { rpm: 2000, torqueNm: 252, hp: 71 }, { rpm: 2250, torqueNm: 252, hp: 80 }, { rpm: 2500, torqueNm: 252, hp: 89 }, { rpm: 2750, torqueNm: 252, hp: 97 }, { rpm: 3000, torqueNm: 252, hp: 106 }, { rpm: 3250, torqueNm: 252, hp: 115 }, { rpm: 3500, torqueNm: 252, hp: 124 }, { rpm: 3750, torqueNm: 252, hp: 133 }, { rpm: 4000, torqueNm: 252, hp: 142 }, { rpm: 4250, torqueNm: 252, hp: 150 }, { rpm: 4500, torqueNm: 246, hp: 155 }, { rpm: 4750, torqueNm: 236, hp: 157 }, { rpm: 5000, torqueNm: 226, hp: 158 }, { rpm: 5250, torqueNm: 216, hp: 159 }, { rpm: 5500, torqueNm: 206, hp: 159 }, { rpm: 5750, torqueNm: 197, hp: 159 }, { rpm: 6000, torqueNm: 187, hp: 158 }, { rpm: 6250, torqueNm: 178, hp: 156 }, { rpm: 6500, torqueNm: 168, hp: 153 }],
+    notes: "Declared (idealised, piecewise-linear) full-load curve from an Audi/VW Self Study Programme: vector chart, trace vertices read from the PDF path data, axes calibrated from the printed label positions. Axes 0-300 Nm / 0-120 kW, 1000-7000 rpm. Chart torque plateau reads 252 Nm (spec 250); power plateau 116.7 kW (spec 118). Cross-check vs chart kW: mean 1.5 %, max 4.6 % (points from 1500 rpm; the ramp below is dropped). Medium confidence because power plateau is ~1 % below the spec.",
+    split: 'train',
+  },
+  {
+    engineId: 'audi-27t-s4',
+    source: {
+      url: 'https://www.vaglinks.com/Docs/SSP/VWUSA.COM_SSP_198_2.7T_S4_Engine.pdf',
+      title: 'Audi SSP 198 "2.7 l V6 biturbo engine (S4)", p.5 power/torque diagram (top chart, 195 kW / 400 Nm)',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'ECE', confidence: 'medium',
+    points: [{ rpm: 1750, torqueNm: 387, hp: 95 }, { rpm: 2000, torqueNm: 401, hp: 113 }, { rpm: 2250, torqueNm: 401, hp: 127 }, { rpm: 2500, torqueNm: 401, hp: 141 }, { rpm: 2750, torqueNm: 401, hp: 155 }, { rpm: 3000, torqueNm: 401, hp: 169 }, { rpm: 3250, torqueNm: 401, hp: 183 }, { rpm: 3500, torqueNm: 401, hp: 197 }, { rpm: 3750, torqueNm: 396, hp: 209 }, { rpm: 4000, torqueNm: 385, hp: 217 }, { rpm: 4250, torqueNm: 375, hp: 224 }, { rpm: 4500, torqueNm: 364, hp: 230 }, { rpm: 4750, torqueNm: 354, hp: 236 }, { rpm: 5000, torqueNm: 343, hp: 241 }, { rpm: 5250, torqueNm: 332, hp: 245 }, { rpm: 5500, torqueNm: 322, hp: 248 }, { rpm: 5750, torqueNm: 311, hp: 251 }, { rpm: 6000, torqueNm: 300, hp: 253 }, { rpm: 6250, torqueNm: 290, hp: 254 }],
+    notes: "Declared (idealised, piecewise-linear) full-load curve from an Audi/VW Self Study Programme: vector chart, trace vertices read from the PDF path data, axes calibrated from the printed label positions. Axes 0-500 Nm / 0-200 kW, 1000-7000 rpm. Two charts are printed on the page (195 kW/400 Nm and 169 kW/310 Nm versions); the top (S4) one used. Chart peaks 401 Nm / 194.5 kW. Cross-check vs chart kW: mean 1.6 %, max 4.1 % (power trace sits up to 4 % below torque-derived power at 5000-6000 rpm, so one of the two is schematic). Points from 1750 rpm.",
+    split: 'holdout',
+  },
+  {
+    engineId: 'audi-52-v10-bxa',
+    source: {
+      url: 'https://www.vaglinks.com/Docs/SSP/VWUSA.COM_SSP_923603_5.2lL_V10_FSI_Engine.pdf',
+      title: 'Audi SSP 923603 "5.2l V10 FSI Engine", p.2 Torque and Horsepower (S6, BXA, left chart)',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'ECE', confidence: 'high',
+    points: [{ rpm: 1500, torqueNm: 430, hp: 91 }, { rpm: 1750, torqueNm: 445, hp: 109 }, { rpm: 2000, torqueNm: 460, hp: 129 }, { rpm: 2250, torqueNm: 479, hp: 151 }, { rpm: 2500, torqueNm: 499, hp: 175 }, { rpm: 2750, torqueNm: 519, hp: 200 }, { rpm: 3000, torqueNm: 538, hp: 227 }, { rpm: 3250, torqueNm: 539, hp: 246 }, { rpm: 3500, torqueNm: 539, hp: 265 }, { rpm: 3750, torqueNm: 539, hp: 284 }, { rpm: 4000, torqueNm: 539, hp: 303 }, { rpm: 4250, torqueNm: 534, hp: 319 }, { rpm: 4500, torqueNm: 529, hp: 334 }, { rpm: 4750, torqueNm: 524, hp: 349 }, { rpm: 5000, torqueNm: 519, hp: 364 }, { rpm: 5250, torqueNm: 510, hp: 376 }, { rpm: 5500, torqueNm: 500, hp: 387 }, { rpm: 5750, torqueNm: 491, hp: 397 }, { rpm: 6000, torqueNm: 482, hp: 406 }, { rpm: 6250, torqueNm: 470, hp: 412 }, { rpm: 6500, torqueNm: 457, hp: 417 }, { rpm: 6750, torqueNm: 444, hp: 421 }, { rpm: 7000, torqueNm: 432, hp: 425 }],
+    notes: "Declared (idealised, piecewise-linear) full-load curve from an Audi/VW Self Study Programme: vector chart, trace vertices read from the PDF path data, axes calibrated from the printed label positions. Axes 0-720 Nm / 0-360 kW, 0-8000 rpm (labels dual-unit). Chart peaks 539 Nm / 321 kW vs table 540 Nm @ 3000-4000 / 320 kW. Cross-check torque-derived vs chart kW: mean 1.5 %, max 3.4 %. Points 1500-7000 rpm (trace runs to ~7190).",
+    split: 'train',
+  },
 ];
 
 /** All engines (peak-calibration set + extended set) by id. */
