@@ -1,0 +1,18 @@
+# physics agent log (v4: wave-action breathing, ECU torque management, uncertainty)
+
+2026-11-04 20:30 start v4. Baseline: median |hp err| 5.8%, mean 6.2%, max 13.6% (F20C); 46/518 tests fail
+                 (tests/unit 45 + engine perf). Turbo simulate 9-12 ms, p99 16 ms.
+2026-11-04 20:53 STEP 1 (WIP): new src/sim/model/gasExchange.ts — crank-angle gas-exchange cycle EVO→IVC:
+                 cylinder control volume (implicit pressure step), quasi-steady valve flow through real
+                 lift profiles (curtain ∥ throat, sonic cap), intake runner + exhaust primary as linear
+                 acoustic delay lines (impedance a/A, round trip 2L/a, open-end inverting reflection; mean
+                 component fully reflected, pulsating part with lossy R), shared-manifold pulse
+                 interference for log/turbo manifolds (twin-scroll halves the sharing). Outputs trapped
+                 fresh VE, residual fraction, BDC→BDC pumping work.
+                 airflow.ts: BreathingModel tabulates it on a fixed log-rpm lattice (ratio 1.16) × cam
+                 candidates (variable-lift lobe × 3 VVT phases) × pe/pi nodes; ECU picks lobe + continuous
+                 VVT phase (parabolic optimum of VE − 0.5·xr). Replaces Helmholtz bump, IVC→zOpt map,
+                 exhaust bump, residual formula, pumping correlation (CAL.gxPumpingFromCycle).
+                 combustion.ts: knock delay lengthened by residual dilution (1−xr)^-1 (CAL.knockDilutionExp).
+                 Calibration: median 7.0, mean 7.5, max 14.9, tq-peak-rpm ±10 % for 14/21 (was ~8/21).
+                 NEXT: ECU torque management + cheaper/continuous knock trim; fix new test regressions.

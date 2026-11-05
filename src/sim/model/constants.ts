@@ -84,6 +84,43 @@ export const CAL = {
   /** Exhaust loss coefficient (header + system), multiples of dynamic head. */
   exhZeta: { log: 5.0, shorty: 3.2, 'long-tube': 2.4, 'tuned-equal': 2.2 } as Record<string, number>,
   throttleCd: 0.82,
+  // ── gas exchange / wave action (gasExchange.ts) ──
+  /** Integration steps per gas-exchange period (EVO → IVC). */
+  gxSteps: 150,
+  /** Ratio between adjacent rpm nodes of the breathing table (fixed log lattice). */
+  gxRpmNodeRatio: 1.16,
+  /** Global scale on the gas-exchange VE (port losses, in-cylinder heat pick-up not resolved). */
+  gxVeScale: 0.97,
+  /** Lift-profile shape exponent: L = Lmax·(1 − x²)^n over the seat duration. */
+  liftShapeExp: 2,
+  /** Valve curtain discharge coefficient and port-throat discharge coefficients (re. valve head area). */
+  valveCurtainCd: 0.7,
+  intakeThroatCd: 0.75,
+  exhaustThroatCd: 0.72,
+  /** Runner cross-section / total intake-valve head area. */
+  runnerAreaRatio: 0.9,
+  /** Port length added to the runner / primary acoustic length, × bore. */
+  intakePortLenBore: 1.2,
+  exhaustPortLenBore: 1.0,
+  /** Magnitude of the (inverting) open-end reflection at the plenum / bellmouth. */
+  intakeReflect: 0.92,
+  intakeReflectItb: 0.85,
+  /** Magnitude of the (inverting) reflection at the collector, by exhaust type. */
+  exhReflect: { log: 0.15, shorty: 0.3, 'long-tube': 0.37, 'tuned-equal': 0.4 } as Record<string, number>,
+  /** Fraction of another cylinder's blowdown pulse that reaches this valve through a shared (log/turbine) manifold. */
+  logPulseTransmit: 0.35,
+  /** Runner entry + friction loss, multiples of runner dynamic head. */
+  runnerLoss: 0.6,
+  runnerLossItb: 0.3,
+  /** Nominal exhaust gas temperature for wave speed, K; cylinder temperature at EVO / that. */
+  gxExhaustTempK: 1250,
+  gxEvoTempFactor: 1.3,
+  /** Time constant separating the mean (fully reflected) from the pulsating part of returning waves, ms. */
+  waveMeanTauMs: 6,
+  /** Fraction of the closed-valve wave ringing carried into the next cycle (plenum/collector interaction damps it). */
+  gxRingCarry: 0,
+  /** Use the gas-exchange cycle's pumping work (true) or the mean-pressure + Mach-index correlation. */
+  gxPumpingFromCycle: true,
   // ── combustion ──
   /** Indicated gross efficiency = etaScale * (1 - CR^-etaExp) at MBT, stoich-ish. */
   etaScale: 0.8,
@@ -111,6 +148,10 @@ export const CAL = {
   crPenalty: 0.0015,
   /** Torque loss coefficient per deg² of retard from MBT. */
   sparkLossK: 0.0005,
+  /** Exponent on (1 − residual fraction) in the auto-ignition delay: burned-gas dilution slows end-gas chemistry. */
+  knockDilutionExp: 1.0,
+  /** ECU cam-phasing objective: maximise VE − weight × residual fraction (residual costs burn rate / knock margin). */
+  ecuResidualWeight: 0.5,
   /** Knock-aware boost control: max spark retard the ECU accepts before trimming boost, deg. */
   ecuMaxRetardDeg: 10,
   /** Fraction of the excess retard (beyond ecuMaxRetardDeg) the ECU still accepts. */

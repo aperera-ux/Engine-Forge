@@ -10,18 +10,9 @@
  */
 import type { DynoPoint, EngineConfig, SimResult } from './types';
 import { computeLayout } from './layout';
-import { CAL, HP_W, LBFT_PER_NM, P_AMB_PA, R_AIR, T_AMB_K } from './model/constants';
+import { CAL, HP_W, LBFT_PER_NM, P_AMB_PA, R_AIR, RHO_AMB, T_AMB_K } from './model/constants';
 import { computeGeometry, maxPistonAccel, meanPistonSpeed, sanitize, type Geometry } from './model/geometry';
-import {
-  camCandidates,
-  chargeWallHeating,
-  computeVe,
-  exhaustBackPressure,
-  prepareProfiles,
-  solveThrottle,
-  type PreparedProfile,
-  type VeResult,
-} from './model/airflow';
+import { BreathingModel, chargeWallHeating, exhaustBackPressure, solveThrottle, type VeResult } from './model/airflow';
 import { solveSupercharger, solveTurbo, type BoostState, type FlowAt } from './model/boost';
 import {
   burnDuration,
@@ -41,7 +32,7 @@ import { computeWarnings } from './model/warnings';
 interface PointCtx {
   c: EngineConfig;
   g: Geometry;
-  profiles: PreparedProfile[];
+  breathing: BreathingModel;
   vFloat: number;
   cdAThrottle: number;
   evapVe: number;
@@ -73,38 +64,31 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   const cyclesPerS = rpm / 120;
   const afrAct = fuel.afr * c.lambda;
   const turbo = c.induction === 'turbo';
-  const waveFactor = turbo ? (c.turbo.twinScroll ? 0.5 : 0.3) : 1;
   const tExhPort = egtGuessK;
   let lastVe: VeResult | null = null;
   let lastTFresh = T_AMB_K;
   // Turbo exhaust manifold between ports and turbine: friction/dynamic-head loss
   // by manifold type (log manifolds are compact but restrictive at high flow).
   let lastMExh = 0;
-  let camChoice: PreparedProfile[] | null = null;
   const manifoldLoss = (mExh: number) => (turbo ? CAL.turboManifoldLossFrac * (exhaustBackPressure(c, mExh, tExhPort) - P_AMB_PA) : 0);
 
   const flowAt = (pUp: number, tUp: number, pExhTurb: number): FlowAt => {
     const pExhCyl = pExhTurb + manifoldLoss(lastMExh);
     const tFresh = Math.max(200, tUp + chargeWallHeating(rpm, c.itb) - ctx.evapVe);
     // VE depends only weakly on the throttle drop (via pe/pi): one evaluation.
-    // The ECU's cam choice (VVT/variable lift) is made once per rpm point.
-    const ve = computeVe(g, c, camChoice ?? ctx.profiles, {
+    // The ECU's cam choice (VVT phase / variable lift) is made inside the lookup.
+    const ve = ctx.breathing.lookup({
       rpm,
       sp,
       tMan: tUp,
       peOverPi: pExhCyl / (0.98 * pUp),
       tExh: tExhPort,
       valveFloatRpm: ctx.vFloat,
-      exhaustWaveFactor: waveFactor,
     });
     const demandPerPa = (((ve.ve * tUp) / tFresh) * g.vdTotal * cyclesPerS) / (R_AIR * tUp);
     const pMan = solveThrottle(ctx.cdAThrottle, pUp, tUp, demandPerPa);
     lastVe = ve;
     lastTFresh = tFresh;
-    if (!camChoice && ctx.profiles.length > 1) {
-      const pp = ctx.profiles.find((x) => x.profile === ve.profile);
-      if (pp) camChoice = [pp];
-    }
     const mAir = demandPerPa * pMan;
     lastMExh = mAir * (1 + 1 / afrAct);
     return { mAir, mExh: lastMExh, pMan, tExh: turbo ? tExhPort - 40 : tExhPort };
@@ -137,20 +121,10 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   const pMan = flow.pMan;
 
   // ── Trapped charge state ──
-  const cr = c.compressionRatio;
-  const scav = Math.min(1.3, Math.max(0.5, 1 - 4 * (ve.fExhaust - 1)));
-  // Residual fraction: grows with exhaust/intake pressure ratio and overlap;
-  // with intake above exhaust pressure, overlap scavenges (blows residuals out).
-  const ovlSeat = Math.max(0, ve.overlap + 40);
-  const pRatio = pExhCyl / pMan;
-  const scavBlow = pRatio < 1 ? Math.exp(-CAL.scavengeK * (1 / pRatio - 1) * (ovlSeat / 40)) : 1;
-  // Residual mass fraction (Heywood eq. 6.x): clearance volume at exhaust
-  // pressure and residual temperature, relative to the trapped charge.
+  // Residual mass fraction from the gas-exchange model (back-pressure,
+  // overlap, exhaust-wave scavenging, shared-manifold pulse interference).
   const tRes = Math.max(600, 0.85 * egtGuessK);
-  const xr = Math.min(
-    0.3,
-    Math.max(0.01, (1 / cr) * Math.pow(pRatio, 1 / 1.3) * (lastTFresh / tRes) * scav * scavBlow * (1 + Math.max(0, ve.overlap) / 60)),
-  );
+  const xr = Math.min(0.3, Math.max(0.01, ve.xr));
   const tIvc = lastTFresh + xr * (tRes - lastTFresh) - (ctx.evapKnock - ctx.evapVe);
   const mAirCyl = flow.mAir / (cyclesPerS * c.cylinders);
   const mTrap = mAirCyl * (1 + 1 / afrAct) / (1 - xr);
@@ -159,7 +133,7 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   const q = CAL.pressureHeatFrac * eStoich * Math.min(1, 1 / c.lambda);
 
   const burn = burnDuration(c, rpm);
-  const spark = knockLimitedSpark({ g, rpm, pBdc, tIvc, q, burnDeg: burn, octane: octaneIndex(c, pMan / 1e5) }, burn);
+  const spark = knockLimitedSpark({ g, rpm, pBdc, tIvc, q, burnDeg: burn, octane: octaneIndex(c, pMan / 1e5), residual: xr }, burn);
   const eta = indicatedEfficiency(c, rpm, burn);
   const lamF = lambdaPowerFactor(c.lambda);
   const wInd = eta * lamF * spark.workRatio * eStoich; // J/cyl-cycle
@@ -167,7 +141,7 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
 
   // ── Losses ──
   const fmepMech = mechanicalFmep(c, sp, spark.pMaxBar, rpm);
-  const pmep = pumpingMep(pExhCyl / 1e5, pMan / 1e5, ve.z, ve.zExh);
+  const pmep = CAL.gxPumpingFromCycle ? ve.pmepRel * (pMan / 1e5) : pumpingMep(pExhCyl / 1e5, pMan / 1e5, ve.z, ve.zExh);
   const driveMep = boost && boost.drivePowerW > 0 ? boost.drivePowerW / (g.vdTotal * cyclesPerS) / 1e5 : 0;
   const fmepBar = fmepMech + pmep + driveMep;
   const bmepBar = imepBar - fmepBar;
@@ -213,11 +187,21 @@ export function simulate(config: EngineConfig): SimResult {
   const c = sanitize(config);
   const g = computeGeometry(c);
   const lay = computeLayout(c);
+  const grid = rpmGrid(c);
   const vFloat = valveFloatRpm(c);
   const ctx: PointCtx = {
     c,
     g,
-    profiles: prepareProfiles(g, c, camCandidates(c)),
+    breathing: new BreathingModel(g, c, {
+      rpmLo: Math.min(...grid),
+      rpmHi: c.redlineRpm,
+      exhaustWaveFactor: c.induction === 'turbo' ? (c.turbo.twinScroll ? 0.5 : 0.3) : 1,
+      peOverPiAt: (rpm) => {
+        // NA: mean exhaust back pressure at a typical trapped flow (VE ≈ 0.95).
+        const mExh = 0.95 * RHO_AMB * g.vdTotal * (rpm / 120) * (1 + 1 / (fuelOf(c).afr * c.lambda));
+        return exhaustBackPressure(c, mExh, 1100) / (0.97 * P_AMB_PA);
+      },
+    }),
     vFloat,
     cdAThrottle: CAL.throttleCd * (Math.PI / 4) * (c.throttleMm / 1000) ** 2,
     evapVe: evapCooling(c, c.directInjection ? 0.22 : 0.1),
@@ -233,7 +217,7 @@ export function simulate(config: EngineConfig): SimResult {
   let spoolRpm: number | null = null;
   let trimPrev = 0.75;
   let shortfall: { ratio: number; rpm: number; reason: string; reachedAnywhere: boolean } | null = null;
-  for (const rpm of rpmGrid(c)) {
+  for (const rpm of grid) {
     // EGT / exhaust pressure warm-started from the previous rpm point; the
     // first point is iterated so the sweep starts self-consistent.
     let r = evalPoint(ctx, rpm, egt, pExh);

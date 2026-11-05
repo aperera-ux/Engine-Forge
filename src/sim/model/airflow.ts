@@ -1,12 +1,14 @@
 /**
- * Airflow submodel: volumetric efficiency from valve-flow choking (Taylor's
- * inlet Mach index), cam timing, intake (Helmholtz) and exhaust (wave) tuning,
- * residual/back-pressure effects, valve float, plus throttle and exhaust
- * pressure losses.
+ * Airflow submodel: volumetric efficiency, residual fraction and pumping
+ * work from the wave-action gas-exchange model (gasExchange.ts) tabulated
+ * per cam candidate, ECU cam selection (variable lift, VVT phase), valve
+ * float, plus throttle and exhaust pressure losses. Taylor's inlet Mach
+ * index is kept as a diagnostic.
  */
 import type { EngineConfig } from '../types';
 import { CAL, CP_AIR, GAMMA_AIR, P_AMB_PA, R_AIR, R_EXH } from './constants';
-import { riseFractionAfterBdc, type Geometry } from './geometry';
+import type { Geometry } from './geometry';
+import { prepareGxEngine, prepareGxStatic, runGasExchange } from './gasExchange';
 
 export interface CamProfile {
   durI: number;
@@ -53,13 +55,7 @@ export function camCandidates(c: EngineConfig): CamProfile[] {
   const profiles: CamProfile[] = [base];
   if (cam.variableLift) {
     // Low-speed lobe: ~45° shorter, ~35% less lift (VTEC / Valvetronic-style).
-    profiles.push({
-      ...base,
-      durI: Math.max(150, base.durI - CAL.lowLobeDurDelta),
-      durE: Math.max(150, base.durE - 30),
-      liftI: base.liftI * CAL.lowLobeLiftRatio,
-      liftE: base.liftE * 0.75,
-    });
+    profiles.push(lowLobe(base));
   }
   if (!cam.vvt) return profiles;
   const out: CamProfile[] = [];
@@ -95,154 +91,245 @@ export interface VeInputs {
   tMan: number;
   /** Exhaust (cylinder-side) / intake manifold pressure ratio. */
   peOverPi: number;
-  /** Exhaust gas temperature estimate, K (wave speed). */
+  /** Exhaust gas temperature estimate, K (exhaust-valve Mach index). */
   tExh: number;
   valveFloatRpm: number;
-  /** Turbo housing in the exhaust path blunts header wave tuning. */
-  exhaustWaveFactor: number;
 }
 
 export interface VeResult {
+  /** Trapped fresh charge / (manifold density × swept volume). */
   ve: number;
+  /** Taylor inlet / exhaust Mach indices of the chosen profile (diagnostics, pumping). */
   z: number;
   zExh: number;
   overlap: number;
+  /** Cam profile the ECU selected (variable-lift lobe, VVT phase). */
   profile: CamProfile;
-  fChoke: number;
-  fCam: number;
-  fRunner: number;
-  fExhaust: number;
-  fResidual: number;
+  /** Trapped residual mass fraction from the gas-exchange model. */
+  xr: number;
+  /** Gas-exchange pumping MEP / manifold pressure (bar per bar of MAP). */
+  pmepRel: number;
   fFloat: number;
 }
 
-/** Per-profile quantities that do not depend on rpm (precomputed once per simulate). */
-export interface PreparedProfile {
-  profile: CamProfile;
-  ev: CamEvents;
-  ci: number;
-  ce: number;
-  zOpt: number;
-  backflow: number;
-  ovlSeat: number;
-  nEx: number;
-  exhAmp: number;
+/** Options for building the breathing table. */
+export interface BreathingOpts {
+  rpmLo: number;
+  rpmHi: number;
+  /** Turbo housing in the exhaust path blunts header wave reflections. */
+  exhaustWaveFactor: number;
+  /** NA: estimated cylinder-side exhaust / manifold pressure ratio vs rpm. */
+  peOverPiAt: (rpm: number) => number;
 }
 
-export function prepareProfiles(g: Geometry, c: EngineConfig, profiles: CamProfile[]): PreparedProfile[] {
-  return profiles.map((p) => {
-    const ev = camEvents(p);
-    const ci = cdPeak(p.liftI / c.intakeValveMm) * CAL.ciProfile * Math.min(1.25, (p.durI + 40) / 270);
-    const ce = cdPeak(p.liftE / c.exhaustValveMm) * CAL.ciProfile * Math.min(1.25, (p.durE + 40) / 270);
-    const zOpt = Math.max(0.15, CAL.zOptAt43 + CAL.zOptPerDeg * (ev.ivc - 43));
-    const backflow = riseFractionAfterBdc(g, Math.min(120, Math.max(0, ev.ivc + CAL.ivcSeatOffset)));
-    const ovlSeat = ev.overlap + 40;
-    const lenIn = c.headerPrimaryMm / 25.4;
-    const nEx = (850 * (180 + ev.evo + 15)) / (lenIn + 3);
-    const dOpt = Math.sqrt(g.nExhaust) * c.exhaustValveMm * 1.02;
-    const dia = Math.exp(-((Math.log(c.headerDiameterMm / dOpt) / 0.4) ** 2));
-    const exhAmp = (CAL.exhAmp[c.exhaust] ?? 0) * Math.min(1, Math.max(0, ovlSeat) / 70) * dia;
-    return { profile: p, ev, ci: Math.max(0.05, ci), ce: Math.max(0.05, ce), zOpt, backflow, ovlSeat, nEx, exhAmp };
-  });
+/** Ideal-cycle VE dependence on exhaust/intake pressure ratio (residual expansion). */
+function residualVe(cr: number, pr: number): number {
+  return Math.max(0.3, (cr - Math.pow(Math.max(0.2, pr), 1 / 1.3)) / (cr - 1));
 }
 
-/** Cam/valve-dependent part of VE for one profile. */
-function profileVe(g: Geometry, c: EngineConfig, pp: PreparedProfile, inp: VeInputs) {
-  const ev = pp.ev;
-  const aI = Math.sqrt(GAMMA_AIR * R_AIR * inp.tMan);
-  const z = ((g.pistonArea / g.intakeArea) * inp.sp) / (pp.ci * aI);
-  const fChoke = 1 / Math.sqrt(1 + Math.pow(z / CAL.zChoke, CAL.zChokeExp));
+/**
+ * Tabulated wave-action breathing model. The gas-exchange cycle
+ * (gasExchange.ts) is integrated on a log-spaced rpm grid for every cam
+ * candidate (variable-lift lobe × VVT phase) and exhaust/intake pressure
+ * ratio node; lookups interpolate (Catmull–Rom in log rpm, linear in
+ * log pressure ratio). The ECU picks the best lobe and a continuous VVT phase
+ * (parabolic optimum over the phaser range).
+ */
+export class BreathingModel {
+  private readonly lobes: CamProfile[];
+  private readonly phases: number[];
+  private readonly prNodes: number[];
+  private readonly k: number;
+  private readonly lnR0: number;
+  private readonly h: number;
+  /** [lobe][phase][prNode][rpmNode] → ve, xr, pm */
+  private readonly ve: Float64Array;
+  private readonly xr: Float64Array;
+  private readonly pm: Float64Array;
+  /** NA: the pressure-ratio node used at each rpm node. */
+  private readonly prNa: Float64Array | null;
+  private readonly cr: number;
+  private readonly base: number;
+  private readonly g: Geometry;
+  private readonly c: EngineConfig;
 
-  // Cam filling: IVC sets the inlet Mach index at which inertia ram fills best.
-  const s = z / pp.zOpt;
-  let fCam = s < 1 ? 1 - pp.backflow * Math.pow(1 - s, CAL.backflowExp) : 1 / (1 + CAL.camHighLoss * (s - 1) * (s - 1));
-  // Inertia ram: a late-closing intake valve keeps filling after BDC while the
-  // inlet gas column is moving fast — the gain is largest near the cam's tuned
-  // speed and scales with how late IVC is (the same volume that is pushed back at low speed).
-  fCam += CAL.ramGain * pp.backflow * Math.exp(-(((s - 1) / 0.35) ** 2));
+  constructor(g: Geometry, c: EngineConfig, opts: BreathingOpts) {
+    this.g = g;
+    this.c = c;
+    const cam = c.cam;
+    const ecl = 2 * cam.lobeSeparationDeg - cam.intakeCenterlineDeg;
+    const base: CamProfile = {
+      durI: cam.intakeDurationDeg,
+      durE: cam.exhaustDurationDeg,
+      liftI: cam.intakeLiftMm,
+      liftE: cam.exhaustLiftMm,
+      icl: cam.intakeCenterlineDeg,
+      ecl,
+    };
+    this.lobes = [base];
+    if (cam.variableLift) this.lobes.push(lowLobe(base));
+    this.phases = cam.vvt ? [-CAL.vvtRangeDeg, 0, CAL.vvtRangeDeg] : [0];
+    this.prNodes = c.induction === 'na' ? [1] : c.induction === 'supercharger' ? [0.55, 1.1] : [0.85, 1.9];
+    this.cr = c.compressionRatio;
+    let b = CAL.gxVeScale;
+    if (c.valvesPerCylinder === 2) b -= CAL.ve2ValvePenalty;
+    this.base = b;
 
-  // Overlap reversion at low speed (worse with exhaust pressure above intake).
-  const sub = Math.max(0, 1 - Math.min(1, s));
-  fCam *= 1 - 0.0012 * Math.max(0, ev.overlap + 15) * sub * sub * Math.max(0.5, inp.peOverPi);
-
-  // Exhaust wave scavenging (needs overlap, tuned primary length & diameter).
-  const amp = pp.exhAmp * inp.exhaustWaveFactor;
-  const lx = Math.log(inp.rpm / pp.nEx);
-  const lx2 = Math.log(inp.rpm / (0.62 * pp.nEx));
-  const fExhaust = 1 + amp * (Math.exp(-((lx / 0.3) ** 2)) - 0.3 * Math.exp(-((lx2 / 0.15) ** 2)));
-
-  // Residual gas / back-pressure (ideal-cycle volumetric efficiency term).
-  const cr = c.compressionRatio;
-  const pr = Math.max(0.3, inp.peOverPi);
-  let dev = (cr - Math.pow(pr, 1 / 1.3)) / (cr - 1) - 1;
-  dev *= 1 + Math.max(0, pp.ovlSeat) / 80;
-  const fResidual = Math.min(1.06, Math.max(0.6, 1 + dev));
-
-  const aE = Math.sqrt(1.33 * R_EXH * inp.tExh);
-  const zExh = ((g.pistonArea / g.exhaustArea) * inp.sp) / (pp.ce * aE);
-  const fExhValve = 1 / Math.sqrt(1 + Math.pow(zExh, 5));
-
-  return {
-    score: fChoke * fCam * fExhaust * fResidual * fExhValve,
-    z,
-    zExh,
-    overlap: ev.overlap,
-    fChoke,
-    fCam,
-    fExhaust,
-    fResidual: fResidual * fExhValve,
-  };
-}
-
-export function computeVe(g: Geometry, c: EngineConfig, profiles: PreparedProfile[], inp: VeInputs): VeResult {
-  let best = profileVe(g, c, profiles[0], inp);
-  let bestP = profiles[0].profile;
-  for (let i = 1; i < profiles.length; i++) {
-    const r = profileVe(g, c, profiles[i], inp);
-    if (r.score > best.score) {
-      best = r;
-      bestP = profiles[i].profile;
+    // Fixed absolute log-rpm lattice (independent of idle/redline, so moving the
+    // rev limiter never changes the curve below it); only the nodes needed to
+    // cover [rpmLo, rpmHi] (+ one each side) are integrated.
+    const h = Math.log(CAL.gxRpmNodeRatio);
+    const iLo = Math.floor(Math.log(Math.max(300, opts.rpmLo) / 500) / h) - 1;
+    const iHi = Math.ceil(Math.log(Math.max(opts.rpmLo * 1.5, opts.rpmHi) / 500) / h) + 1;
+    const k = iHi - iLo + 1;
+    this.k = k;
+    this.lnR0 = Math.log(500) + iLo * h;
+    this.h = h;
+    const nL = this.lobes.length;
+    const nP = this.phases.length;
+    const nQ = this.prNodes.length;
+    const size = nL * nP * nQ * k;
+    this.ve = new Float64Array(size);
+    this.xr = new Float64Array(size);
+    this.pm = new Float64Array(size);
+    this.prNa = c.induction === 'na' ? new Float64Array(k) : null;
+    const ge = prepareGxEngine(g, c, opts.exhaustWaveFactor);
+    const rpms: number[] = [];
+    for (let i = 0; i < k; i++) rpms.push(Math.exp(this.lnR0 + i * this.h));
+    if (this.prNa) for (let i = 0; i < k; i++) this.prNa[i] = opts.peOverPiAt(rpms[i]);
+    for (let l = 0; l < nL; l++) {
+      for (let s = 0; s < nP; s++) {
+        const st = prepareGxStatic(g, c, { ...this.lobes[l], icl: this.lobes[l].icl + this.phases[s] });
+        for (let q = 0; q < nQ; q++) {
+          for (let i = 0; i < k; i++) {
+            const pr = this.prNa ? this.prNa[i] : this.prNodes[q];
+            const o = runGasExchange(st, ge, rpms[i], pr);
+            const idx = ((l * nP + s) * nQ + q) * k + i;
+            this.ve[idx] = o.ve;
+            this.xr[idx] = o.xr;
+            this.pm[idx] = o.pmepRel;
+          }
+        }
+      }
     }
   }
 
-  // Intake runner Helmholtz tuning.
-  const runnerArea = 0.9 * g.intakeArea;
-  const dR = Math.sqrt((4 * runnerArea) / Math.PI);
-  const lEff = c.intakeRunnerMm / 1000 + 0.8 * g.bore + 0.6 * dR;
-  const cr = c.compressionRatio;
-  const vEff = (g.vdCyl * (cr + 1)) / (2 * (cr - 1));
-  const a = Math.sqrt(GAMMA_AIR * R_AIR * inp.tMan);
-  const fH = (a / (2 * Math.PI)) * Math.sqrt(runnerArea / (lEff * vEff));
-  const nT = (60 * fH) / CAL.helmholtzK;
-  const ampR = c.itb ? CAL.runnerAmpItb : CAL.runnerAmp;
-  const l1 = Math.log(inp.rpm / nT);
-  const l2 = Math.log(inp.rpm / (0.68 * nT));
-  const l3 = Math.log(inp.rpm / (1.5 * nT));
-  const fRunner =
-    1 + ampR * (Math.exp(-((l1 / 0.28) ** 2)) + 0.35 * Math.exp(-((l2 / 0.12) ** 2)) - CAL.runnerOffTune * Math.exp(-((l3 / 0.2) ** 2)));
+  /** Catmull–Rom in log rpm on one table row starting at `off`. */
+  private row(a: Float64Array, off: number, t: number, i: number): number {
+    const k = this.k;
+    const y1 = a[off + i];
+    const y2 = a[off + i + 1];
+    const y0 = i > 0 ? a[off + i - 1] : 2 * y1 - y2;
+    const y3 = i + 2 < k ? a[off + i + 2] : 2 * y2 - y1;
+    const u = t;
+    return y1 + 0.5 * u * (y2 - y0 + u * (2 * y0 - 5 * y1 + 4 * y2 - y3 + u * (3 * (y1 - y2) + y3 - y0)));
+  }
 
-  // Valve float: control of the valve is lost, VE collapses.
-  const xf = inp.rpm / inp.valveFloatRpm - 1;
-  // Past float the valves bounce and close late: steep but bounded loss
-  // (≈50 % by 20 % over float, floor 45 %).
-  const fFloat = xf > 0 ? Math.max(0.45, 1 - 0.5 * Math.pow(Math.min(1, xf / 0.2), 1.5)) : 1;
+  lookup(inp: VeInputs): VeResult {
+    const k = this.k;
+    let t = (Math.log(Math.max(100, inp.rpm)) - this.lnR0) / this.h;
+    t = Math.min(k - 1, Math.max(0, t));
+    const i = Math.min(k - 2, Math.floor(t));
+    const u = t - i;
+    const nP = this.phases.length;
+    const nQ = this.prNodes.length;
+    // Pressure-ratio interpolation weights (clamped to the node range; the rest is analytic).
+    const pr = Math.max(0.2, inp.peOverPi);
+    let q0 = 0;
+    let wq = 0;
+    let prRef: number;
+    if (this.prNa) {
+      prRef = this.prNa[i] + u * (this.prNa[i + 1] - this.prNa[i]);
+    } else if (nQ === 1) {
+      prRef = this.prNodes[0];
+    } else {
+      const lo = this.prNodes[0];
+      const hi = this.prNodes[nQ - 1];
+      const prc = Math.min(hi, Math.max(lo, pr));
+      wq = Math.log(prc / lo) / Math.log(hi / lo);
+      q0 = 0;
+      prRef = prc;
+    }
+    const at = (a: Float64Array, l: number, s: number) => {
+      const off0 = ((l * nP + s) * nQ + q0) * k;
+      const v0 = this.row(a, off0, u, i);
+      if (wq === 0) return v0;
+      const v1 = this.row(a, off0 + k, u, i);
+      return v0 + wq * (v1 - v0);
+    };
+    let best = { ve: -1, xr: 0, pm: 0, l: 0, s: 0 };
+    for (let l = 0; l < this.lobes.length; l++) {
+      let ve: number;
+      let xr: number;
+      let pm: number;
+      let ph = 0;
+      if (nP === 1) {
+        ve = at(this.ve, l, 0);
+        xr = at(this.xr, l, 0);
+        pm = at(this.pm, l, 0);
+      } else {
+        const r = this.phases[2];
+        const w = CAL.ecuResidualWeight;
+        const vm = at(this.ve, l, 0);
+        const v0 = at(this.ve, l, 1);
+        const vp = at(this.ve, l, 2);
+        const xm = at(this.xr, l, 0);
+        const x0 = at(this.xr, l, 1);
+        const xp = at(this.xr, l, 2);
+        // ECU objective (trapped charge, residual penalised), parabolic in phase.
+        const ym = vm - w * xm;
+        const y0 = v0 - w * x0;
+        const yp = vp - w * xp;
+        const a2 = (yp + ym - 2 * y0) / (2 * r * r);
+        const b1 = (yp - ym) / (2 * r);
+        ph = a2 < 0 ? Math.min(r, Math.max(-r, -b1 / (2 * a2))) : yp >= ym ? r : -r;
+        // Lagrange weights at the chosen phase for the outputs.
+        const x = ph / r;
+        const wm = 0.5 * x * (x - 1);
+        const w0 = 1 - x * x;
+        const wp = 0.5 * x * (x + 1);
+        ve = wm * vm + w0 * v0 + wp * vp;
+        xr = wm * xm + w0 * x0 + wp * xp;
+        pm = wm * at(this.pm, l, 0) + w0 * at(this.pm, l, 1) + wp * at(this.pm, l, 2);
+      }
+      if (ve - CAL.ecuResidualWeight * xr > best.ve - CAL.ecuResidualWeight * best.xr) best = { ve, xr, pm, l, s: ph };
+    }
+    // Analytic correction from the tabulated to the actual pressure ratio.
+    if (Math.abs(pr - prRef) > 1e-6) {
+      best.ve *= residualVe(this.cr, pr) / residualVe(this.cr, prRef);
+      best.xr *= Math.pow(pr / prRef, 1 / 1.3);
+      best.pm += pr - prRef;
+    }
+    const lobe = this.lobes[best.l];
+    const profile: CamProfile = { ...lobe, icl: lobe.icl + best.s };
+    const ev = camEvents(profile);
 
-  let base = CAL.veBase[c.valvetrain];
-  if (c.valvesPerCylinder === 2) base -= CAL.ve2ValvePenalty;
-  if (c.itb) base += 0.015;
+    // Valve float: control of the valve is lost, VE collapses.
+    const xf = inp.rpm / inp.valveFloatRpm - 1;
+    // Past float the valves bounce and close late: steep but bounded loss
+    // (≈50 % by 20 % over float, floor 45 %).
+    const fFloat = xf > 0 ? Math.max(0.45, 1 - 0.5 * Math.pow(Math.min(1, xf / 0.2), 1.5)) : 1;
+    return {
+      ve: this.base * Math.max(0.05, best.ve) * fFloat,
+      z: inletMachIndex(this.g, this.c, profile, inp.sp, inp.tMan),
+      zExh: exhaustMachIndex(this.g, this.c, profile, inp.sp, inp.tExh),
+      overlap: ev.overlap,
+      profile,
+      xr: Math.min(0.35, Math.max(0.005, best.xr)),
+      pmepRel: best.pm,
+      fFloat,
+    };
+  }
+}
 
+/** Variable-lift low-speed lobe: shorter, lower (VTEC / Valvetronic-style). */
+function lowLobe(base: CamProfile): CamProfile {
   return {
-    ve: base * best.score * fRunner * fFloat,
-    z: best.z,
-    zExh: best.zExh,
-    overlap: best.overlap,
-    profile: bestP,
-    fChoke: best.fChoke,
-    fCam: best.fCam,
-    fRunner,
-    fExhaust: best.fExhaust,
-    fResidual: best.fResidual,
-    fFloat,
+    ...base,
+    durI: Math.max(150, base.durI - CAL.lowLobeDurDelta),
+    durE: Math.max(150, base.durE - 30),
+    liftI: base.liftI * CAL.lowLobeLiftRatio,
+    liftE: base.liftE * 0.75,
   };
 }
 

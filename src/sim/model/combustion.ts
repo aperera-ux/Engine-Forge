@@ -30,6 +30,8 @@ export interface CycleInputs {
   thetaStart: number;
   octane: number;
   wantKnock: boolean;
+  /** Trapped residual (burned-gas) mass fraction; dilution lengthens the ignition delay. */
+  residual?: number;
 }
 
 export interface CycleOut {
@@ -51,7 +53,10 @@ export function runCycle(inp: CycleInputs): CycleOut {
   // tolerance improves only weakly with rpm: effective time ∝ rpm^(β−1).
   const msPerDeg = (1000 / (6 * inp.rpm)) * Math.pow(inp.rpm / 3000, CAL.knockRpmExp);
   // τ is referenced to 40 atm so the pressure exponent can be recalibrated without moving the overall level.
-  const lnOnFac = Math.log(CAL.knockTauScale * 17.68 * Math.pow(inp.octane / 100, 3.402)) + (CAL.knockPressureExp - 1.7) * Math.log(40);
+  const lnOnFac =
+    Math.log(CAL.knockTauScale * 17.68 * Math.pow(inp.octane / 100, 3.402)) +
+    (CAL.knockPressureExp - 1.7) * Math.log(40) -
+    CAL.knockDilutionExp * Math.log(1 - Math.min(0.5, Math.max(0, inp.residual ?? 0)));
   // End-gas loses heat to the walls during compression: more time at low rpm.
   const kU = ((GAMMA_UNBURNED - 1) / GAMMA_UNBURNED) * (1 - CAL.endGasHeatLoss * (1000 / Math.max(300, inp.rpm)));
   const lnP0 = Math.log(p0);
