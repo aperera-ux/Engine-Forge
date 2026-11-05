@@ -1,0 +1,45 @@
+// Dyno card screenshots for OEM limits + uncertainty. Usage: node tests/e2e-ui/oem-shots.mjs [outDir] [baseUrl]
+import { chromium } from '@playwright/test';
+import fs from 'node:fs';
+const out = process.argv[2] ?? 'tests/e2e-ui/screenshots/oem-uncertainty';
+const base = process.argv[3] ?? 'http://localhost:5173/';
+fs.mkdirSync(out, { recursive: true });
+const browser = await chromium.launch({ args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] });
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+const p = await ctx.newPage();
+const errs = [];
+p.on('pageerror', (e) => errs.push(e.message));
+await p.addInitScript(() => localStorage.clear());
+await p.goto(base);
+await p.waitForSelector('[data-testid="dyno-chart"] svg');
+const preset = async (q) => {
+  await p.click('[data-testid="preset-button"]');
+  await p.fill('.preset-search', q);
+  await p.click('.preset-item');
+  await p.waitForTimeout(700);
+};
+const shot = async (n) => {
+  await p.mouse.move(5, 5);
+  await p.screenshot({ path: `${out}/${n}.png` });
+};
+await preset('B58');
+await shot('b58-toggle-off');
+await p.check('[data-testid="unlimited-toggle"]');
+await p.waitForTimeout(300);
+await shot('b58-toggle-on');
+await p.uncheck('[data-testid="unlimited-toggle"]');
+await p.click('[data-testid="tab-induction"]');
+await p.waitForTimeout(200);
+const sl = p.locator('input[type="range"]').first();
+await sl.focus();
+for (let i = 0; i < 6; i++) await p.keyboard.press('ArrowRight');
+await p.waitForTimeout(500);
+await shot('b58-custom');
+await preset('Honda K20A');
+await shot('na-k20a');
+await preset('High-rev 3.0 V10');
+await p.click('[data-testid="extrapolation-badge"]');
+await p.waitForTimeout(200);
+await shot('outside-range-badge');
+console.log('errors:', errs.length ? errs.join('\n') : 'none');
+await browser.close();

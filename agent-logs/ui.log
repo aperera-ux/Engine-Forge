@@ -1,2 +1,6 @@
 2026-11-05T01:35:32Z UI: light theme tokens (index.css), logo.svg/favicon, charts recolored; screenshots in tests/e2e-ui/screenshots
 2026-11-05T01:40:34Z UI: polish pass, e2e garage/interactions/round2 pass, tsc+build ok
+2026-11-05T00:55Z UI(oem): store tracks basePreset + showUnlimited; simulate(config, oemLimitOptions(config, base) + includeUnlimited only while overlay toggle on and limits applied). Measured: turbo presets 10-28 ms per solve on this machine (K20A/NA ~1.7 ms); unlimited roughly doubles turbo solve, so it is lazy.
+2026-11-05T00:55Z UI(oem): DynoCard notes strip (factory ECU limits label / off for custom builds / hardware-only dashed toggle / band legend / extrapolation badge with reasons popover); DynoChart ComposedChart with range Areas from SimResult.uncertainty.torquePct.
+2026-11-05T00:55Z UI(oem): Firing & Balance clip fixed (kpis no longer flex-grow-clipped; warnings take remaining space, min 84px, scrolls).
+2026-11-05T00:56Z UI(oem): audio: induction.test spool-lag failure is NOT OEM-limit related (DEFAULT_CONFIG+seedTurbo has no ecu limits); physics v4 airflow curve moved spool fraction to 0.634 at 0.3 s for a marginal 0.68 bar seed. Test now uses a 1.0 bar tune for that test only; tolerances unchanged. synth.test turbo whine already passes on this base (forces boostBar). No src/audio code change.
