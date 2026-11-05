@@ -492,6 +492,29 @@ export const DYNO_CURVES: DynoCurve[] = [
     notes: "Raster (animated GIF) chart traced by colour at 3440x1566 (or 1720x783): final frame, white (torque) and yellow (hp) marker/line centroids per pixel column, axes calibrated from detected gridlines (labels read visually; x axis starts at the axis line = first label, y bottom = lowest label), sampled every 250 rpm by linear interpolation. Axis units lb-ft / hp (shared axis), torque converted x1.35582 to Nm. Chart hp trace vs chart torque trace (hp = lb-ft*rpm/5252): mean 0.9 %, max 2.5 %. Traced peaks 858 lb-ft @ 5500 rpm / 999 hp vs callouts 876 lb-ft @ 5600 / 1004 hp @ 6600. The chart is an idealised few-marker representation of a crate-engine dyno run (Chevrolet Performance: SAE J1349 net / J1995 gross, test headers, no accessories); declared/idealised, not a raw trace. Points 3250-7000 rpm.",
     split: 'holdout',
   },
+  // ───────────── research round 3: BMW ST047 raster chart ─────────────
+  {
+    engineId: 'bmw-n73-760i',
+    source: {
+      url: 'https://archive.org/download/BMWTechnicalTrainingDocuments/ST047%202003%20System%20Diagnosis%2F1%20N73%20Engine.pdf',
+      title: 'BMW Technical Training ST047 "1 N73 Engine" p.5 Power and Torque Output - N73B60 / M73B54 (N73B60 solid curves)',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'ECE', confidence: 'medium',
+    points: [{ rpm: 1250, torqueNm: 481, hp: 85 }, { rpm: 1500, torqueNm: 495, hp: 104 }, { rpm: 1750, torqueNm: 503, hp: 124 }, { rpm: 2000, torqueNm: 513, hp: 144 }, { rpm: 2250, torqueNm: 521, hp: 165 }, { rpm: 2500, torqueNm: 529, hp: 186 }, { rpm: 2750, torqueNm: 538, hp: 208 }, { rpm: 3000, torqueNm: 548, hp: 231 }, { rpm: 3250, torqueNm: 559, hp: 255 }, { rpm: 3500, torqueNm: 571, hp: 281 }, { rpm: 3750, torqueNm: 586, hp: 308 }, { rpm: 4000, torqueNm: 597, hp: 335 }, { rpm: 4250, torqueNm: 594, hp: 354 }, { rpm: 4500, torqueNm: 586, hp: 370 }, { rpm: 4750, torqueNm: 579, hp: 386 }, { rpm: 5000, torqueNm: 571, hp: 401 }, { rpm: 5250, torqueNm: 561, hp: 413 }, { rpm: 5500, torqueNm: 547, hp: 423 }, { rpm: 5750, torqueNm: 533, hp: 430 }, { rpm: 6000, torqueNm: 514, hp: 433 }, { rpm: 6250, torqueNm: 485, hp: 426 }],
+    notes: 'Raster chart (embedded 471x606 px image, rendered at 150 dpi) traced by colour: red = torque, blue = kW, solid = N73B60, dashed = M73B54 (dashed trace bridged by continuity across the gaps). Axes: 0-7000 rpm, 320-960 Nm and 0-320 kW read from gridlines/labels. Cross-check torque-derived kW vs chart kW (Nm*rpm/9549): mean 0.9 %, max 2.7 %. Declared (idealised) ECE full-load curve; points 1250-6250 rpm. Chart peak 597 Nm / 320 kW.',
+    split: 'train',
+  },
+  {
+    engineId: 'bmw-m73-750il',
+    source: {
+      url: 'https://archive.org/download/BMWTechnicalTrainingDocuments/ST047%202003%20System%20Diagnosis%2F1%20N73%20Engine.pdf',
+      title: 'BMW Technical Training ST047 "1 N73 Engine" p.5 Power and Torque Output - N73B60 / M73B54 (M73B54 dashed curves)',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'ECE', confidence: 'medium',
+    points: [{ rpm: 1750, torqueNm: 425, hp: 104 }, { rpm: 2000, torqueNm: 432, hp: 121 }, { rpm: 2250, torqueNm: 445, hp: 141 }, { rpm: 2500, torqueNm: 452, hp: 159 }, { rpm: 2750, torqueNm: 460, hp: 177 }, { rpm: 3000, torqueNm: 463, hp: 195 }, { rpm: 3250, torqueNm: 467, hp: 213 }, { rpm: 3500, torqueNm: 475, hp: 233 }, { rpm: 3750, torqueNm: 479, hp: 252 }, { rpm: 4000, torqueNm: 488, hp: 274 }, { rpm: 4250, torqueNm: 485, hp: 289 }, { rpm: 4500, torqueNm: 476, hp: 301 }, { rpm: 4750, torqueNm: 467, hp: 311 }, { rpm: 5000, torqueNm: 458, hp: 321 }, { rpm: 5250, torqueNm: 443, hp: 327 }, { rpm: 5500, torqueNm: 412, hp: 318 }, { rpm: 5750, torqueNm: 383, hp: 309 }, { rpm: 6000, torqueNm: 344, hp: 290 }],
+    notes: 'Raster chart (embedded 471x606 px image, rendered at 150 dpi) traced by colour: red = torque, blue = kW, solid = N73B60, dashed = M73B54 (dashed trace bridged by continuity across the gaps). Axes: 0-7000 rpm, 320-960 Nm and 0-320 kW read from gridlines/labels. Cross-check torque-derived kW vs chart kW (Nm*rpm/9549): mean 1.7 %, max 3.2 %. Declared (idealised) ECE full-load curve; points 1750-6000 rpm. Chart peak 488 Nm / 236 kW.',
+    split: 'train',
+  },
 ];
 
 /** All engines (peak-calibration set + extended set) by id. */
