@@ -6,18 +6,22 @@ import type { VehicleGlobals } from './types';
  * all others are a-priori engineering values. No per-car overrides.
  */
 export const GLOBALS: VehicleGlobals = {
-  etaRWD: 0.92, // FITTED (train); at the upper edge of the physical range, see report
+  etaRWD: 0.92, // CAPPED at the physical edge (unconstrained fit ran to 0.95); at the upper edge of the physical range, see report
   etaFWD: 0.94, // prior: RWD + 0.02 (no prop shaft / diff; one fewer mesh)
   etaAWD: 0.87, // prior: RWD - 0.05 (transfer case + two diffs); not validated
   muByClass: {
-    // max-performance FITTED (train) = 1.36; the other classes keep their a-priori
-    // ratio (0.82 / 0.91 / 1.0 / 1.14) to it. Effective launch mu = x launchTractionUtilization.
-    'all-season': 1.11,
-    'summer-performance': 1.24,
-    'max-performance': 1.36,
-    'semi-slick': 1.55,
+    // max-performance FITTED (train, round 2, 9 cars) = 1.30; the other classes keep their a-priori
+    // ratio (0.82 / 0.91 / 1.0 / 1.14) to it. Spinning axles settle at D(spinSlipRatio) x mu.
+    'all-season': 1.07,
+    'summer-performance': 1.20,
+    'max-performance': 1.30,
+    'semi-slick': 1.49,
   },
-  launchTractionUtilization: 0.9, // FITTED (train)
+  spinSlipRatio: 0.14, // FITTED (train, grid 0.12-0.30); close to the peak (0.12): fit finds little wheelspin loss; wheelspin settles on the falling branch of the slip curve
+  slipB: 11.7, // a priori: peak slip ~0.12, typical road/performance radial
+  slipC: 1.65, // a priori
+  slipModel: true,
+  converterStallRatioDefault: 1.8, // a priori: performance converters 1.6-2.2
   tireLoadSensitivity: 0, // FITTED (train)
   tireLoadRef: 14,
   crr0: 0.011,

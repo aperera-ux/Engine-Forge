@@ -7,6 +7,7 @@ import {
   msToMph,
   type Resolved,
 } from './physics';
+import { slipCurve, slipForForceFraction } from './tire';
 import { defaultLaunchRpm, torqueAt } from './torqueCurve';
 import type { AccelResult, RunOptions, TimeSeries, TorqueCurve, VehicleSpec } from './types';
 
@@ -40,7 +41,7 @@ export function runAcceleration(spec: VehicleSpec, engine: TorqueCurve, opts: Ru
   const nG = R.ratios.length;
   const tr = spec.transmission;
   const limiter = spec.speedLimiterMph ? spec.speedLimiterMph * MPH : Infinity;
-  const stall = tr.type === 'automatic' ? (tr.converterStallRatio ?? 1) : 1;
+  const stall = tr.type === 'automatic' ? (tr.converterStallRatio ?? R.g.converterStallRatioDefault) : 1;
   const x0 = rollout ? FOOT_M : 0;
   const launchRpm = tr.launchRpm ?? defaultLaunchRpm(engine);
 
@@ -80,16 +81,40 @@ export function runAcceleration(spec: VehicleSpec, engine: TorqueCurve, opts: Ru
   let ns = 0;
   let nextSample = 0;
 
-  const muLaunch = R.mu * R.g.launchTractionUtilization;
-  const capLaunch = tractionCap(R, muLaunch);
-  const capFull = tractionCap(R, R.mu);
+  const useSlip = R.g.slipModel;
+  const dSpin = slipCurve(R.g.spinSlipRatio, R.g.slipB, R.g.slipC);
+  const capPk = tractionCap(R, R.mu);
+  const capSp = useSlip ? tractionCap(R, R.mu * dSpin) : capPk;
+  let spin = false;
+  let kap = 0; // driven-wheel slip ratio of the previous step (raises engine rpm above the locked value)
+  /**
+   * Tyre force for a demanded drive force Fd (N). Below the grip peak the tyre
+   * sits on the rising branch of the slip curve (small slip, Fx = Fd). Above the
+   * peak the wheels spin up and settle at spinSlipRatio on the falling branch
+   * (Fx = capSp < peak); they recover only once the demand drops below that
+   * sliding force (hysteresis), as in a real wheelspin event.
+   */
+  const grip = (Fd: number): { F: number; limited: boolean } => {
+    if (!useSlip) {
+      kap = 0;
+      return Fd > capPk ? { F: capPk, limited: true } : { F: Fd, limited: false };
+    }
+    if (!spin && Fd > capPk) spin = true;
+    else if (spin && Fd < capSp) spin = false;
+    if (spin) {
+      kap = R.g.spinSlipRatio;
+      return { F: capSp, limited: true };
+    }
+    kap = slipForForceFraction(Fd / capPk, R.g.slipB, R.g.slipC);
+    return { F: Fd, limited: false };
+  };
   const mBase = R.mass + R.mWheels;
   const ratioSq = R.ratios.map((k) => (k * k) / (R.r * R.r));
 
   while (t < maxT) {
     const Fres = resistance(R, v);
     let Ftr = 0;
-    let rpm = rpmFromSpeed(R, v, gi);
+    let rpm = rpmFromSpeed(R, v, gi) * (1 + kap);
     let meff = mBase;
     let gripLimited = false;
 
@@ -101,12 +126,10 @@ export function runAcceleration(spec: VehicleSpec, engine: TorqueCurve, opts: Ru
         const sr = rpm / launchRpm;
         const mult = stall > 1 && sr < 0.85 ? 1 + (stall - 1) * (1 - sr / 0.85) : 1;
         rpm = launchRpm;
-        Ftr = (torqueAt(engine, rpm) * R.ratios[gi] * R.eta * ramp * mult) / R.r;
+        const g1 = grip((torqueAt(engine, rpm) * R.ratios[gi] * R.eta * ramp * mult) / R.r);
+        Ftr = g1.F;
+        gripLimited = g1.limited;
         tLaunch += dt;
-        if (Ftr > capLaunch) {
-          Ftr = capLaunch;
-          gripLimited = true;
-        }
       }
     }
     if (phase === 'drive') {
@@ -123,21 +146,18 @@ export function runAcceleration(spec: VehicleSpec, engine: TorqueCurve, opts: Ru
         shifts.push({ t, from: gi + 1, to: gi + 2, v });
       } else {
         const Fe = (torqueAt(engine, rpm) * R.ratios[gi] * R.eta) / R.r;
-        const c = gi === 0 ? capLaunch : capFull;
-        Ftr = Fe;
-        if (Ftr > c) {
-          Ftr = c;
-          gripLimited = true;
-          meff = mBase;
-        } else {
-          meff = mBase + R.iEng * ratioSq[gi];
-        }
+        const g2 = grip(Fe);
+        Ftr = g2.F;
+        gripLimited = g2.limited;
+        meff = g2.limited ? mBase : mBase + R.iEng * ratioSq[gi];
         // rev limiter in top gear / speed governor: hold speed
         if (rpm >= redline || v >= limiter) Ftr = Math.min(Ftr, Fres);
       }
     }
     if (phase === 'shift') {
       Ftr = 0;
+      kap = 0;
+      spin = false;
       rpm = rpmFromSpeed(R, v, Math.min(gi + 1, nG - 1));
     }
 

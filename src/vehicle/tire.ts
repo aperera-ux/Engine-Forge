@@ -24,3 +24,20 @@ export function airDensity(a: Ambient): number {
   const pv = (a.humidity ?? 0) * psat;
   return (p - pv) / (287.05 * T) + pv / (461.5 * T);
 }
+
+/** Normalised longitudinal slip curve D(kappa) in [0,1], peak 1 at slipPeak(). Pacejka-like with E = 0. */
+export function slipCurve(kappa: number, B: number, C: number): number {
+  const k = Math.abs(kappa);
+  return Math.sin(C * Math.atan(B * k));
+}
+
+/** Slip ratio of the force peak. */
+export function slipPeak(B: number, C: number): number {
+  return Math.tan(Math.PI / (2 * C)) / B;
+}
+
+/** Inverse of the RISING branch: slip ratio that produces fraction rho (0..1) of peak force. */
+export function slipForForceFraction(rho: number, B: number, C: number): number {
+  const x = Math.min(1, Math.max(0, rho));
+  return Math.tan(Math.asin(x) / C) / B;
+}

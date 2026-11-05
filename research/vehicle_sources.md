@@ -1,5 +1,127 @@
 # Vehicle mode: reference cars, sources and validation notes
 
+# ROUND 2 (supersedes the Results/Split sections below where they conflict)
+
+## Data provenance: what could and could not be sourced
+
+Primary sources were NOT reachable from this sandbox: WebFetch refuses caranddriver.com, motortrend.com and web.archive.org;
+edmunds.com and fastestlaps.com return 403; automobile-catalog.com returns 402; the search tool refuses a caranddriver.com
+domain filter. (The Bash shell could reach some of those hosts, but that would bypass the tool restriction, so it was not done.)
+Readable: Wikipedia, motorweek.org (no GTI figures), edmunds forum snippets via search, 0-60specs.com via search snippets.
+Consequence: the 7 new cars carry values that are (a) read from a page in this session, (b) typed from memory of OEM/magazine data
+("recalled"), or (c) engineering estimates. Per-car lists are in `referenceCars.ts` (`sources`, `recalled`, `estimated`).
+**Do not quote any measured value externally until it is re-checked against the primary sheet.** Specifically, `recalled`
+measured results (Charger Hellcat, 458, Mazda6, GTI Mk5, GT3) may be off by several percent.
+
+Values actually supported by a URL read this session:
+
+| value | URL |
+|---|---|
+| 8HP45/8HP70 gear ratios (340i, Hellcat family) | https://en.wikipedia.org/wiki/ZF_8HP_transmission |
+| 458 curb 1,565 kg (cites C/D), wheelbase 2,650 mm, 7 ratios 3.08-0.69, final 5.14 (uncited there), >325 km/h | https://en.wikipedia.org/wiki/Ferrari_458 |
+| Mk7 GTI top speed 246-250 km/h (governed) | https://en.wikipedia.org/wiki/Volkswagen_Golf_Mk7 |
+| Mk7 GTI DSG + Performance Pack 0-60 = 6.1 s (Edmunds, via search snippet only) | https://forums.edmunds.com/discussion/comment/5046297 |
+| 340i 0-60 4.7-5.1 s, 1/4 13.3-13.6 s @ 104-106 mph, 3,740 lb (aggregator of 3 tests) | https://www.0-60specs.com/bmw/340i-0-60-times |
+| engine ratings (Mazda6 184 hp, 9A1 500 hp, Hellcat 707 hp, 458 562 hp) | `src/sim/validation/referenceEngines.ts` source fields (OEM press kits as cited there) |
+
+Round-1 cars keep the secondary URLs listed in the table further below.
+Not sourced at all (estimated or recalled): every CG height, Cd*A, weight distribution; Mk7/Mk5 DQ250 ratios and final drive; Mazda6 ratios,
+final drive and results; GT3 PDK ratios/final drive/results; Hellcat final drive, mass, results; 458 magazine results.
+Also: the engine curves for peak-scaled cars keep the simulator shape.
+
+## Cars (16) and split
+
+| id | layout / transmission | split |
+|---|---|---|
+| corvette-z06-2006 | RWD / 6MT | train |
+| corvette-zr1-2009 | RWD / 6MT | train |
+| cadillac-ctsv-2009 | RWD / 6MT | train |
+| bmw-m3-e92-2008 | RWD / 6MT | train |
+| honda-s2000-2003 | RWD / 6MT | train |
+| ford-mustang-gt-2018 | RWD / 6MT | train |
+| vw-gti-mk7-dsg-2015 | FWD / 6 DCT | train |
+| dodge-charger-hellcat-2015 | RWD / 8 AT | train |
+| ferrari-458-italia-2010 | RWD / 7 DCT | train |
+| mazda6-25-2014 | FWD / 6 AT | HOLDOUT (fresh) |
+| vw-gti-mk5-dsg-2006 | FWD / 6 DCT | HOLDOUT (fresh) |
+| bmw-340i-2016 | RWD / 8 AT | HOLDOUT (fresh) |
+| porsche-911-gt3-991-2018 | RWD / 7 DCT | HOLDOUT (fresh) |
+| chevrolet-camaro-ss-2010 | RWD / 6MT | seen (old holdout) |
+| toyota-supra-tt-1993 | RWD / 6MT | seen (old holdout) |
+| subaru-wrx-sti-2008 | AWD / 6MT | seen (old holdout) |
+
+16 cars: 9 train, 4 fresh holdout, 3 seen. FWD x3, DCT x4, conventional automatic x3 (Hellcat, Mazda6, 340i), AWD x1 (STI, seen only).
+Not added: Acura RSX Type-S (the simulator's K20A is the JDM Type R 217 hp engine, not the US 200 hp), 535i (data too uncertain).
+
+Split protocol. The fresh holdout and the `seen` relabelling were committed (commit "FRESH holdout declared ... before any validation run")
+before any error was computed for any new car. `seen` cars are never fitted. Fitting touched only the 9 train cars with published curves.
+Holdout printed once, after the fit was frozen. No parameter was changed after seeing the holdout.
+Caveat: the holdout reference values are partly recalled (see above), so the holdout agreement says the model is consistent with those
+numbers, not that it is validated to that accuracy.
+
+## Slip model (src/vehicle/tire.ts, accelerate.ts)
+
+Pacejka-like longitudinal curve Fx = mu Fz sin(C atan(B kappa)), E = 0, B = 11.7, C = 1.65 (peak at kappa = 0.12; a priori shape, not fitted).
+Per step: total traction capacity with longitudinal weight transfer and driven-axle normal load as before (`tractionCap`, per axle for
+FWD/RWD/AWD). Demand below the peak -> tyre on the rising branch, slip from the inverse curve (rpm = wheel rpm x (1 + kappa), so slip
+lifts engine rpm). Demand above the peak -> wheels spin up, settle at `spinSlipRatio` on the falling branch (force = D(kappa) x peak) and
+recover only when demand falls below that sliding force (hysteresis). Launch: clutch/converter holds `launchRpm`, torque ramped,
+converter stall multiplication (default 1.8 for automatics, a priori, not per-car; the Hellcat uses 1.9, estimated). Not modelled: tyre
+relaxation length, engine-inertia dynamics during clutch slip, load-dependent mu (switch exists, fit chose 0), aero lift.
+Fitted on train (grid): mu(max-performance) 1.30 (was 1.36 with a hard cap x 0.9), spinSlipRatio 0.14 (fit sees almost no wheelspin loss:
+D(0.14) = 0.99), eta_RWD 0.92 (the unconstrained fit ran to 0.95 at the grid edge; capped at the physical limit).
+
+## Round-2 results (signed bias in table, medians are median |error|)
+
+Published curves, rollout on. Train n = 9 (ET/trap n = 8-9; GTI Mk7 has 0-60 only):
+
+| set | n | 0-60 | 1/4 ET | trap | top speed (drag-limited cars) |
+|---|---|---|---|---|---|
+| train | 9 | 7.9 % | 1.8 % | 0.8 % | 2.9 % (n=7) |
+| FRESH holdout | 4 | 2.6 % | 1.0 % | 1.3 % | 0.6 % (n=2) |
+| seen (old holdout) | 3 | 4.3 % | 1.0 % | 1.1 % | - |
+
+Simulated curves (engine-model error included): train 8.9 / 1.5 / 1.1 %; fresh holdout 5.7 / 2.7 / 2.2 % (top 1.9 %); seen 7.5 / 2.1 / 1.4 %.
+
+Per-car 0-60 error (published): Z06 -0.4, ZR1 +4.3, CTS-V -11.3, M3 +3.9, S2000 +17.5, Mustang -7.9, GTI Mk7 -9.1, Hellcat +12.6, 458 -0.4 (train);
+Mazda6 -1.3, GTI Mk5 +0.9, 340i -3.8, GT3 +8.4 (holdout); Camaro -12.2, Supra -4.3, STI -3.1 (seen). Targets: ET <= 5 % met everywhere (worst
+S2000 +4.0 %); trap <= 3 % met except ZR1 (+3.1 %); 0-60 <= 5 % NOT met on train (7.9 %) - met on the 4-car holdout (2.6 %) but n = 4 against
+partly recalled references. 0-60 outliers are all either ones where the reference is suspect (S2000 quick-outlier, CTS-V C/D vs Edmunds 4.3 vs 4.6 s,
+Edmunds-only GTI) or launch-technique cars (Hellcat launch control, S2000 clutch dump); the model has no per-car launch tuning by design.
+Round-1 (6 train cars) 0-60 median was 7.7 %; not directly comparable (train set changed), ET/trap errors are essentially unchanged.
+
+## Top speed validation
+
+Two kinds: ELECTRONICALLY LIMITED (published value is a governor; the model must report limitedBy 'limiter' and the free speed must exceed it) and
+DRAG-LIMITED (published value is power/gear limited; compared by % error). Model output with the governor removed is shown in parentheses.
+
+| car | published | kind | model (free) | result |
+|---|---|---|---|---|
+| M3 E9x | 155 | limiter | 155 (184) | ok |
+| Mustang GT | 155 | limiter | 155 (176) | ok |
+| GTI Mk7 | 155 | limiter | 149 (149, power) | MISS: model is power-limited 4 % below the governor; Cd*A estimate (0.70) or the peak-scaled curve is too pessimistic, not tuned |
+| Z06 | 198 | drag | 210 (power) | +6.3 % (Cd*A estimate 0.53; C/D quotes 198 as the factory rating) |
+| ZR1 | 205 | drag | 211 | +2.9 % |
+| CTS-V | 191 | drag | 185 (redline) | -3.0 %, model is gear-limited at redline |
+| Hellcat | 204 | drag | 198 | -2.9 % |
+| 458 | 202 | drag | 206 (redline) | +2.0 % |
+| GTI Mk5 (holdout) | 145 | drag | 145 | -0.3 % |
+| GT3 (holdout) | 198 | drag | 196 | -0.8 % |
+
+Published top speeds are manufacturer claims (recalled, except Mk7 and 458 via Wikipedia); not independent measurements. Drag-limited median
+error 2.9 % train. All Cd*A values are estimates, so agreement is partly luck.
+
+## Gearing optimiser
+
+With the slip model the final-drive optimum sits inside the +-range for 15 of 18 (train car x objective) cases
+(`src/vehicle/__tests__/optimizerInterior.test.ts`; edge cases: ZR1, GTI Mk7 quarter-mile at 0.70x; S2000 quarter-mile at 1.40x).
+Caveat: gains of 8-10 % on 0-60 for taller gearing (Z06 x0.76) are plausible mechanically (fewer shifts, 60 mph in 2nd) but the model's launch is
+a clutch held at `launchRpm`, not an engine-inertia model, and tall first gears are not penalised for stall/bogging, so treat optimiser output as indicative.
+
+---
+
+## ROUND 1 (historical; the 'holdout' there is now 'seen')
+
 Code: `src/vehicle/`. Data: `src/vehicle/validation/referenceCars.ts`. Reproduce the tables with
 `HOLDOUT=1 npx vitest run src/vehicle/__tests__/validationReport.test.ts --silent=false`
 (train rows only without `HOLDOUT=1`). Re-fit the global parameters with
