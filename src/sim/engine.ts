@@ -250,6 +250,14 @@ function breathingFor(c: EngineConfig, build: () => BreathingModel): BreathingMo
   return bm;
 }
 
+/**
+ * Band that defines peakTorqueRpm / peakPowerRpm on an ECU-limited plateau:
+ * the lowest rpm within this many N·m of the peak torque (power: this torque
+ * equivalent × ω). 2 × ecuTorqueTolNm (CAL default 0.05), so it spans the
+ * limit ± tolerance band every limited point is solved into.
+ */
+export const PEAK_PLATEAU_BAND_NM = 0.1;
+
 export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult {
   const applyOem = opts.applyOemLimits !== false;
   const c = sanitize(config);
@@ -280,6 +288,8 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
   };
 
   const curve: DynoPoint[] = [];
+  /** Per curve point: which ECU limit is binding (null = none). */
+  const limitedBy: ('torque' | 'power' | null)[] = [];
   let egt = 1050;
   let pExh = P_AMB_PA * 1.05;
   let surgeRpm: number | null = null;
@@ -310,6 +320,86 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     return out;
   };
   const boostTargetOf = (p: PointOut) => targets.get(p) ?? (c.induction === 'turbo' ? c.turbo.targetBoostBar : c.supercharger.targetBoostBar);
+  /**
+   * ECU torque management at one rpm point: find the boost TARGET t (the
+   * wastegate / bypass set-point, the one variable the ECU actually commands)
+   * at which brake torque meets the limit. F(t) = torque(t) − limit is solved
+   * on a bracket [lo, hi] with F(lo) ≤ 0 < F(hi):
+   *  - hi starts at the current target (F > 0 by the caller's test);
+   *  - lo is searched for with the ECU's torque model (indicated torque ∝ air
+   *    charge, minus friction → required achieved boost → target), then a
+   *    secant through the two lowest over-limit points aimed just below the
+   *    limit; after 4 such tries t = 0 (wastegate / bypass fully open);
+   *  - then Illinois (modified regula falsi), bisection if a step leaves the
+   *    bracket.
+   * Stops at the first point with |F| ≤ ecuTorqueTolNm. If the iteration cap is
+   * hit, returns lo (F ≤ 0). So a limited point always has torque ≤ limit + tol,
+   * except when even t = 0 is above the limit (limit below the unboosted torque:
+   * a real ECU would then pull throttle/spark, which is not modelled); then the
+   * t = 0 point is returned.
+   * Every step is a function of evaluated (target, torque) pairs only, so the
+   * result is a piecewise-smooth function of the inputs; it can jump by at most
+   * the tolerance where the iterate that first enters the band changes.
+   */
+  const limitTorque = (rpm: number, r0: PointOut, limit: number): PointOut => {
+    const tol = CAL.ecuTorqueTolNm;
+    type P = { t: number; rr: PointOut; f: number };
+    const evalT = (t: number): P => {
+      const rr = atBoost(rpm, t, r0);
+      return { t, rr, f: rr.point.torqueNm - limit };
+    };
+    let hi: P = { t: boostTargetOf(r0), rr: r0, f: r0.point.torqueNm - limit };
+    let prevHi: P | null = null;
+    let lo: P | null = null;
+    let fLo = 0;
+    let fHi = hi.f;
+    let side = 0;
+    for (let it = 0, tries = 0; it < CAL.ecuTorqueMaxIters; it++) {
+      let t: number;
+      if (!lo) {
+        // Bracketing phase: every iterate so far is above the limit.
+        if (tries < 4 && hi.t > 0) {
+          t = NaN;
+          // Secant through the last two over-limit points, aimed at −tol/2 so it
+          // lands in the band or just below it (the torque model alone under-steps:
+          // retard falls as boost falls, so torque falls less than proportionally).
+          if (prevHi && prevHi.t > hi.t && prevHi.f > hi.f) t = hi.t - ((hi.f + 0.5 * tol) * (prevHi.t - hi.t)) / (prevHi.f - hi.f);
+          if (!(t >= 0 && t < hi.t)) {
+            // ECU torque model from the hi point: required achieved boost, converted
+            // to a target with the observed target−achieved offset (capped: a
+            // spool-limited point's offset says nothing about where the target bites).
+            const p = hi.rr.point;
+            const tFric = (p.fmepBar * 1e5 * g.vdTotal) / (4 * Math.PI);
+            const bReq = Math.max(0, p.mapBar * ((limit + tFric) / (p.torqueNm + tFric)) - P_AMB_PA / 1e5);
+            t = Math.min(hi.t, bReq + Math.min(0.05, Math.max(0, hi.t - p.boostBar)));
+            if (!(t < hi.t)) t = 0.5 * hi.t;
+          }
+          tries++;
+        } else if (hi.t > 0) t = 0;
+        else break;
+      } else {
+        t = (lo.t * fHi - hi.t * fLo) / (fHi - fLo);
+        if (!(t > lo.t && t < hi.t)) t = 0.5 * (lo.t + hi.t);
+      }
+      const p = evalT(t);
+      if (Math.abs(p.f) <= tol) return p.rr;
+      if (p.f > 0) {
+        prevHi = hi;
+        hi = p;
+        fHi = p.f;
+        if (side === 1) fLo /= 2;
+        side = 1;
+      } else {
+        const first = !lo;
+        lo = p;
+        fLo = p.f;
+        if (side === -1) fHi /= 2;
+        side = first ? 0 : -1;
+      }
+      if (lo && hi.t - lo.t <= 1e-7) break;
+    }
+    return lo ? lo.rr : hi.rr;
+  };
   let knockSens = 0.03;
   let shortfall: { ratio: number; rpm: number; reason: string; reachedAnywhere: boolean } | null = null;
   for (const rpm of grid) {
@@ -318,6 +408,9 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     let r = evalPoint(ctx, rpm, egt, pExh);
     if (curve.length === 0) r = evalPoint(ctx, rpm, r.egtK, r.pExhCyl);
     // ── ECU at WOT (boosted engines) ──
+    // Effective ECU torque limit at this rpm: torque limit and/or rated-power limit (P/ω).
+    const tqFromPower = powerLimitW > 0 ? powerLimitW / ((rpm * 2 * Math.PI) / 60) : 0;
+    const torqueLimit = torqueLimitNm > 0 && tqFromPower > 0 ? Math.min(torqueLimitNm, tqFromPower) : Math.max(torqueLimitNm, tqFromPower);
     if (boosted) {
       // Boost schedule (turbo) — evaluate at the scheduled target if it differs.
       const tgt0 = boostTargetAt(rpm);
@@ -325,31 +418,9 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
       // 1) Torque management ("torque structure"): the ECU converts the torque
       //    limit into a required air charge, using its torque model (indicated
       //    torque ∝ air charge at the current spark efficiency, minus friction),
-      //    and lowers the boost target to it.
-      // Effective limit at this rpm: torque limit and/or rated-power limit (P/ω).
-      const tqFromPower = powerLimitW > 0 ? powerLimitW / ((rpm * 2 * Math.PI) / 60) : 0;
-      const torqueLimit = torqueLimitNm > 0 && tqFromPower > 0 ? Math.min(torqueLimitNm, tqFromPower) : Math.max(torqueLimitNm, tqFromPower);
+      //    and lowers the boost target to it (limitTorque: bracketed solve on the target).
       if (torqueLimit > 0 && r.point.torqueNm > torqueLimit && r.point.boostBar > 0.01) {
-        let rT = r;
-        let rPrev: PointOut | null = null;
-        for (let it = 0; it < CAL.ecuTorqueIters; it++) {
-          let bReq: number;
-          if (!rPrev) {
-            const tFric = (rT.point.fmepBar * 1e5 * g.vdTotal) / (4 * Math.PI);
-            const ratio = (torqueLimit + tFric) / (rT.point.torqueNm + tFric);
-            bReq = Math.max(0, rT.point.mapBar * ratio - P_AMB_PA / 1e5);
-          } else {
-            // Secant refinement on achieved boost (retard and pumping change with boost).
-            const dT = rT.point.torqueNm - rPrev.point.torqueNm;
-            const db = rT.point.boostBar - rPrev.point.boostBar;
-            bReq = Math.abs(dT) > 1e-6 ? rT.point.boostBar + ((torqueLimit - rT.point.torqueNm) * db) / dT : rT.point.boostBar;
-            bReq = Math.max(0, Math.min(r.point.boostBar, bReq));
-          }
-          const tgt = c.induction === 'turbo' ? bReq : boostTargetOf(rT) * (bReq / Math.max(1e-3, rT.point.boostBar));
-          rPrev = rT;
-          rT = atBoost(rpm, Math.min(boostTargetOf(r), tgt), r);
-        }
-        r = rT;
+        r = limitTorque(rpm, r, torqueLimit);
         if (r.boost) r.boost.limit = 'torque';
       }
       // 2) Knock-aware boost control: when holding the target would need more
@@ -434,9 +505,18 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
         if (r.boost) r.boost.limit = 'protection';
       }
     }
+    // 4) The torque limit is the final arbiter. Steps 2–3 re-solve the point from
+    //    a different exhaust-state warm start (EGT / back-pressure of the limited
+    //    point), which changes knock retard at the same boost, so they can land
+    //    above the limit (up to 1.5 N·m on the B58 at 1400–1600 rpm). Re-limit.
+    if (torqueLimit > 0 && r.point.torqueNm > torqueLimit + CAL.ecuTorqueTolNm && r.point.boostBar > 0.01) {
+      r = limitTorque(rpm, r, torqueLimit);
+      if (r.boost) r.boost.limit = 'torque';
+    }
     egt = r.egtK;
     pExh = r.pExhCyl;
     curve.push(r.point);
+    limitedBy.push(r.boost?.limit === 'torque' ? (torqueLimitNm > 0 && torqueLimit === torqueLimitNm ? 'torque' : 'power') : null);
     const b = r.boost;
     if (b && c.induction === 'turbo' && b.limit !== 'torque' && rpm >= 0.5 * c.redlineRpm && boostTargetAt(rpm) > 0.05) {
       const ratio = r.point.boostBar / boostTargetAt(rpm);
@@ -451,6 +531,24 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
 
   const pk = curve.reduce((a, b) => (b.powerKw > a.powerKw ? b : a));
   const tq = curve.reduce((a, b) => (b.torqueNm > a.torqueNm ? b : a));
+  // Peak rpm on an ECU-limited plateau / power band. There every point sits at
+  // the limit ± the solver tolerance, so the argmax is decided by sub-0.01 %
+  // noise. OEMs quote such a peak as a range ("450 N·m @ 1380–5000 rpm"), whose
+  // single-number form is its start ("from 1380 rpm"). So: if any point within
+  // PEAK_PLATEAU_BAND_NM of the peak torque is held by the torque limit,
+  // peakTorqueRpm = the LOWEST rpm within that band; likewise peakPowerRpm for
+  // the power limit (band × ω in power). Otherwise (NA, unlimited, or a peak
+  // the hardware sets) it is the plain argmax, unchanged.
+  const band = PEAK_PLATEAU_BAND_NM;
+  const omega = (rpm: number) => (rpm * 2 * Math.PI) / 60;
+  const inTq = (i: number) => curve[i].torqueNm >= tq.torqueNm - band;
+  const inPk = (i: number) => (pk.powerKw - curve[i].powerKw) * 1000 <= band * omega(curve[i].rpm);
+  const plateauStart = (inBand: (i: number) => boolean, kind: 'torque' | 'power', argmaxRpm: number) => {
+    if (!curve.some((_, i) => inBand(i) && limitedBy[i] === kind)) return argmaxRpm;
+    return curve[curve.findIndex((_, i) => inBand(i))].rpm;
+  };
+  const tqRpm = plateauStart(inTq, 'torque', tq.rpm);
+  const pkRpm = plateauStart(inPk, 'power', pk.rpm);
   const dispL = g.vdTotal * 1000;
   const massKg = estimateMassKg(c);
   const mechLimit = mechanicalLimitRpm(c, g);
@@ -487,10 +585,10 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     rodStrokeRatio: c.rodLengthMm / c.strokeMm,
     peakPowerKw: pk.powerKw,
     peakHp: pk.hp,
-    peakPowerRpm: pk.rpm,
+    peakPowerRpm: pkRpm,
     peakTorqueNm: tq.torqueNm,
     peakTorqueLbFt: tq.torqueLbFt,
-    peakTorqueRpm: tq.rpm,
+    peakTorqueRpm: tqRpm,
     specificOutputHpL: pk.hp / dispL,
     meanPistonSpeedRedlineMs: spRed,
     maxPistonAccelRedline: maxPistonAccel(g, c.redlineRpm),
@@ -503,6 +601,6 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     balance: computeBalance(c, lay),
     reliabilityScore,
     warnings,
-    uncertainty: computeUncertainty(c, curve, pk.rpm, tq.rpm),
+    uncertainty: computeUncertainty(c, curve, pkRpm, tqRpm),
   };
 }

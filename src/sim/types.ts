@@ -286,9 +286,11 @@ export interface SimResult {
 
   peakPowerKw: number;
   peakHp: number;
+  /** Lowest rpm with power within PEAK_PLATEAU_BAND_NM (0.1 N·m) × ω of peakPowerKw: the band start on an ECU power-limited band, else the argmax. */
   peakPowerRpm: number;
   peakTorqueNm: number;
   peakTorqueLbFt: number;
+  /** Lowest rpm with torque within PEAK_PLATEAU_BAND_NM (0.1 N·m) of peakTorqueNm: the plateau START on an ECU torque-limited plateau, else the argmax. */
   peakTorqueRpm: number;
   /** hp per litre */
   specificOutputHpL: number;
