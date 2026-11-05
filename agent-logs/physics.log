@@ -29,3 +29,4 @@
                  21-set: median 5.9 mean 6.2 max 13.0 maxTq 7.7. Tests: see physics_audit.md §11.
                  NEXT: NA pushrod/big-cam high-rpm deficit (GM cam-swap −8..−10 %, pmep ~1 bar at peak vs 0.35 for 4v),
                  S85 +11 %, wave-ripple argmax jumps, undersized-valve choke (Rule 10), fuzz BMEP/EGT extremes, perf p99.
+2026-11-05 PART A: limitSource tag, simulate(config,{applyOemLimits,includeUnlimited}), SimResult.oemLimits/unlimited, src/sim/customBuild.ts, tests/unit/oemLimits.test.ts, audit §12. Limits-off turbo (train, n=10): pkTq 11.3%, pkHp 11.2%, curve RMS 11.7% (on: 1.0/2.7/3.7).
