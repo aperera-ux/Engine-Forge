@@ -252,9 +252,15 @@ const PEXH_SCALE = 100;
 function solvePoint(ctx: PointCtx, rpm: number, egt0: number, p0: number): PointOut {
   const tolE = CAL.pointEgtTolK;
   const tolP = CAL.pointPExhTolRel;
+  // Search box: evalPoint clamps EGT to [450, 1500] K; exhaust state 0.5–30 bar.
   const pMin = (0.5 * P_AMB_PA) / PEXH_SCALE;
-  let x0 = egt0;
-  let x1 = Math.max(pMin, p0 / PEXH_SCALE);
+  const pMax = 30e5 / PEXH_SCALE;
+  const eMin = 400;
+  const eMax = 1600;
+  const box0 = (e: number) => (Number.isFinite(e) ? Math.min(eMax, Math.max(eMin, e)) : 1050);
+  const box1 = (p: number) => (Number.isFinite(p) ? Math.min(pMax, Math.max(pMin, p)) : (1.05 * P_AMB_PA) / PEXH_SCALE);
+  let x0 = box0(egt0);
+  let x1 = box1(p0 / PEXH_SCALE);
   // Broyden estimate of the Jacobian of F (2×2): the last solve's (a nearby
   // operating point), else −I.
   const jh = ctx.hints.jac;
@@ -277,6 +283,7 @@ function solvePoint(ctx: PointCtx, rpm: number, egt0: number, p0: number): Point
   let best = r;
   let bestN = n;
   let rejects = 0;
+  const bestHist: number[] = [];
   pointSolveStats.solves++;
   for (let it = 1; ; it++) {
     if (n < bestN) {
@@ -293,11 +300,16 @@ function solvePoint(ctx: PointCtx, rpm: number, egt0: number, p0: number): Point
     let d0 = (-f0 * j11 + f1 * j01) / det;
     let d1 = (-f1 * j00 + f0 * j10) / det;
     const conv = n <= 2 && norm(d0, d1, x1 * PEXH_SCALE) <= 1;
-    if (conv || it >= CAL.pointMaxIters) {
+    // Give up early when the best residual has not moved at all (< 1 % in 12
+    // evaluations): degenerate points (e.g. zero brake torque on absurd configs)
+    // where no fixed point is near; slow but steady progress may use the full cap.
+    bestHist.push(bestN);
+    const stalled = it >= 16 && bestN > 0.99 * bestHist[it - 13];
+    if (conv || stalled || it >= CAL.pointMaxIters) {
       pointSolveStats.evals += it;
       pointSolveStats.maxIters = Math.max(pointSolveStats.maxIters, it);
       if (!conv) pointSolveStats.unconverged++;
-      ctx.hints.jac = [j00, j01, j10, j11];
+      ctx.hints.jac = conv ? [j00, j01, j10, j11] : null;
       const out = conv ? r : best;
       pointSolveStats.maxEgtResK = Math.max(pointSolveStats.maxEgtResK, Math.abs(out.egtK - out.egtIn));
       pointSolveStats.maxPExhResRel = Math.max(pointSolveStats.maxPExhResRel, Math.abs(out.pExhCyl - out.pExhIn) / out.pExhIn);
@@ -307,8 +319,9 @@ function solvePoint(ctx: PointCtx, rpm: number, egt0: number, p0: number): Point
     const cap = Math.max(1, Math.abs(d0) / 150, Math.abs(d1) / (0.3 * x1));
     d0 /= cap;
     d1 /= cap;
-    const t0 = x0 + d0;
-    const t1 = Math.max(pMin, x1 + d1);
+    const t0 = box0(x0 + d0);
+    const t1 = box1(x1 + d1);
+    d0 = t0 - x0;
     d1 = t1 - x1;
     const rt = evalPoint(ctx, rpm, t0, t1 * PEXH_SCALE);
     const g0 = rt.egtK - t0;
@@ -325,9 +338,14 @@ function solvePoint(ctx: PointCtx, rpm: number, egt0: number, p0: number): Point
       j10 += (y1 * d0) / dd;
       j11 += (y1 * d1) / dd;
     }
-    if (nt <= n || ++rejects > 3) {
-      // Residual decreased: take the step. (After repeated rejections take it
-      // anyway, so a poor Jacobian cannot stall the iteration.)
+    if (nt > n && ++rejects > 3) {
+      // Repeated rejections: the Jacobian estimate is poor here; restart it from −I
+      // (a plain fixed-point step) instead of walking away from the best point.
+      rejects = 0;
+      resetJ();
+    }
+    if (nt <= n) {
+      // Residual decreased: take the step.
       rejects = 0;
       x0 = t0;
       x1 = t1;
