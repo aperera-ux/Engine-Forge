@@ -192,6 +192,40 @@ export const DYNO_CURVES: DynoCurve[] = [
     notes: 'Same chart style/method as S85. Cross-check vs chart PS above 3500 rpm: within 3.7 % (mean ~1.5 %); below 3000 rpm the drawn power trace is inconsistent with the torque trace (up to 26 % at 1500 rpm) - torque used.',
     split: 'holdout',
   },
+  // ───────────────────────────── VW / Audi Self Study Programmes ─────────────────────────────
+  {
+    engineId: 'audi-42-fsi-rs4',
+    source: {
+      url: 'https://www.vaglinks.com/Docs/SSP/VWUSA.COM_SSP_377_4.2L_FSI_Engine.pdf',
+      title: 'Audi SSP 377 "4.2l V8 FSI Engine", p.8 Torque/power curve (V8 FSI high-revving engine in RS4, solid)',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'ECE', confidence: 'high',
+    points: [{ rpm: 1250, torqueNm: 305, hp: 54 }, { rpm: 1500, torqueNm: 330, hp: 70 }, { rpm: 1750, torqueNm: 354, hp: 87 }, { rpm: 2000, torqueNm: 378, hp: 106 }, { rpm: 2250, torqueNm: 398, hp: 126 }, { rpm: 2500, torqueNm: 403, hp: 141 }, { rpm: 2750, torqueNm: 405, hp: 156 }, { rpm: 3000, torqueNm: 406, hp: 171 }, { rpm: 3250, torqueNm: 405, hp: 185 }, { rpm: 3500, torqueNm: 406, hp: 200 }, { rpm: 3750, torqueNm: 406, hp: 214 }, { rpm: 4000, torqueNm: 406, hp: 228 }, { rpm: 4250, torqueNm: 406, hp: 242 }, { rpm: 4500, torqueNm: 409, hp: 258 }, { rpm: 4750, torqueNm: 411, hp: 274 }, { rpm: 5000, torqueNm: 416, hp: 292 }, { rpm: 5250, torqueNm: 424, hp: 313 }, { rpm: 5500, torqueNm: 428, hp: 331 }, { rpm: 5750, torqueNm: 427, hp: 345 }, { rpm: 6000, torqueNm: 426, hp: 359 }, { rpm: 6250, torqueNm: 425, hp: 373 }, { rpm: 6500, torqueNm: 418, hp: 382 }, { rpm: 6750, torqueNm: 411, hp: 390 }, { rpm: 7000, torqueNm: 405, hp: 398 }, { rpm: 7250, torqueNm: 397, hp: 404 }, { rpm: 7500, torqueNm: 388, hp: 409 }, { rpm: 7750, torqueNm: 378, hp: 411 }, { rpm: 8000, torqueNm: 368, hp: 413 }, { rpm: 8250, torqueNm: 352, hp: 408 }],
+    notes: 'VECTOR chart: path vertices read from the PDF. Axis calibration from PDF gridlines and text labels: 24.07 pt per 1000 rpm from the frame at 0 rpm. CAVEAT: the printed rpm labels read "0 2000 5000 7000 9000" but sit on the 0/2000/4000/6000/8000 gridlines (label typo) - the 1000-rpm-per-gridline reading is confirmed by the stated 309 kW @ 7800 and 430 Nm @ 5500 (trace peaks at 7801 and 5450 rpm). Torque axis 300-460 Nm, power 80-320 kW. Cross-check vs chart kW: mean 0.8 %, max 4.9 % (1750 rpm).',
+    split: 'train',
+  },
+  {
+    engineId: 'audi-25-tfsi-ttrs',
+    source: {
+      url: 'https://www.vaglinks.com/Docs/SSP/VWUSA.COM_SSP_451_Audi%20TT-RS_2.5L_TFSI.pdf',
+      title: 'Audi SSP 451 "Audi TT RS 2.5L TFSI", p.14 Torque/power curve (CEPA)',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'ECE', confidence: 'high',
+    points: [{ rpm: 1000, torqueNm: 257, hp: 36 }, { rpm: 1250, torqueNm: 309, hp: 54 }, { rpm: 1500, torqueNm: 369, hp: 78 }, { rpm: 1750, torqueNm: 437, hp: 107 }, { rpm: 2000, torqueNm: 451, hp: 127 }, { rpm: 2250, torqueNm: 452, hp: 143 }, { rpm: 2500, torqueNm: 452, hp: 159 }, { rpm: 2750, torqueNm: 452, hp: 175 }, { rpm: 3000, torqueNm: 452, hp: 190 }, { rpm: 3250, torqueNm: 452, hp: 206 }, { rpm: 3500, torqueNm: 452, hp: 222 }, { rpm: 3750, torqueNm: 452, hp: 238 }, { rpm: 4000, torqueNm: 452, hp: 254 }, { rpm: 4250, torqueNm: 452, hp: 270 }, { rpm: 4500, torqueNm: 451, hp: 285 }, { rpm: 5000, torqueNm: 451, hp: 317 }, { rpm: 5250, torqueNm: 447, hp: 330 }, { rpm: 5500, torqueNm: 433, hp: 334 }, { rpm: 5750, torqueNm: 415, hp: 335 }, { rpm: 6000, torqueNm: 397, hp: 335 }, { rpm: 6250, torqueNm: 383, hp: 336 }, { rpm: 6500, torqueNm: 367, hp: 335 }],
+    notes: 'Raster chart (light grey background, white gridlines) traced by colour at 4x (dark grey = Nm, red = kW); 1000-6000 rpm gridlines, 60-540 Nm / 30-270 kW. Cross-check vs chart kW 1750-6500 rpm: within 1.7 %; below 1500 rpm the drawn power trace is 9-12 % above torque-derived power. 4750 rpm dropped (curves cross).',
+    split: 'holdout',
+  },
+  {
+    engineId: 'vw-ea113-20tfsi',
+    source: {
+      url: 'https://www.vaglinks.com/Docs/SSP/VWUSA.COM_SSP_821503_FSI_Turbo_Motor.pdf',
+      title: 'VW of America SSP 821503 "2.0L FSI Turbo Engine", p.2 Torque and Power (S339_047)',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'SAE J1349', confidence: 'medium',
+    points: [{ rpm: 1000, torqueNm: 165, hp: 23 }, { rpm: 1250, torqueNm: 200, hp: 35 }, { rpm: 1500, torqueNm: 239, hp: 50 }, { rpm: 1750, torqueNm: 276, hp: 68 }, { rpm: 2000, torqueNm: 280, hp: 79 }, { rpm: 2250, torqueNm: 280, hp: 88 }, { rpm: 2500, torqueNm: 280, hp: 98 }, { rpm: 2750, torqueNm: 280, hp: 108 }, { rpm: 3000, torqueNm: 280, hp: 118 }, { rpm: 3250, torqueNm: 280, hp: 128 }, { rpm: 3500, torqueNm: 280, hp: 138 }, { rpm: 3750, torqueNm: 280, hp: 147 }, { rpm: 4000, torqueNm: 280, hp: 157 }, { rpm: 4250, torqueNm: 280, hp: 167 }, { rpm: 4500, torqueNm: 280, hp: 177 }, { rpm: 4750, torqueNm: 280, hp: 187 }, { rpm: 5000, torqueNm: 279, hp: 196 }, { rpm: 5250, torqueNm: 270, hp: 199 }, { rpm: 5500, torqueNm: 261, hp: 202 }, { rpm: 5750, torqueNm: 251, hp: 203 }, { rpm: 6000, torqueNm: 241, hp: 203 }, { rpm: 6250, torqueNm: 231, hp: 203 }, { rpm: 6500, torqueNm: 221, hp: 202 }],
+    notes: 'Raster chart traced by colour at 4x. CAVEAT: the axis labels are US-unit conversions of a metric grid (lb-ft labels 22/44/.../243 = 30-330 Nm in 30 Nm steps; hp labels 20/41/.../224 = 15-165 kW in 15 kW steps, one label misprinted "109" for 122). Calibrated on the metric grid; verified by the 280 Nm plateau and 147 kW peak. Cross-check vs chart power 2000-6500 rpm: within 2.5 % (chart power slightly low at the top). Chart drawn to 7000 rpm; truncated at the 6500 rpm limit.',
+    split: 'train',
+  },
 ];
 
 /** All engines (peak-calibration set + extended set) by id. */
