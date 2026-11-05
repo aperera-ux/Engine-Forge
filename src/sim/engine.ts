@@ -318,7 +318,7 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
         const k0 = r.point.knockRetardDeg;
         // Accepted retard: rises softly with knock severity, but never more than
         // ecuRetardSoftCapDeg above the nominal limit.
-        const lim = maxRetard + Math.min(CAL.ecuRetardSoftCapDeg, CAL.ecuRetardSoft * (k0 - maxRetard));
+        const lim = maxRetard + CAL.ecuRetardSoftCapDeg * Math.tanh((CAL.ecuRetardSoft * (k0 - maxRetard)) / CAL.ecuRetardSoftCapDeg);
         // Bracketed secant (Illinois) on the boost scale x ∈ [xMin, 1]: retard is
         // monotone in boost but saturates at the retard limit, so an unguarded
         // secant can run away. Tolerance 0.05° → results continuous in the inputs.

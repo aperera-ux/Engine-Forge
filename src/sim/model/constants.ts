@@ -102,20 +102,20 @@ export const CAL = {
   /** ECU component protection: boost is cut above this EGT (deg C) / peak cylinder pressure (bar). */
   ecuEgtMaxC: 1090,
   ecuPmaxCapBar: 220,
-  intakeSysZeta: 2.5,
-  valveCurtainCd: 0.78,
+  intakeSysZeta: 2.0833,
+  valveCurtainCd: 0.81,
   /** p-norm exponent of the curtain/throat series combination (see gasExchange.valveArea). */
   valveSeriesExp: 4,
-  intakeThroatCd: 0.785,
-  exhaustThroatCd: 0.665,
+  intakeThroatCd: 0.75,
+  exhaustThroatCd: 0.65,
   /** Runner cross-section / total intake-valve head area. */
   runnerAreaRatio: 0.975,
   /** Port length added to the runner / primary acoustic length, × bore. */
-  intakePortLenBore: 1.2,
+  intakePortLenBore: 1.2834,
   exhaustPortLenBore: 0.7,
   /** Magnitude of the (inverting) open-end reflection at the plenum / bellmouth. */
-  intakeReflect: 0.9785,
-  intakeReflectItb: 0.75,
+  intakeReflect: 0.9417,
+  intakeReflectItb: 0.6,
   /** Magnitude of the (inverting) reflection at the collector, by exhaust type. */
   exhReflect: { log: 0.15, shorty: 0.4, 'long-tube': 0.4, 'tuned-equal': 0.4 } as Record<string, number>,
   /** Fraction of another cylinder's blowdown pulse that reaches this valve through a shared (log/turbine) manifold. */
@@ -124,13 +124,13 @@ export const CAL = {
   turboPulseTransmitFactor: 0.6,
   /** Intake port/valve wall temperature for charge heating, K, and heating effectiveness at 3000 rpm. */
   intakeWallTempK: 420,
-  chargeHeatEff: 0.256,
+  chargeHeatEff: 0.246,
   /** Runner entry + friction loss, multiples of runner dynamic head. */
-  runnerLoss: 0.6,
-  runnerLossItb: 1.2,
+  runnerLoss: 0.3667,
+  runnerLossItb: 0.3,
   /** Nominal exhaust gas temperature for wave speed, K; cylinder temperature at EVO / that. */
   gxExhaustTempK: 1250,
-  gxEvoTempFactor: 1.2,
+  gxEvoTempFactor: 1.1417,
   /** Time constant separating the mean (fully reflected) from the pulsating part of returning waves, ms. */
   waveMeanTauMs: 11.3,
   /** ... or this fraction of the cycle period (120/rpm s), whichever is shorter. */
@@ -196,10 +196,10 @@ export const CAL = {
   /** Fraction of fuel energy actually released as pressure in the 1-zone model. */
   pressureHeatFrac: 0.78,
   // ── friction (Chen–Flynn, bar, m/s) ──
-  fA: 0.323,
+  fA: 0.273,
   fB: 0.004,
   fC: 0.04,
-  fD: 0.0006,
+  fD: 0.0009,
   valvetrainFmep: { pushrod: 0.12, sohc: 0.1, dohc: 0.12 } as Record<'pushrod' | 'sohc' | 'dohc', number>,
   // ── turbo ──
   /** Compressor choke flow per inducer area, kg/s per mm². */
