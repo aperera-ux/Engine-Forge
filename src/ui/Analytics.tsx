@@ -23,6 +23,11 @@ function Tile({ label, value, unit, sub, alt, level, title, testId }: { label: s
   );
 }
 
+/** "1,600–4,800" when an ECU limit holds a plateau, else the single peak rpm. */
+function rpmTxt(range: [number, number] | undefined, rpm: number): string {
+  return range && range[1] - range[0] > 1 ? `${(range[0] / 1000).toFixed(1)}–${(range[1] / 1000).toFixed(1)}k` : fmt(rpm);
+}
+
 export function KpiPanel() {
   const r = useStore((s) => s.result);
   const c = useStore((s) => s.config);
@@ -39,8 +44,8 @@ export function KpiPanel() {
   return (
     <div className="kpis" data-testid="kpis">
       <div className="kpi-hero">
-        <Tile label="Power" value={pk} unit={pku} sub={`peak @ ${fmt(r.peakPowerRpm)} rpm`} alt={altPower} testId="kpi-power" />
-        <Tile label="Torque" value={tq} unit={tqu} sub={`peak @ ${fmt(r.peakTorqueRpm)} rpm`} alt={altTq} testId="kpi-torque" />
+        <Tile label="Power" value={pk} unit={pku} sub={`peak @ ${rpmTxt(r.peakPowerRpmRange, r.peakPowerRpm)} rpm`} alt={altPower} testId="kpi-power" />
+        <Tile label="Torque" value={tq} unit={tqu} sub={`peak @ ${rpmTxt(r.peakTorqueRpmRange, r.peakTorqueRpm)} rpm`} alt={altTq} testId="kpi-torque" />
       </div>
       <div className="kpi-grid">
         <Tile label="Disp." title={`Displacement ${fmt(r.displacementCc)} cc`} value={fmt(r.displacementL, 2)} unit="L" />

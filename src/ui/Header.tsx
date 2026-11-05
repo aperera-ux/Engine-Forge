@@ -30,6 +30,18 @@ function groupedPresets(): [string, EngineConfig[]][] {
   return out;
 }
 
+/** Header badge: this build is fitted to a measured dyno curve. */
+function CalibratedBadge() {
+  const cal = useStore((s) => s.calibration);
+  if (!cal) return null;
+  return (
+    <span className={`hdr-cal ${cal.verdict === 'poor' ? 'poor' : ''}`} data-testid="header-calibrated" title={`Calibrated to ${cal.sourceName}: RMS ${cal.rmsBeforePct.toFixed(1)} % to ${cal.rmsAfterPct.toFixed(1)} %`}>
+      <i />
+      Calibrated
+    </span>
+  );
+}
+
 function dispL(c: EngineConfig) {
   return ((Math.PI / 4) * (c.boreMm / 10) ** 2 * (c.strokeMm / 10) * c.cylinders) / 1000;
 }
@@ -174,7 +186,9 @@ export function Header() {
     flash((await copy(url)) ? 'Share link copied' : 'Share link is in the address bar');
   };
   const copySheet = async () => {
-    const text = buildSheet(useStore.getState().result, shareUrl(config));
+    const cal = useStore.getState().calibration;
+    const note = cal ? `fitted to ${cal.sourceName}, RMS torque error ${cal.rmsBeforePct.toFixed(1)} % to ${cal.rmsAfterPct.toFixed(1)} %${cal.verdict === 'poor' ? ' (poor fit, above 5 %)' : ''}` : undefined;
+    const text = buildSheet(useStore.getState().result, shareUrl(config), note);
     (window as unknown as { __efLastSheet?: string }).__efLastSheet = text;
     flash((await copy(text)) ? 'Build sheet copied to clipboard' : 'Clipboard unavailable');
   };
@@ -196,6 +210,7 @@ export function Header() {
       <div className="divider" />
       <PresetPicker />
       <Garage flash={flash} />
+      <CalibratedBadge />
       <div className="spacer" />
       {appMode === 'engine' && <SnapshotControls />}
       <div className="divider" />

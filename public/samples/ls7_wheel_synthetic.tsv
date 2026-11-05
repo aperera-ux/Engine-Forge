@@ -1,0 +1,64 @@
+# Engine Forge sample dyno file. Engine: gm-ls7
+# Source: Chevrolet Performance Parts Catalog 2017 (crate engine "DYNO CHART" pages) p.214: LS7 7.0L crate P/N 19329246
+# URL: https://images.carid.com/gm-parts/products/pdf/chevrolet-performance-2017-catalog.pdf
+# Published curve digitised in src/sim/validation/dynoCurves.ts (oem-chart, correction standard: SAE J1349).
+# SYNTHETIC wheel-dyno style data, NOT a measurement: the published crank curve x 0.85 (15 % drivetrain loss) with +/-1.2 % random noise, resampled every 100 rpm.
+# Use with basis = wheel, drivetrain loss 15 %. Preset: "GM LS7 7.0 - Corvette Z06 (C6)".
+# Tab-separated, no decimal commas. Columns: rpm, wheel torque in lb-ft, wheel hp.
+RPM	WTQ (lb-ft)	WHP
+1500	301.0	86.0
+1600	308.3	93.9
+1700	313.9	101.6
+1800	316.0	108.3
+1900	322.1	116.5
+2000	328.1	124.9
+2100	328.0	131.2
+2200	330.4	138.4
+2300	332.8	145.8
+2400	339.6	155.2
+2500	340.7	162.1
+2600	341.0	168.8
+2700	339.5	174.5
+2800	346.6	184.8
+2900	341.1	188.3
+3000	348.0	198.8
+3100	349.0	206.0
+3200	350.8	213.7
+3300	353.3	222.0
+3400	356.0	230.5
+3500	359.9	239.8
+3600	365.8	250.7
+3700	365.7	257.6
+3800	365.7	264.6
+3900	373.8	277.6
+4000	372.1	283.4
+4100	382.9	298.9
+4200	385.4	308.2
+4300	382.9	313.5
+4400	390.4	327.0
+4500	392.5	336.2
+4600	391.9	343.2
+4700	395.7	354.1
+4800	388.3	354.8
+4900	387.0	361.0
+5000	388.5	369.9
+5100	388.6	377.4
+5200	390.0	386.2
+5300	389.0	392.5
+5400	389.8	400.8
+5500	392.6	411.1
+5600	383.9	409.4
+5700	376.2	408.2
+5800	376.9	416.3
+5900	375.2	421.5
+6000	370.2	422.9
+6100	366.6	425.8
+6200	357.4	421.9
+6300	354.6	425.3
+6400	346.0	421.6
+6500	338.3	418.7
+6600	332.2	417.4
+6700	322.2	411.1
+6800	318.4	412.2
+6900	315.7	414.8
+7000	309.2	412.0

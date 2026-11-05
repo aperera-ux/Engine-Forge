@@ -110,6 +110,11 @@ function SlotCard({ i, e, onDone, flash }: { i: number; e: SavedEngine | null; o
         <div className="gar-spec">
           {fmt(e.displacementL, 1)} L {engineCode(e.config)} · {ind} · {pw} {pu} · {tq} {tu}
         </div>
+        {e.calibration && (
+          <div className="gar-spec gar-cal" data-testid={`garage-calibrated-${i}`}>
+            Calibrated: {e.calibration.sourceName} · RMS {e.calibration.rmsBeforePct.toFixed(1)} → {e.calibration.rmsAfterPct.toFixed(1)} %
+          </div>
+        )}
         {e.vehicle && (
           <div className="gar-spec" data-testid={`garage-vehicle-${i}`}>
             + Car: {e.vehicle.spec.name} · {fmt(e.vehicle.spec.curbMassKg)} kg {e.vehicle.spec.layout}
