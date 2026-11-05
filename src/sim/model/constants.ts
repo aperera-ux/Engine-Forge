@@ -175,7 +175,7 @@ export const CAL = {
   /** Knock-aware boost control: max spark retard the ECU accepts before trimming boost, deg. */
   ecuMaxRetardDeg: 10,
   /** Torque-management correction steps per rpm point (each re-solves the boost loop). */
-  ecuTorqueIters: 2,
+  ecuTorqueIters: 6,
   /** Max Illinois evaluations of the knock-aware boost trim per rpm point (stops at 0.05° from the target). */
   ecuKnockIters: 4,
   /** Max extra retard (deg) the ECU accepts above ecuMaxRetardDeg for severe knock before trimming boost further. */
@@ -215,7 +215,7 @@ export const CAL = {
   /** Compressor top-speed line: max PR and the flow fraction where it starts rolling off. */
   compPrMax: 3.9,
   compPrMaxPerMm: 0.01,
-  compSpeedLineKnee: 0.75,
+  compSpeedLineKnee: 0.85,
   /** Turbine frame size exponent on inducer diameter (turbine area ∝ A/R · D^exp). */
   turbineFrameExp: 1.5,
   /** Extra low-flow turbine efficiency from twin-scroll pulse separation. */
