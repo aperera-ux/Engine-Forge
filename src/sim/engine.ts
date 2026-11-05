@@ -288,24 +288,49 @@ export function simulate(config: EngineConfig): SimResult {
         // Turbo: scale the achieved boost (a target above it would not bite when spool-limited).
         const tgtA = c.induction === 'turbo' ? bA0 : boostTargetOf(r);
         const k0 = r.point.knockRetardDeg;
-        const lim = maxRetard + CAL.ecuRetardSoft * (k0 - maxRetard);
-        // First step from the previous rpm point's sensitivity d(ln boost)/d(retard).
-        let xA = 1;
-        let kA = k0;
-        let xB = Math.min(0.999, Math.max(0.3, 1 - (k0 - lim) * knockSens));
-        let rB = atBoost(rpm, tgtA * xB, r);
-        let kB = rB.point.knockRetardDeg;
-        for (let it = 0; it < CAL.ecuKnockIters - 1; it++) {
-          const dk = kA - kB;
-          const xN = Math.min(1, Math.max(0.05, Math.abs(dk) > 1e-6 ? xB - ((kB - lim) * (xB - xA)) / (kB - kA) : xB));
-          const rN = atBoost(rpm, tgtA * xN, r);
-          xA = xB;
-          kA = kB;
-          xB = xN;
-          rB = rN;
-          kB = rN.point.knockRetardDeg;
+        // Accepted retard: rises softly with knock severity, but never more than
+        // ecuRetardSoftCapDeg above the nominal limit.
+        const lim = maxRetard + Math.min(CAL.ecuRetardSoftCapDeg, CAL.ecuRetardSoft * (k0 - maxRetard));
+        // Bracketed secant (Illinois) on the boost scale x ∈ [xMin, 1]: retard is
+        // monotone in boost but saturates at the retard limit, so an unguarded
+        // secant can run away. Tolerance 0.05° → results continuous in the inputs.
+        const xMin = 0.02;
+        const evalX = (x: number) => {
+          const rr = atBoost(rpm, tgtA * x, r);
+          return { x, rr, g: rr.point.knockRetardDeg - lim };
+        };
+        let hi = { x: 1, rr: r, g: k0 - lim };
+        let lo: { x: number; rr: PointOut; g: number } | null = null;
+        let cur = evalX(Math.min(0.999, Math.max(0.3, 1 - (k0 - lim) * knockSens)));
+        if (cur.g > 0) hi = cur;
+        else lo = cur;
+        if (!lo) {
+          lo = evalX(xMin);
+          if (lo.g > 0) cur = lo; // knock-limited even with no boost: run at minimum boost
         }
-        if (k0 - kB > 0.5) knockSens = Math.min(0.2, Math.max(0.005, (1 - (rB.point.boostBar / bA0)) / (k0 - kB)));
+        let side = 0;
+        let gLo = lo.g;
+        let gHi = hi.g;
+        for (let it = 0; it < CAL.ecuKnockIters && lo.g <= 0 && Math.abs(cur.g) > 0.1; it++) {
+          let x = (lo.x * gHi - hi.x * gLo) / (gHi - gLo);
+          if (!(x > lo.x && x < hi.x)) x = 0.5 * (lo.x + hi.x);
+          cur = evalX(x);
+          if (cur.g > 0) {
+            hi = cur;
+            gHi = cur.g;
+            if (side === 1) gLo /= 2;
+            side = 1;
+          } else {
+            lo = cur;
+            gLo = cur.g;
+            if (side === -1) gHi /= 2;
+            side = -1;
+          }
+        }
+        // Prefer the bracket end at or below the accepted retard.
+        const rB = cur.g <= 0.1 ? cur.rr : lo.g <= 0 ? lo.rr : cur.rr;
+        const kB = rB.point.knockRetardDeg;
+        if (k0 - kB > 0.5) knockSens = Math.min(0.2, Math.max(0.005, (1 - rB.point.boostBar / bA0) / (k0 - kB)));
         r = rB;
         if (r.boost) r.boost.limit = 'knock';
       }

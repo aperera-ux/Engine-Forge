@@ -110,14 +110,17 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number): Bo
   const icDrop = (phi: number) => (0.04 + 0.08 * Math.min(1.2, t.intercoolerEffectiveness / 0.75)) * 1e5 * phi * phi;
   const twin = t.twinScroll ? 0.95 : 1;
 
+  // Compressor flow fraction warm-started from the previous evaluation (the
+  // PR search moves in small steps), so one engine-flow pass per PR suffices.
+  let phiWarm = 0.5;
   const evalPr = (pr: number, p3: number) => {
-    let phi = 0.5;
+    let phi = phiWarm;
     let eta = compressorEta(phi, pr);
     let flow: FlowAt = { mAir: 0, mExh: 0, pMan: P_AMB_PA, tExh: 1100 };
     let t2 = T_AMB_K;
     let tc = T_AMB_K;
     let pUp = P_AMB_PA;
-    for (let k = 0; k < 2; k++) {
+    for (let k = 0; k < CAL.turboFlowPasses; k++) {
       t2 = compressTemp(T_AMB_K, pr, eta);
       tc = intercool(t2, t.intercoolerEffectiveness);
       pUp = Math.max(0.5 * P_AMB_PA, P_AMB_PA * pr - icDrop(phi));
@@ -125,6 +128,7 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number): Bo
       phi = flow.mAir / n / mChokeEach;
       eta = compressorEta(phi, pr);
     }
+    phiWarm = phi;
     const pc = compressPower(flow.mAir, T_AMB_K, pr, eta);
     const p4 = P_AMB_PA + 0.05e5 * Math.min(2, phi) ** 2;
     const p3c = turbineInletPressure(at, flow.mExh, flow.tExh, p4);

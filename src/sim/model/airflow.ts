@@ -385,7 +385,15 @@ export function orificeFlow(cdA: number, pUp: number, tUp: number, pDown: number
  * demandPerPa: engine mass flow per Pa of manifold pressure (kg/s/Pa).
  */
 export function solveThrottle(cdA: number, pUp: number, tUp: number, demandPerPa: number): number {
-  return illinois((pm) => demandPerPa * pm - orificeFlow(cdA, pUp, tUp, pm), 0.1 * pUp, pUp, 40, 1e-8);
+  const f = (pm: number) => demandPerPa * pm - orificeFlow(cdA, pUp, tUp, pm);
+  // Narrow bracket from the incompressible estimate of the throttle drop (WOT: small).
+  const rho = pUp / (R_AIR * tUp);
+  const m0 = demandPerPa * pUp;
+  const dp0 = (m0 * m0) / (2 * rho * cdA * cdA);
+  const lo = Math.max(0.1 * pUp, pUp - 2.5 * dp0);
+  const fLo = f(lo);
+  if (lo > 0.1 * pUp && fLo < 0) return illinois(f, lo, pUp, 40, 1e-8, fLo);
+  return illinois(f, 0.1 * pUp, pUp, 40, 1e-8);
 }
 
 /**

@@ -92,13 +92,13 @@ export const CAL = {
   /** Neighbour weight of the binomial smear of wave-tuning features along log-rpm (0 = none, 0.25 = [¼ ½ ¼]). */
   gxRpmSmear: 0,
   /** Global scale on the gas-exchange VE (port losses, in-cylinder heat pick-up not resolved). */
-  gxVeScale: 1.0325,
+  gxVeScale: 1.0,
   /** Lift-profile shape exponent: L = Lmax·(1 − x²)^n over the seat duration. */
   liftShapeExp: 2.15,
   /** Valve curtain discharge coefficient and port-throat discharge coefficients (re. valve head area). */
-  valveCurtainCd: 0.78,
+  valveCurtainCd: 0.83,
   intakeThroatCd: 0.86,
-  exhaustThroatCd: 0.8,
+  exhaustThroatCd: 0.83,
   /** Runner cross-section / total intake-valve head area. */
   runnerAreaRatio: 0.975,
   /** Port length added to the runner / primary acoustic length, × bore. */
@@ -108,14 +108,14 @@ export const CAL = {
   intakeReflect: 0.941,
   intakeReflectItb: 0.85,
   /** Magnitude of the (inverting) reflection at the collector, by exhaust type. */
-  exhReflect: { log: 0.15, shorty: 0.45, 'long-tube': 0.45, 'tuned-equal': 0.45 } as Record<string, number>,
+  exhReflect: { log: 0.15, shorty: 0.4, 'long-tube': 0.4, 'tuned-equal': 0.4 } as Record<string, number>,
   /** Fraction of another cylinder's blowdown pulse that reaches this valve through a shared (log/turbine) manifold. */
   sharedPulseTransmit: { log: 0.35, shorty: 0.06, 'long-tube': 0.04, 'tuned-equal': 0.0 } as Record<string, number>,
   /** Turbine housings / manifold volume attenuate the cross-talk relative to an NA log manifold. */
   turboPulseTransmitFactor: 0.6,
   /** Intake port/valve wall temperature for charge heating, K, and heating effectiveness at 3000 rpm. */
   intakeWallTempK: 420,
-  chargeHeatEff: 0.206,
+  chargeHeatEff: 0.256,
   /** Runner entry + friction loss, multiples of runner dynamic head. */
   runnerLoss: 0.6,
   runnerLossItb: 0.3,
@@ -124,6 +124,8 @@ export const CAL = {
   gxEvoTempFactor: 1.3,
   /** Time constant separating the mean (fully reflected) from the pulsating part of returning waves, ms. */
   waveMeanTauMs: 11.3,
+  /** ... or this fraction of the cycle period (120/rpm s), whichever is shorter. */
+  waveMeanCycleFrac: 0.3,
   /** Fraction of the closed-valve wave ringing carried into the next cycle (plenum/collector interaction damps it). */
   gxRingCarry: 0,
   /** Use the gas-exchange cycle's pumping work (true) or the mean-pressure + Mach-index correlation. */
@@ -165,8 +167,10 @@ export const CAL = {
   ecuMaxRetardDeg: 10,
   /** Torque-management correction steps per rpm point (each re-solves the boost loop). */
   ecuTorqueIters: 2,
-  /** Secant evaluations of the knock-aware boost trim per rpm point (fixed count: continuous result). */
-  ecuKnockIters: 2,
+  /** Max Illinois evaluations of the knock-aware boost trim per rpm point (stops at 0.05° from the target). */
+  ecuKnockIters: 4,
+  /** Max extra retard (deg) the ECU accepts above ecuMaxRetardDeg for severe knock before trimming boost further. */
+  ecuRetardSoftCapDeg: 5,
   /** Fraction of the excess retard (beyond ecuMaxRetardDeg) the ECU still accepts. */
   ecuRetardSoft: 0.7,
   /** Relative reduction of the end-gas compression exponent at 1000 rpm (wall heat loss). */
@@ -183,7 +187,7 @@ export const CAL = {
   /** Fraction of fuel energy actually released as pressure in the 1-zone model. */
   pressureHeatFrac: 0.78,
   // ── friction (Chen–Flynn, bar, m/s) ──
-  fA: 0.323,
+  fA: 0.403,
   fB: 0.004,
   fC: 0.045,
   fD: 0.0006,
@@ -209,6 +213,8 @@ export const CAL = {
   twinScrollPulse: 0.5,
   /** Supercharger pulley sizing: crank rpm where targetBoostBar is reached (default). */
   scReferenceRpm: 6000,
+  /** Engine-flow passes per compressor-PR evaluation (flow fraction warm-started). */
+  turboFlowPasses: 1,
   /** Turbine-inlet (exhaust manifold) pressure limit enforced by boost control, bar abs. */
   turbineInletMaxBar: 4.5,
 };

@@ -227,7 +227,10 @@ export function runGasExchange(st: GxStatic, e: GxEngine, rpm: number, peOverPi:
   const period = 720 / st.dphi;
   const shiftSteps = e.nShared > 1 ? 720 / e.nShared / st.dphi : 0;
   const cpMul = GAM * R_GAS;
-  const aLp = Math.min(1, dt / (CAL.waveMeanTauMs / 1000));
+  // "Mean" = slower than the engine's own cycle: the time constant is a
+  // fraction of the cycle period (bounded by the fixed value at low speed).
+  const tauMean = Math.min(CAL.waveMeanTauMs / 1000, CAL.waveMeanCycleFrac * (120 / rpm));
+  const aLp = Math.min(1, dt / tauMean);
   const vol = st.vol;
   const aIa = st.aI;
   const aEa = st.aE;
