@@ -92,6 +92,7 @@ function sanitizeEcu(e: EngineConfig['ecu']): EngineConfig['ecu'] {
         .sort((a, b) => a.rpm - b.rpm)
     : undefined;
   return {
+    limitSource: e.limitSource === 'published-rating' || e.limitSource === 'hardware' ? e.limitSource : undefined,
     torqueLimitNm: typeof e.torqueLimitNm === 'number' && Number.isFinite(e.torqueLimitNm) && e.torqueLimitNm > 0 ? e.torqueLimitNm : undefined,
     powerLimitKw: typeof e.powerLimitKw === 'number' && Number.isFinite(e.powerLimitKw) && e.powerLimitKw > 0 ? e.powerLimitKw : undefined,
     boostSchedule: sched && sched.length ? sched : undefined,

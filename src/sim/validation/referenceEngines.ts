@@ -1348,5 +1348,7 @@ for (const e of [...REFERENCE_ENGINES, ...EXTENDED_REFERENCE_ENGINES]) {
   const ecu = { ...(e.config.ecu ?? {}) };
   if (e.published.torqueRpmRange && ecu.torqueLimitNm === undefined) ecu.torqueLimitNm = e.published.torqueNm;
   if (e.published.hpRpmRange && ecu.powerLimitKw === undefined) ecu.powerLimitKw = (e.published.hp * 745.7) / 1000;
-  if (ecu.torqueLimitNm !== undefined || ecu.powerLimitKw !== undefined) e.config.ecu = ecu;
+  // Every limit on a reference engine comes from its published rating: tag it so the
+  // UI / tests can show it as an input and switch it off (see customBuild.ts).
+  if (ecu.torqueLimitNm !== undefined || ecu.powerLimitKw !== undefined) e.config.ecu = { ...ecu, limitSource: 'published-rating' };
 }

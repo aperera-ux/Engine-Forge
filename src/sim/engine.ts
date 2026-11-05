@@ -8,7 +8,7 @@
  *        →  brake torque/power, BSFC, EGT, peak pressure.
  * Plus mechanical limits, mass, balance and warnings. See src/sim/model/*.
  */
-import type { DynoPoint, EngineConfig, SimResult } from './types';
+import type { DynoPoint, EngineConfig, SimOptions, SimResult } from './types';
 import { computeLayout } from './layout';
 import { CAL, HP_W, LBFT_PER_NM, P_AMB_PA, R_AIR, RHO_AMB, T_AMB_K } from './model/constants';
 import { computeGeometry, maxPistonAccel, meanPistonSpeed, sanitize, type Geometry } from './model/geometry';
@@ -198,7 +198,8 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   return { point, boost, egtK, pExhCyl: boost && turbo ? boost.pExhCyl : pExhCyl };
 }
 
-export function simulate(config: EngineConfig): SimResult {
+export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult {
+  const applyOem = opts.applyOemLimits !== false;
   const c = sanitize(config);
   const g = computeGeometry(c);
   const lay = computeLayout(c);
@@ -232,8 +233,9 @@ export function simulate(config: EngineConfig): SimResult {
   let spoolRpm: number | null = null;
   const boosted = c.induction !== 'na';
   const ecu = c.ecu ?? {};
-  const torqueLimitNm = boosted ? (ecu.torqueLimitNm ?? 0) : 0;
-  const powerLimitW = boosted ? (ecu.powerLimitKw ?? 0) * 1000 : 0;
+  const limitPresent = boosted && ((ecu.torqueLimitNm ?? 0) > 0 || (ecu.powerLimitKw ?? 0) > 0);
+  const torqueLimitNm = boosted && applyOem ? (ecu.torqueLimitNm ?? 0) : 0;
+  const powerLimitW = boosted && applyOem ? (ecu.powerLimitKw ?? 0) * 1000 : 0;
   const maxRetard = ecu.maxKnockRetardDeg ?? CAL.ecuMaxRetardDeg;
   const sched = c.induction === 'turbo' ? ecu.boostSchedule : undefined;
   const boostTargetAt = (rpm: number): number => {
@@ -392,6 +394,14 @@ export function simulate(config: EngineConfig): SimResult {
   return {
     config,
     curve,
+    oemLimits: {
+      applied: limitPresent && applyOem,
+      present: limitPresent,
+      torqueLimitNm: ecu.torqueLimitNm,
+      powerLimitKw: ecu.powerLimitKw,
+      source: limitPresent ? ecu.limitSource ?? 'hardware' : undefined,
+    },
+    unlimited: opts.includeUnlimited ? (limitPresent && applyOem ? simulate(config, { applyOemLimits: false }).curve : curve) : undefined,
     displacementCc: dispL * 1000,
     displacementL: dispL,
     cylinderCc: g.vdCyl * 1e6,

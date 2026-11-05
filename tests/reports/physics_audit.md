@@ -504,3 +504,46 @@ v4 adds a wave-action gas-exchange model, explicit OEM ECU torque / rated-power 
   - 102 NA curves have adjacent-point jumps, from wave ripple.
 - **EA888 continuity:** `cam.intakeDurationDeg` (variable-lift lobe switch) and `throttleMm` (the soft knock-trim acceptance makes a small throttle slightly better).
 - **Audio tests `turbo whine` and `spool lag`.** These are side effects: the torque-limited B58 really runs ~0.7 bar at 4000 rpm. They are for the audio agent.
+
+## 12. OEM limits: what is an input and what is predicted
+
+### Inputs (copied from the manufacturer's published rating)
+- Every boosted reference engine whose rating is a torque plateau carries `ecu.torqueLimitNm` = the published torque. Every one whose rating is a power band carries `ecu.powerLimitKw` = the published power.
+- These are tagged `ecu.limitSource: 'published-rating'`. The rule is one loop at the end of `referenceEngines.ts`, applied identically to train and holdout engines.
+- With a published-rating limit applied, the stock engine's peak torque and peak power agree with the published figures **by construction**. They are not a validation of the physics.
+- NA engines carry no limit: their curves are predicted.
+
+### What is still predicted with the limits applied
+- Where the plateau starts (spool), and whether the hardware can hold it to the published end rpm (turbo capacity, knock, EGT).
+- The shape of torque between the torque limit and the power limit.
+- The top-end power fall-off and the power rpm.
+- Everything below the plateau.
+
+### Switching the limits off
+`simulate(config, opts)`:
+- `opts.applyOemLimits` (default `true`). When `false`, `torqueLimitNm` and `powerLimitKw` are ignored. The boost schedule, knock-limited boost trim, retard cap and EGT enrichment stay on. The hardware boost target is still the ceiling.
+- `opts.includeUnlimited` (default `false`) adds `SimResult.unlimited`, the dyno points with the limits off.
+  - It costs one extra solve only when the config really carries an applied limit.
+  - Otherwise `unlimited === curve`.
+  - Chosen over always-on `unlimited` to keep the common call at one solve. The UI can also just call `simulate` twice.
+- `SimResult.oemLimits` reports `{ applied, present, torqueLimitNm, powerLimitKw, source }` so the UI can label the curve.
+
+### Custom builds (`src/sim/customBuild.ts`)
+- A preset is **custom** once any hardware field differs from it. The comparison covers every `EngineConfig` field except `name`, `ecu` and `idleRpm`: bore, stroke, CR, cams, valves, turbo, fuel, lambda, redline, etc.
+- `isCustomBuild(config, base)`, `hardwareDiff(config, base)` (the list of differing field paths), `shouldApplyOemLimits(config, base)` and `oemLimitOptions(config, base)` (spread into `simulate`).
+- Published-rating limits do not apply to a custom build. A limit with any other source (a user cap) always applies.
+- Rationale: the published plateau describes the stock hardware. A bigger turbo or more boost must not be capped at the old rating.
+
+### Honest hardware-only score (limits off, boosted reference engines, TRAIN set)
+Mean |error| vs published figures, limits on / off:
+
+| Metric | On | Off |
+|---|---|---|
+| Peak torque | 1.0% | 11.3% |
+| Peak hp | 2.7% | 11.2% |
+| Curve torque RMS | 3.7% | 11.7% |
+
+- Limits off, the sim is above the published figures on every engine: N55 +23%, N63 +16% torque and +26% hp, 1.8 TFSI +10% torque and +29% hp.
+- These are not errors against a hardware-capability measurement. Published curves are ECU-limited, so they cannot measure what the hardware could do.
+- The off numbers are an upper bound: the hardware under a safe tune at its configured boost target. For comparison, stage-1 tunes of these engines typically gain 10–20% torque.
+- The `turbo.targetBoostBar` values on the extended engines are estimates and now carry the full uncertainty.

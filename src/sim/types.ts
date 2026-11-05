@@ -68,6 +68,17 @@ export interface SuperchargerConfig {
  */
 export interface EcuConfig {
   /**
+   * Where torqueLimitNm / powerLimitKw come from.
+   *  - 'published-rating': copied from the manufacturer's published torque
+   *    plateau / power band for a stock preset. This is an INPUT, not a
+   *    prediction: with it applied, the stock engine's peak torque and power
+   *    are the published ones by construction. It is meaningful only while the
+   *    hardware equals the stock hardware (see customBuild.ts).
+   *  - 'hardware' (or absent): a limit the user or the hardware imposes
+   *    (e.g. a deliberate torque cap to protect a gearbox); always applied.
+   */
+  limitSource?: 'published-rating' | 'hardware';
+  /**
    * Brake-torque limit, N·m (OEM torque management / "torque structure").
    * Boosted engines: the ECU lowers the boost target until brake torque is at
    * the limit. This is how factory turbo engines produce flat plateaus.
@@ -221,9 +232,40 @@ export interface SimUncertainty {
   reasons: string[];
 }
 
+/** Options for simulate(). All optional. */
+export interface SimOptions {
+  /**
+   * Apply ecu.torqueLimitNm / ecu.powerLimitKw (default true). When false both
+   * are ignored; boost schedule, knock control and EGT protection stay on, so
+   * the curve is what the hardware can do under a normal safe tune.
+   */
+  applyOemLimits?: boolean;
+  /**
+   * Also return SimResult.unlimited (the curve with the OEM limits ignored).
+   * Costs a second solve only when the config actually carries a limit.
+   */
+  includeUnlimited?: boolean;
+}
+
 export interface SimResult {
   config: EngineConfig;
   curve: DynoPoint[];
+  /** Which OEM limits were in force for `curve`. */
+  oemLimits: {
+    /** true when a torque and/or power limit was present AND applied. */
+    applied: boolean;
+    /** true when the config carries a limit at all (applied or not). */
+    present: boolean;
+    torqueLimitNm?: number;
+    powerLimitKw?: number;
+    source?: 'published-rating' | 'hardware';
+  };
+  /**
+   * Hardware-only curve (OEM limits ignored). Present only when
+   * SimOptions.includeUnlimited was set; identical to `curve` when no limit is
+   * present or applied.
+   */
+  unlimited?: DynoPoint[];
 
   displacementCc: number;
   displacementL: number;
