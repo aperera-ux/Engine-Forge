@@ -791,7 +791,13 @@ Only the Rule 4 premise was changed.
 - The point is the solution of F(x) = G(x) − x = 0 for x = (EGT, exhaust state), solved by 2-D Broyden.
   - The pressure is scaled at 100 Pa per K.
   - The Jacobian is warm-started from the previous solve.
-  - Steps are capped, and a step that raises the residual is rejected (the Jacobian still learns from it).
+  - Steps are capped and kept inside a search box: EGT 400–1600 K, 0.5–30 bar.
+  - A step that raises the residual is rejected (the Jacobian still learns from it). After four rejections in a row the Jacobian restarts from −I.
+  - The iteration stops early if the best residual moves < 1 % in 12 evaluations; this happens only for degenerate points such as zero brake torque on absurd fuzz configs.
+  - A failed solve returns its lowest-residual evaluation and does not pass its Jacobian on to the next solve.
+  - Two robustness bugs were found by the full suite and fixed this way:
+    - fuzz configs got NaN from a −7500 K extrapolated warm start;
+    - EA888 at CR 6.1 gave a +21 % hp spike when the old "accept after 3 rejections" rule walked away from the root.
 - Converged when:
   - the residual is ≤ 2× tolerance, and
   - the next quasi-Newton step is ≤ 1× tolerance (`CAL.pointEgtTolK` = 0.01 K, `pointPExhTolRel` = 2e-5).
@@ -843,6 +849,8 @@ Metric: max over rpm of max(|d(ε) − 2 d(ε/2)|, |d(+ε) + d(−ε)|) / torque
   - for Ford 1.0, B58 and EA888 gen 3 × 5 parameters, on 9 configs from −ε to +ε: no torque increment exceeds 3× its neighbours (plus 2e-5 relative), elasticity < 20, peak-hp increments are smooth, and peak rpms move ≤ 1 grid step;
   - torque ≤ limit + 0.05 N·m on the perturbed configs.
 - The old torque-limiter tests (`torqueLimiter.test.ts`, 45) still pass.
+- Full suite after merging main f9bdfe9: 886 tests, 43 failed. These are the same 43 as main (envelopes, sanity rules, fuzz plausibility counts, EA888 cam-duration and throttle continuity, "bigger cam"). There are no new failures.
+- `tests/unit/continuity.test.ts`: the EA888 bore, CR, inducer and turbine-A/R sweeps and the Hellcat exhaust-valve sweep pass. They had failed or timed out with intermediate versions of this work.
 
 ### 16.4 Accuracy before → after (`SIM_STATS=1`)
 | Statistic | Before | After |
@@ -886,8 +894,8 @@ Metric: max over rpm of max(|d(ε) − 2 d(ε/2)|, |d(+ε) + d(−ε)|) / torque
 
 ### 16.6 Cost
 - Warm medians of 31 (`SIM_SNAPSHOT=time`):
-  - Max 5.98 → 7.38 ms (B58). EA113 6.97, Ford 3.5 6.52, EA888 gen 3 6.08 ms.
-  - NA 0.3–1.5 ms.
-- Cold (breathing cache off): max 9.0 ms (B58).
+  - Max 5.98 → 7.37 ms (B58). EA113 7.25, Ford 3.5 6.65, EA888 gen 3 6.26 ms.
+  - Median over configs 0.47 → 0.65 ms.
+- Cold (breathing cache off): max 9.1 ms (B58).
 - All presets are under 10 ms.
 - What brings it within budget: warm-start hints that change only the iteration path. These are the retard and its slope, PR and φ, the fixed-point Jacobian, and the previous rpm's torque-limited target.

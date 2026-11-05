@@ -240,9 +240,11 @@ export const pointSolveStats = { solves: 0, evals: 0, maxIters: 0, unconverged: 
  * spool-limited, EGT → turbine power → boost → EGT is a positive feedback
  * with loop gain near 1, and back-pressure → engine flow → turbine power is a
  * negative one with gain down to about −4; a plain or per-component
- * iteration stalls, oscillates or diverges there. Steps are capped, and a
- * step that increases the residual is rejected (the Jacobian still learns
- * from it). Converged when the residual is within 2× and the next
+ * iteration stalls, oscillates or diverges there. Steps are capped and kept
+ * inside a search box (EGT 400–1600 K, 0.5–30 bar); a step that increases the
+ * residual is rejected (the Jacobian still learns from it), and after four
+ * rejections in a row the Jacobian restarts from −I. A failed solve returns
+ * its lowest-residual evaluation and does not pass its Jacobian on. Converged when the residual is within 2× and the next
  * quasi-Newton step within 1× the tolerances CAL.pointEgtTolK and
  * CAL.pointPExhTolRel · p. Normally 2–3 evaluations from a warm start.
  * The result depends on the warm start (previous rpm / boost iterate) only
