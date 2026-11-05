@@ -515,6 +515,17 @@ export const DYNO_CURVES: DynoCurve[] = [
     notes: 'Raster chart (embedded 471x606 px image, rendered at 150 dpi) traced by colour: red = torque, blue = kW, solid = N73B60, dashed = M73B54 (dashed trace bridged by continuity across the gaps). Axes: 0-7000 rpm, 320-960 Nm and 0-320 kW read from gridlines/labels. Cross-check torque-derived kW vs chart kW (Nm*rpm/9549): mean 1.7 %, max 3.2 %. Declared (idealised) ECE full-load curve; points 1750-6000 rpm. Chart peak 488 Nm / 236 kW.',
     split: 'train',
   },
+  {
+    engineId: 'audi-42-fsi-bar',
+    source: {
+      url: 'https://www.vaglinks.com/Docs/SSP/VWUSA.COM_SSP_822703_4.2L_V8_FSI_Engine.pdf',
+      title: 'Audi SSP 822703 (S388) "4.2L V8 FSI Engine" p.3 Technical Data, torque/power chart (BAR)',
+    },
+    sourceType: 'oem-chart', crankBasis: true, standard: 'ECE', confidence: 'low',
+    points: [{ rpm: 3250, torqueNm: 437, hp: 199 }, { rpm: 3500, torqueNm: 438, hp: 215 }, { rpm: 3750, torqueNm: 435, hp: 229 }, { rpm: 4000, torqueNm: 431, hp: 242 }, { rpm: 4250, torqueNm: 425, hp: 253 }, { rpm: 4500, torqueNm: 419, hp: 265 }, { rpm: 4750, torqueNm: 413, hp: 275 }, { rpm: 5000, torqueNm: 409, hp: 287 }, { rpm: 5250, torqueNm: 403, hp: 297 }, { rpm: 5500, torqueNm: 399, hp: 308 }, { rpm: 5750, torqueNm: 395, hp: 319 }, { rpm: 6000, torqueNm: 390, hp: 328 }, { rpm: 6250, torqueNm: 383, hp: 336 }, { rpm: 6500, torqueNm: 375, hp: 342 }, { rpm: 6750, torqueNm: 363, hp: 344 }],
+    notes: 'Raster chart (356x396 px embedded image, rendered at 300 dpi) traced by colour; torque (cyan, left axis 0-500 Nm) and power (red, right axis 0-300 kW) with gridlines every 1000 rpm / 50 Nm. Declared (idealised) curve. WARNING: the chart own power trace is inconsistent with its torque trace below ~3000 rpm (kW from Nm*rpm/9549 is 8-21 % lower than the plotted kW at 1000-2750 rpm), so only 3250-7000 rpm is kept (cross-check there: mean 1.2 %, max 3.1 %). Torque peak ~438 Nm @ 3500 and power ~257 kW @ 6750 agree with the table (440 Nm @ 3500, 257 kW @ 6800). The 1000-3000 rpm torque trace (320-431 Nm) is plausible but unverified, hence confidence low.',
+    split: 'train',
+  },
 ];
 
 /** All engines (peak-calibration set + extended set) by id. */
