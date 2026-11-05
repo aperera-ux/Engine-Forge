@@ -461,8 +461,10 @@ export async function fitCalibration(input: FitInput, hooks: FitHooks = {}): Pro
   if (illConditioned) {
     const coupling = pair ? ` Strongest coupling: ${PARAM_DEFS[pair[0]].label} vs ${PARAM_DEFS[pair[1]].label} (|r| = ${maxCorr.toFixed(2)}).` : '';
     const loose = undetermined.length ? ` Poorly determined by this data (uncertainty over a quarter of the allowed range): ${undetermined.map((p) => p.label).join(', ')}.` : '';
+    // Correlated parameters are expected when 4-6 knobs fit one smooth curve (flag fires on ~all real curves),
+    // so plain correlation is 'info'; it escalates to 'warn' only when a parameter is undetermined or cond is extreme.
     warnings.push({
-      severity: 'warn',
+      severity: undetermined.length > 0 || cond > 100 ? 'warn' : 'info',
       code: 'ill-conditioned',
       message: `Ill-conditioned fit (conditioning ${cond.toFixed(0)}).${coupling}${loose} These parameters trade off against each other, so individual values are not uniquely determined even though the curve matches. Trust the curve, not the split.`,
     });
