@@ -477,9 +477,16 @@ export class EngineSynth {
 
     // Turbine: wastegate opens transmission, twin-scroll preserves pulses.
     if (p.induction === 'turbo') {
+      // Research §5.6: the turbine damps exhaust pulses by −(6 + 4·boost) dB (cap −14),
+      // more above 1 kHz (the node's low-pass). Wastegate flow bypasses it; twin-scroll
+      // keeps a little more pulse character.
       const wg = this.ind.wastegate;
-      const ts = p.turbo.twinScroll ? 0.08 : 0;
-      this.net.turbineT = 0.42 + ts + 0.25 * wg;
+      const attDb = Math.min(14, 7 + 4 * Math.max(0, this.ind.boost)) - (p.turbo.twinScroll ? 1.5 : 0);
+      const tTurb = Math.pow(10, -attDb / 20) * 0.62;
+      // A wide-open gate passes ~30 % of the flow, pulses largely intact.
+      const tByp = 0.45;
+      const byp = 0.3 * wg;
+      this.net.turbineT = tTurb * (1 - byp) + tByp * byp;
       this.net.turbineR = 0.4 - 0.15 * wg;
     }
 
@@ -756,8 +763,8 @@ export class EngineSynth {
         const dl = this.outDelay[o];
         dl.write(this.outLp[o].process(rad + jet));
         const y = dl.read(this.outDelayS[o]);
-        L += y * this.panL[o];
-        R += y * this.panR[o];
+        L += y * this.panL[o] * this.mixExhaust;
+        R += y * this.panR[o] * this.mixExhaust;
       }
 
       if (!exOnly) {
@@ -777,8 +784,8 @@ export class EngineSynth {
         const bay = this.bayLp.process(this.ind.outIntake * ig * this.mixIntake + this.mech.step(rpm) * this.mixMech);
         const c = bay + this.ind.outTurbo * this.mixTurbo + this.ind.outSc * this.mixSc;
         const wg = this.ind.outWastegate + this.ind.outBov;
-        L += c * 0.7 + wg * 0.75 + this.ind.outBov * 0.2;
-        R += c * 0.7 + wg * 0.6;
+        L += c * 0.7 + (wg * 0.75 + this.ind.outBov * 0.2) * this.mixWg;
+        R += c * 0.7 + wg * 0.6 * this.mixWg;
       }
 
       L = this.lowShelf[0].process(L);
@@ -816,6 +823,10 @@ export class EngineSynth {
   /** Component mix (exhaust-exit perspective, research §7.1). */
   mixIntake = 1;
   mixTurbo = 0.35;
+  /** Exhaust outlets (analysis solo control). */
+  mixExhaust = 1;
+  /** Wastegate + blow-off valve (analysis solo control). */
+  mixWg = 1;
   mixSc = 1;
   mixMech = 0.1;
 

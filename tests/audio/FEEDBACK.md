@@ -45,3 +45,50 @@ A/B clips: `tests/audio/ab/{before,after}/` (inline ladder 3000→7500 rpm, K20A
 
 Note: the app supports inline 1–6 and 8 (no inline 10). The user's "10" was probably a V10, or
 the top of the slider.
+
+## Round 2 — "turbo doesn't smother the engine; turbo and supercharger sound alike"
+
+> When you attach a turbo the turbo noise doesn't "smother" the engine noise behind it the way
+> an actual turbo works; its volume is disproportionately high compared to the engine. The
+> "spool up" and "wind up" noises from the turbo and supercharger are very similar: a
+> supercharger should whine, while a turbo spools up and then releases pressure.
+
+**Measured** (new `tipin` scenario: cruise 2500 rpm → WOT → lift → re-tip; per-layer solo
+controls `mixExhaust` / `mixWg`; A-weighted, relative to exhaust):
+
+- Turbine damping of the exhaust was ≈3 dB. The research target is 6–12 dB (§5.6).
+- Spool had no rpm dependence. Exhaust energy was airflow ÷ WOT airflow *at the same rpm* (≈1 at
+  any WOT), so turbos spooled in ≈0.5 s even from idle. τ was 0.2 s; the target is 0.3–0.6 s
+  small and 0.8–2 s large.
+- The whistle term scaled with the *gap to target shaft speed*. It was loudest the instant the
+  throttle opened, a step like a supercharger's, not a sweep.
+- The wastegate never opened under WOT, so the hiss and bypass logic were dead.
+- Levels: the turbo whistle was a pure ~11 kHz tone. Supercharger whines were −2…−7 dBA
+  (twin-screw) and −10 dBA (Roots) re exhaust; the target is −15…−25. The 4-cylinder default
+  supercharger is centrifugal, the type closest to a turbo.
+
+**Changed:**
+
+- Spool: absolute exhaust energy (airflow ÷ peak airflow over the curve). τ stretches below
+  the energy at which the curve first reaches boost. Base τ 0.25–2.5 s from inducer size, A/R,
+  twin-scroll and twin turbos.
+- Wastegate: opens with surplus energy once boost is at target.
+- Turbine damping: −(7 + 4·boost) dB, capped at 14 (−1.5 dB for twin-scroll), plus the
+  existing >1.8 kHz low-pass. Wastegate bypass passes ≤30 % of the flow.
+- Whistle: driven by actual shaft *acceleration* (swells while spooling) plus a faint
+  U²-scaled steady tone. Whoosh tied to pressure ratio and spooling. Wastegate hiss lowered
+  ≈12 dB. Atmospheric BOV −4.4 dB.
+- Supercharger whine levels: twin-screw −9.4 dB, Roots −2.8 dB, centrifugal −1.9 dB. The pitch
+  stays locked to crank rpm, with no lag and no blow-off.
+
+**Result** (dBA re exhaust):
+
+| | Spooling | Steady boost | Lift-off |
+|---|---|---|---|
+| Turbo whistle | −14…−21 | −22…−33 | BOV "pssh", then the whistle spins down over ≈1–2 s |
+| Supercharger whine | — | Roots / twin-screw −12…−17; centrifugal −21…−25 (rises toward redline) | — |
+
+The turbo exhaust is 5–12 dB quieter than the same engine NA. Tests are in
+`src/audio/__tests__/induction.test.ts`.
+
+A/B clips: `tests/audio/ab/round2/{before,after}/`. "before" is main, without round 1.

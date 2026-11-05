@@ -416,7 +416,13 @@ function deriveRaw(cfg: EngineConfig, result: SimResult | null): EngineSoundPara
   // ── forced induction ──
   const inducerM = clamp(cfg.turbo.compressorInducerMm, 25, 110) / 1000;
   const exducerM = inducerM / 0.72;
-  const spoolTauS = clamp(0.35 * Math.pow(inducerM / 0.05, 2.2) * Math.sqrt(cfg.turbo.turbineAR / 0.7) * (cfg.turbo.twinScroll ? 0.8 : 1), 0.12, 2.5);
+  // Research §5.1: τ ≈ 0.3–0.6 s small / twin-scroll, 0.8–2 s large singles (at full exhaust
+  // energy; the synth stretches it at low exhaust flow). Twins are smaller per unit → quicker.
+  const spoolTauS = clamp(
+    0.55 * Math.pow(inducerM / 0.05, 2) * Math.sqrt(cfg.turbo.turbineAR / 0.7) * (cfg.turbo.twinScroll ? 0.8 : 1) * (turboCount === 2 ? 0.8 : 1),
+    0.25,
+    2.5,
+  );
   const scType = cfg.supercharger.type;
   const scBoost = Math.max(0, cfg.supercharger.targetBoostBar);
   // Research §5.4: roots/screw rotor at ~90 % of max speed at redline; centrifugal 8–14× crank.
