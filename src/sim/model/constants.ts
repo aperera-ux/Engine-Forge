@@ -172,14 +172,37 @@ export const CAL = {
   ecuResidualWeight: 2,
   /** ECU torque model for cam selection: indicated MEP per unit of trapped-charge VE, bar (per bar MAP). */
   ecuImepPerVe: 14,
+  /**
+   * Variable-lift stage switch: the two stages are blended (C¹ smoothstep) where their
+   * cam-selection objectives differ by less than this (objective ≈ VE units).
+   */
+  ecuLobeBlend: 0.005,
   /** Knock-aware boost control: max spark retard the ECU accepts before trimming boost, deg. */
   ecuMaxRetardDeg: 10,
   /** Torque management: max boost-loop re-solves per rpm point (bracketed Illinois on the boost target; normally 2–4). */
   ecuTorqueMaxIters: 16,
-  /** Torque management: accepted |brake torque − limit|, N·m. Limited points satisfy torque ≤ limit + this. */
+  /** Torque management guarantee: limited points satisfy torque ≤ limit + this, N·m (tested). */
   ecuTorqueTolNm: 0.05,
-  /** Max Illinois evaluations of the knock-aware boost trim per rpm point (stops at 0.05° from the target). */
-  ecuKnockIters: 4,
+  /**
+   * Torque management solve tolerance: |brake torque − limit| at which the boost-target
+   * solve stops, N·m. Well inside ecuTorqueTolNm, so the limited curve is flat to ~1e-5
+   * relative and does not jump by the tolerance width under small input changes.
+   */
+  ecuTorqueSolveTolNm: 0.002,
+  /** Knock-aware boost trim: stop at |retard − accepted retard| ≤ this, deg (Illinois on the boost scale). */
+  ecuKnockTolDeg: 0.001,
+  /** Knock-aware boost trim: max operating-point solves per rpm (normally 2–5). */
+  ecuKnockMaxIters: 20,
+  /** Component protection: stop at |excess| ≤ this (excess = (EGT − max)/100 K or (pMax − cap)/100 bar). */
+  ecuProtectTol: 1e-4,
+  /** Component protection: max operating-point solves per rpm. */
+  ecuProtectMaxIters: 20,
+  /** Operating-point fixed point in exhaust state: accepted |EGT out − EGT in|, K. */
+  pointEgtTolK: 0.01,
+  /** …and accepted |pExh out − pExh in| / pExh. */
+  pointPExhTolRel: 2e-5,
+  /** Max evaluations per operating-point fixed point (normally 1–3 from a warm start). */
+  pointMaxIters: 12,
   /** Max extra retard (deg) the ECU accepts above ecuMaxRetardDeg for severe knock before trimming boost further. */
   ecuRetardSoftCapDeg: 5,
   /** Fraction of the excess retard (beyond ecuMaxRetardDeg) the ECU still accepts. */
@@ -224,8 +247,19 @@ export const CAL = {
   twinScrollPulse: 0.5,
   /** Supercharger pulley sizing: crank rpm where targetBoostBar is reached (default). */
   scReferenceRpm: 6000,
-  /** Engine-flow passes per compressor-PR evaluation (flow fraction warm-started). */
-  turboFlowPasses: 1,
+  /** Compressor flow-fraction fixed point per PR evaluation: tolerance on φ and pass cap (normally 2–4 passes). */
+  turboPhiTol: 1e-5,
+  turboPhiMaxPasses: 30,
+  /**
+   * Compressor-PR solve (highest feasible PR, Illinois on the feasibility margin):
+   * iteration cap and bracket tolerance (relative). The margin is a min() of four
+   * terms, so the bracket ends often sit on different terms and Illinois needs
+   * 10–25 steps; the former cap of 10 at 2e-5 stopped unconverged at some
+   * high-rpm points (B58 6800 rpm: PR 1.609 vs root 1.644), which made the
+   * boost a discontinuous function of the exhaust-pressure guess.
+   */
+  turboPrMaxIters: 60,
+  turboPrRelTol: 1e-7,
   /** ECU exhaust-temperature protection: enrich above this EGT, °C (0 = off), down to this lambda. */
   ecuEgtLimitC: 980,
   ecuLambdaMin: 0.72,

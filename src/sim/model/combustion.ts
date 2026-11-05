@@ -13,6 +13,8 @@ const WIEBE_A = 5;
 const WIEBE_M1 = 3; // m + 1, m = 2
 /** Fraction of burn duration at which 50 % mass is burned (Wiebe a=5, m=2). */
 const X50 = Math.pow(Math.LN2 / WIEBE_A, 1 / WIEBE_M1);
+/** Fraction of burn duration at which 95 % mass is burned: the end of the knock integral. */
+const X95 = Math.pow(Math.log(20) / WIEBE_A, 1 / WIEBE_M1);
 /** CA50 for MBT, deg ATDC. */
 const CA50_MBT = 8;
 
@@ -85,6 +87,7 @@ export function newCyclePrefix(): CyclePrefix {
 const SPARK_PREFIX = newCyclePrefix();
 
 export function runCycle(inp: CycleInputs, pre?: CyclePrefix): CycleOut {
+  (globalThis as any).__cnt && (globalThis as any).__cnt.cyc++;
   const { vol, polyStep } = inp.g;
   const needWork = inp.needWork !== false;
   const wantKnock = inp.wantKnock;
@@ -113,6 +116,14 @@ export function runCycle(inp: CycleInputs, pre?: CyclePrefix): CycleOut {
   const lnP0 = Math.log(p0);
   const lnAtm = Math.log(101325);
   const invBurn = 1 / inp.burnDeg;
+  // The knock integral runs until 95 % of the charge is burned (crank angle th95).
+  // On the 1° grid a step is weighted by w = clamp(th95 + ½ − θ, 0, 1): the hard
+  // cut "include the step if xb(θ) < 0.95" made KI a saw-tooth in the spark timing
+  // (it drops the largest, hottest step whenever th95 crosses a grid node), so the
+  // knock-limited retard jumped by up to ~0.5° under tiny input changes. The ramp
+  // is that cut averaged over the sub-grid position of th95: the same KI on
+  // average, but continuous.
+  const th95h = thetaStart + X95 * inp.burnDeg + 0.5;
   // Compression before combustion is pure polytropic: skip straight to it.
   const iStart = Math.max(0, Math.min(359, Math.floor(thetaStart + 180) - 1));
   const kStart = wantKnock ? Math.min(iStart, KNOCK_FROM) : iStart; // knock integral from 60° BTDC
@@ -181,11 +192,12 @@ export function runCycle(inp: CycleInputs, pre?: CyclePrefix): CycleOut {
     work += 0.5 * (p + pNew) * (v1 - vol[i]);
     p = pNew;
     if (p > pMax) pMax = p;
-    if (wantKnock && xb < 0.95) {
+    if (wantKnock && th1 < th95h) {
       // Douaud–Eyzat: τ = 17.68 (ON/100)^3.402 p^-1.7 exp(3800/T), end gas compressed isentropically.
       const lnP = Math.log(p);
       const tU = tIvc * Math.exp(kU * (lnP - lnP0));
-      ki += msPerDeg * Math.exp(-(lnOnFac - knockPressureExp * (lnP - lnAtm) + 3800 / tU));
+      const w = th95h - th1;
+      ki += (w < 1 ? w : 1) * msPerDeg * Math.exp(-(lnOnFac - knockPressureExp * (lnP - lnAtm) + 3800 / tU));
     } else if (!needWork && i + 1 >= iExp && (p + ((GAMMA_CYL - 1) * (1 - xb) * q) / v1) * (1 + 1e-12) <= pMax) {
       // Knock integral complete (xb ≥ 0.95) and only expansion left: every later
       // step has polyStep ≤ 1 and a volume ≥ v1, so the pressure can never exceed
@@ -281,55 +293,138 @@ export interface SparkResult {
   retard: number;
   workRatio: number;
   pMaxBar: number;
+  /** Knock integral at MBT (NaN when the search started from a hint and did not need it). */
   knockIntegralMbt: number;
 }
 
-/** Knock-limited spark search: stop at |ln KI| below this (≈ 1e-4° of retard). */
+/** Knock-limited spark search: stop at |ln KI| below this (≈ 1e-4° of retard)… */
 const KNOCK_LNKI_TOL = 2e-5;
-/** …or when the bracket on retard is narrower than this, deg. */
-const KNOCK_BRACKET_DEG = 2e-3;
+/** …or when the bracket on retard is narrower than this, deg. The retard is then interpolated linearly in ln KI across the bracket; ln KI is nearly linear in retard, so the interpolation error is ~1e-5° at this width. */
+const KNOCK_BRACKET_DEG = 0.05;
+/** First step from a retard hint when bracketing the root, deg. */
+const KNOCK_HINT_STEP_DEG = 0.03;
+/** A Newton step from the hint is accepted without bracketing when shorter than this, deg. */
+const KNOCK_NEWTON_DEG = 0.01;
 
 /**
  * Knock-limited spark: start at MBT, retard until the end-gas auto-ignition
  * integral stays below 1. Returns the work ratio vs MBT.
+ *
+ * `hint` (deg, optional): a nearby retard (the previous solve of the same
+ * operating point). The root is then bracketed from there in 1–2 extra cycles
+ * instead of from [0, max]; the cycle at MBT is skipped when the bracket's
+ * low end still knocks (knockIntegralMbt is then NaN). The result does not
+ * depend on the hint beyond the stop tolerances below.
  */
 export function knockLimitedSpark(
   base: Omit<CycleInputs, 'thetaStart' | 'wantKnock'>,
   burnDeg: number,
+  hint?: SparkHint,
 ): SparkResult {
+  const res = knockLimitedSparkImpl(base, burnDeg, hint);
+  if (hint) hint.retard = res.retard;
+  return res;
+}
+
+/** Warm start for knockLimitedSpark (updated in place): last retard and d ln KI / d retard there. */
+export interface SparkHint {
+  retard: number;
+  slope: number;
+  /** d pMax / d retard, Pa/deg. */
+  pSlope: number;
+}
+
+function knockLimitedSparkImpl(base: Omit<CycleInputs, 'thetaStart' | 'wantKnock'>, burnDeg: number, hint?: SparkHint): SparkResult {
   const mbt = mbtSpark(burnDeg);
   const start = (adv: number) => -adv + CAL.delayDeg;
   // All cycles of the retard search share one compression prefix (same charge state).
   const pre = SPARK_PREFIX;
   pre.n = -1;
-  const atMbt = runCycle({ ...base, thetaStart: start(mbt), wantKnock: true, needWork: false }, pre);
-  if (atMbt.knockIntegral <= 1) {
-    return { sparkBtdc: mbt, retard: 0, workRatio: 1, pMaxBar: atMbt.pMaxPa / 1e5, knockIntegralMbt: atMbt.knockIntegral };
-  }
   const maxRetard = Math.min(40, mbt + 15);
   const ki = (r: number) => runCycle({ ...base, thetaStart: start(mbt - r), wantKnock: true, needWork: false }, pre);
-  let retard = maxRetard;
-  const atMax = ki(maxRetard);
-  let pMaxPa = atMax.pMaxPa;
-  if (atMax.knockIntegral <= 1) {
-    // Illinois (modified regula falsi) on ln(KI) — ln KI is nearly linear in
-    // retard. Stops when |ln KI| < KNOCK_LNKI_TOL or the bracket is narrower
-    // than KNOCK_BRACKET_DEG; the returned retard (and pMax) is then the
-    // linear interpolation between the final bracket ends, using their true
-    // ln KI (not the Illinois-halved weights). Returning an evaluated end
-    // instead made the retard a staircase in the inputs (steps up to the old
-    // 0.05° stop width); the interpolated root is continuous, and the residual
-    // jump where the iteration path changes is O(1e-4°).
-    const lnKi = (k: number) => Math.max(-3, Math.log(Math.max(1e-12, k)));
-    let a = 0;
-    let fa = Math.log(atMbt.knockIntegral);
-    let faT = fa;
-    let pA = atMbt.pMaxPa;
-    let b = maxRetard;
-    let fb = lnKi(atMax.knockIntegral);
-    let fbT = fb;
-    let pB = atMax.pMaxPa;
-    let side = 0;
+  const lnKi = (k: number) => Math.max(-3, Math.log(Math.max(1e-12, k)));
+  if (process.env.SIM_KISCAN && base.rpm === Number(process.env.SIM_KISCAN) && !(globalThis as any).__kis) {
+    (globalThis as any).__kis = 1;
+    for (let r = 1.5; r <= 3.5; r += 0.02) { const o = ki(r); console.log(`kis r ${r.toFixed(3)} lnKI ${Math.log(o.knockIntegral).toFixed(6)} th0 ${start(mbt - r).toFixed(3)} th95 ${(start(mbt - r) + X95 * base.burnDeg).toFixed(3)}`); }
+  }
+  let kiMbt = NaN;
+  // Bracket [a, b] on retard with ln KI(a) > 0 ≥ ln KI(b) (a = 0 is MBT).
+  let a = -1;
+  let fa = 0;
+  let pA = 0;
+  let b = -1;
+  let fb = 0;
+  let pB = 0;
+  if (hint && hint.retard > 0 && hint.retard < maxRetard) {
+    // Walk from the hint towards the root until the sign changes: first a
+    // Newton step with the last slope (aimed 20 % past the root), then ×4 steps.
+    let r = hint.retard;
+    let out = ki(r);
+    let f = lnKi(out.knockIntegral);
+    let step = KNOCK_HINT_STEP_DEG;
+    if (hint.slope < 0) {
+      const d = -f / hint.slope;
+      if (Math.abs(d) <= KNOCK_NEWTON_DEG && f > -3 && r + d > 0 && r + d < maxRetard) {
+        // The root is within KNOCK_NEWTON_DEG of the hint: one Newton step with the
+        // last bracket's slopes. Error ≈ (slope error) × d + O(d²) ≲ 1e-4°.
+        const rr = r + d;
+        const pm = out.pMaxPa + hint.pSlope * d;
+        return { sparkBtdc: mbt - rr, retard: rr, workRatio: sparkWorkRatio(rr), pMaxBar: pm / 1e5, knockIntegralMbt: kiMbt };
+      }
+      step = Math.min(2, Math.max(1e-3, 1.2 * Math.abs(d)));
+    }
+    for (let i = 0; i < 8; i++) {
+      if (f > 0) {
+        a = r;
+        fa = f;
+        pA = out.pMaxPa;
+      } else {
+        b = r;
+        fb = f;
+        pB = out.pMaxPa;
+      }
+      if (a >= 0 && b >= 0) break;
+      r = f > 0 ? Math.min(maxRetard, r + step) : Math.max(0, r - step);
+      if ((f > 0 && r >= maxRetard) || (f <= 0 && r <= 0)) break; // reached an end: full search below
+      out = ki(r);
+      f = lnKi(out.knockIntegral);
+      step *= 4;
+    }
+  }
+  if (b < 0 || a < 0) {
+    // No (complete) hint bracket: MBT and maximum retard.
+    if (a < 0) {
+      const atMbt = ki(0);
+      kiMbt = atMbt.knockIntegral;
+      if (atMbt.knockIntegral <= 1) {
+        return { sparkBtdc: mbt, retard: 0, workRatio: 1, pMaxBar: atMbt.pMaxPa / 1e5, knockIntegralMbt: atMbt.knockIntegral };
+      }
+      a = 0;
+      fa = Math.log(atMbt.knockIntegral);
+      pA = atMbt.pMaxPa;
+    }
+    if (b < 0) {
+      const atMax = ki(maxRetard);
+      if (atMax.knockIntegral > 1) {
+        return { sparkBtdc: mbt - maxRetard, retard: maxRetard, workRatio: sparkWorkRatio(maxRetard), pMaxBar: atMax.pMaxPa / 1e5, knockIntegralMbt: kiMbt };
+      }
+      b = maxRetard;
+      fb = lnKi(atMax.knockIntegral);
+      pB = atMax.pMaxPa;
+    }
+  }
+  // Illinois (modified regula falsi) on ln(KI) — ln KI is nearly linear in
+  // retard. Stops when |ln KI| < KNOCK_LNKI_TOL or the bracket is narrower
+  // than KNOCK_BRACKET_DEG; the returned retard (and pMax) is then the
+  // linear interpolation between the final bracket ends, using their true
+  // ln KI (not the Illinois-halved weights). Returning an evaluated end
+  // instead made the retard a staircase in the inputs (steps up to the old
+  // 0.05° stop width); the interpolated root is continuous, and the residual
+  // jump where the iteration path changes is O(1e-4°).
+  let faT = fa;
+  let fbT = fb;
+  let side = 0;
+  if (Math.abs(fa) >= KNOCK_LNKI_TOL && Math.abs(fb) >= KNOCK_LNKI_TOL)
     for (let i = 0; i < 24 && b - a > KNOCK_BRACKET_DEG; i++) {
       let r = (a * fb - b * fa) / (fb - fa);
       // Guard: fall back to bisection if the secant step stalls near a bracket end.
@@ -351,16 +446,19 @@ export function knockLimitedSpark(
       }
       if (Math.abs(fr) < KNOCK_LNKI_TOL) break;
     }
-    const w = faT - fbT > 0 ? faT / (faT - fbT) : 1;
-    retard = a + w * (b - a);
-    pMaxPa = pA + w * (pB - pA);
+  const w = faT - fbT > 0 ? faT / (faT - fbT) : 1;
+  const retard = a + w * (b - a);
+  if (hint && b > a && faT > fbT) {
+    hint.slope = (fbT - faT) / (b - a);
+    hint.pSlope = (pB - pA) / (b - a);
   }
+  const pMaxPa = pA + w * (pB - pA);
   return {
     sparkBtdc: mbt - retard,
     retard,
     workRatio: sparkWorkRatio(retard),
     pMaxBar: pMaxPa / 1e5,
-    knockIntegralMbt: atMbt.knockIntegral,
+    knockIntegralMbt: kiMbt,
   };
 }
 
