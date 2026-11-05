@@ -145,6 +145,18 @@ export const SCENARIOS: Scenario[] = [
       return { rpm: lerp(hi, c.idleRpm * 1.1, ease((t - 1.5) / 5.5)), load: 0 };
     },
   },
+  {
+    id: 'tipin',
+    durationS: 10,
+    description: 'Cruise at 2500 rpm 25 % → WOT tip-in, rpm climbs to 4500 over 3 s (turbo spool vs instant supercharger whine) → lift (BOV) → re-tip at 3500.',
+    at: (t, c) => {
+      void c;
+      if (t < 1.5) return { rpm: 2500, load: 0.25 };
+      if (t < 4.5) return { rpm: lerp(2500, 4500, (t - 1.5) / 3), load: 1 };
+      if (t < 6.5) return { rpm: lerp(4500, 3500, ease((t - 4.5) / 2)), load: 0.05 };
+      return { rpm: lerp(3500, 4800, Math.min(1, (t - 6.5) / 3.5)), load: 1 };
+    },
+  },
 ];
 
 export function scenario(id: string): Scenario {

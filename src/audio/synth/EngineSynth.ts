@@ -59,6 +59,8 @@ export interface SynthStats {
   peak: number;
   /** Max acoustic pressure seen at a port, bar (diagnostic). */
   maxPortBar: number;
+  /** Peak level before the limiter (diagnostic). */
+  preLimPeak: number;
   bov: number;
 }
 
@@ -191,6 +193,7 @@ export class EngineSynth {
   private radPrev = new Float64Array(8);
   private radY = new Float64Array(8);
   private jetEnv = new Float64Array(8);
+  private jetSlow = new Float64Array(8);
   private jetHp: Biquad[] = [];
   private jetLp: Biquad[] = [];
   private outLp: Biquad[] = [];
@@ -203,6 +206,7 @@ export class EngineSynth {
   private dcR = new DcBlock();
   private limEnv = 0;
   private lowShelf = [new Biquad(), new Biquad()];
+  private bayLp = new Biquad();
 
   stats: SynthStats = {
     rpm: 0,
@@ -218,6 +222,7 @@ export class EngineSynth {
     egtC: 0,
     peak: 0,
     maxPortBar: 0,
+    preLimPeak: 0,
     bov: 0,
   };
 
@@ -231,6 +236,7 @@ export class EngineSynth {
     this.dcR.setCutoff(18, sampleRate);
     this.lopeNoise.setCutoff(0.8, sampleRate / BLOCK);
     for (const b of this.lowShelf) b.peak(90, 0.7, 2.5, sampleRate);
+    this.bayLp.lowpass(2200, 0.6, sampleRate);
     for (let i = 0; i < 6; i++) this.pops.push({ t: 0, att: 0, dec: 0, amp: 0, pipe: 0, delay: 0, active: false });
   }
 
@@ -338,8 +344,10 @@ export class EngineSynth {
     this.outLp = [];
     this.outDelay = [];
     for (let o = 0; o < p.outlets.length; o++) {
-      this.jetHp.push(new Biquad().highpass(650, 0.7, fs));
-      this.jetLp.push(new Biquad().lowpass(5200, 0.6, fs));
+      // Turbulent jet noise is broadband, peaking near St ≈ 0.2 (a few hundred Hz for
+      // a 60–100 m/s tailpipe jet) and falling ~−12 dB/oct above ~1.5 kHz (Lighthill).
+      this.jetHp.push(new Biquad().highpass(180, 0.6, fs));
+      this.jetLp.push(new Biquad().lowpass(1500, 0.5, fs));
       this.outLp.push(new Biquad().lowpass(11000, 0.7, fs));
       const pan = this.opts.exhaustOnly ? Math.sign(p.outlets[o].pan) : p.outlets[o].pan;
       this.outDelay[o] = new Delay(64);
@@ -351,6 +359,7 @@ export class EngineSynth {
     this.radPrev.fill(0);
     this.radY.fill(0);
     this.jetEnv.fill(0);
+    this.jetSlow.fill(0);
     this.control(true);
   }
 
@@ -468,9 +477,16 @@ export class EngineSynth {
 
     // Turbine: wastegate opens transmission, twin-scroll preserves pulses.
     if (p.induction === 'turbo') {
+      // Research §5.6: the turbine damps exhaust pulses by −(6 + 4·boost) dB (cap −14),
+      // more above 1 kHz (the node's low-pass). Wastegate flow bypasses it; twin-scroll
+      // keeps a little more pulse character.
       const wg = this.ind.wastegate;
-      const ts = p.turbo.twinScroll ? 0.08 : 0;
-      this.net.turbineT = 0.42 + ts + 0.25 * wg;
+      const attDb = Math.min(14, 7 + 4 * Math.max(0, this.ind.boost)) - (p.turbo.twinScroll ? 1.5 : 0);
+      const tTurb = Math.pow(10, -attDb / 20) * 0.62;
+      // A wide-open gate passes ~30 % of the flow, pulses largely intact.
+      const tByp = 0.45;
+      const byp = 0.3 * wg;
+      this.net.turbineT = tTurb * (1 - byp) + tByp * byp;
       this.net.turbineR = 0.4 - 0.15 * wg;
     }
 
@@ -589,8 +605,9 @@ export class EngineSynth {
     const lopeRpm = p.lope * 35 * idleness * Math.sin(2 * Math.PI * this.lopePh) + idleness * 12 * this.lopeNoise.process(this.rng.bi() * 3);
     const limBounce = this.limiter ? -90 * (this.limCut ? this.limPh / 0.42 : 1 - (this.limPh - 0.42) / 0.58) : 0;
     const nOut = p.outlets.length;
-    const jetK = 2.2;
+    const jetK = 2.0;
     const radA = Math.exp((-2 * Math.PI * 350) / fs);
+    const jetSlowK = 1 - Math.exp(-1 / (0.008 * fs));
     // Level calibration (research §3.2 / §8 #9): the d/dt radiation makes level grow
     // ~+30 dB/decade of rpm; real WOT data is ~+17 dB/decade, so compensate partially.
     const rpmComp = Math.pow(clamp(this.rpm / 3000, 0.15, 4), -0.65);
@@ -734,14 +751,20 @@ export class EngineSynth {
         const rad = radA * (this.radY[o] + u - this.radPrev[o]);
         this.radY[o] = rad;
         this.radPrev[o] = u;
-        const e = this.jetEnv[o] + 0.08 * (Math.abs(u) - this.jetEnv[o]);
-        this.jetEnv[o] = e;
+        // Jet strength follows the mean exit flow (≈8 ms) with only partial
+        // pulse-synchronous modulation; a fully pulse-gated noise reads as buzz.
+        const au = Math.abs(u);
+        const ef = this.jetEnv[o] + 0.08 * (au - this.jetEnv[o]);
+        this.jetEnv[o] = ef;
+        const es = this.jetSlow[o] + jetSlowK * (au - this.jetSlow[o]);
+        this.jetSlow[o] = es;
+        const e = 0.3 * ef + 0.7 * es;
         const jet = this.jetLp[o].process(this.jetHp[o].process(this.rng.bi() * e * e * jetK));
         const dl = this.outDelay[o];
         dl.write(this.outLp[o].process(rad + jet));
         const y = dl.read(this.outDelayS[o]);
-        L += y * this.panL[o];
-        R += y * this.panR[o];
+        L += y * this.panL[o] * this.mixExhaust;
+        R += y * this.panR[o] * this.mixExhaust;
       }
 
       if (!exOnly) {
@@ -756,10 +779,13 @@ export class EngineSynth {
         inp.dt = dt;
         this.ind.step(inp, this.suction);
         const ig = p.itb ? 0.55 : 0.22;
-        const c = this.ind.outIntake * ig * this.mixIntake + this.ind.outTurbo * this.mixTurbo + this.ind.outSc * this.mixSc + this.mech.step(rpm) * this.mixMech;
+        // Engine-bay sources reach an exhaust-side listener around/through the body:
+        // mechanical ticks and intake hiss arrive low-passed (~2.2 kHz, 2nd order).
+        const bay = this.bayLp.process(this.ind.outIntake * ig * this.mixIntake + this.mech.step(rpm) * this.mixMech);
+        const c = bay + this.ind.outTurbo * this.mixTurbo + this.ind.outSc * this.mixSc;
         const wg = this.ind.outWastegate + this.ind.outBov;
-        L += c * 0.7 + wg * 0.75 + this.ind.outBov * 0.2;
-        R += c * 0.7 + wg * 0.6;
+        L += c * 0.7 + (wg * 0.75 + this.ind.outBov * 0.2) * this.mixWg;
+        R += c * 0.7 + wg * 0.6 * this.mixWg;
       }
 
       L = this.lowShelf[0].process(L);
@@ -769,15 +795,19 @@ export class EngineSynth {
         L = this.room.outL;
         R = this.room.outR;
       }
-      L = this.dcL.process(L * master);
-      R = this.dcR.process(R * master);
+      L *= master;
+      R *= master;
       // Gentle peak limiter (fast attack, 150 ms release) then soft clip.
       const pk = Math.max(Math.abs(L), Math.abs(R));
       this.limEnv = pk > this.limEnv ? this.limEnv + 0.5 * (pk - this.limEnv) : this.limEnv * 0.99986;
       const thr = 0.7;
       const g = this.limEnv > thr ? thr / this.limEnv : 1;
+      if (pk > this.stats.preLimPeak) this.stats.preLimPeak = pk;
       L = softClip(L * g * 1.05) * 0.95;
       R = softClip(R * g * 1.05) * 0.95;
+      // DC block last: soft-clipping asymmetric (positive-peaked) pulses creates DC.
+      L = this.dcL.process(L);
+      R = this.dcR.process(R);
       if (!(L === L)) L = 0; // NaN guard
       if (!(R === R)) R = 0;
       outL[s0 + s] = L;
@@ -793,6 +823,10 @@ export class EngineSynth {
   /** Component mix (exhaust-exit perspective, research §7.1). */
   mixIntake = 1;
   mixTurbo = 0.35;
+  /** Exhaust outlets (analysis solo control). */
+  mixExhaust = 1;
+  /** Wastegate + blow-off valve (analysis solo control). */
+  mixWg = 1;
   mixSc = 1;
   mixMech = 0.1;
 

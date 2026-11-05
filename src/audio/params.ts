@@ -17,6 +17,7 @@
  */
 import type { EngineConfig, SimResult } from '../sim/types';
 import { computeLayout } from '../sim/layout';
+import { ExhaustNetwork } from './synth/exhaust';
 
 export interface CylinderSound {
   number: number;
@@ -242,7 +243,7 @@ function splitEven(cyls: CylinderSound[]): [CylinderSound[], CylinderSound[]] {
   return [a, b];
 }
 
-export function deriveSoundParams(cfg: EngineConfig, result: SimResult | null): EngineSoundParams {
+function deriveRaw(cfg: EngineConfig, result: SimResult | null): EngineSoundParams {
   const lay = computeLayout(cfg);
   const n = cfg.cylinders;
   const boreM = cfg.boreMm / 1000;
@@ -343,7 +344,10 @@ export function deriveSoundParams(cfg: EngineConfig, result: SimResult | null): 
     const jMuf = addNode('junction');
     addPipe({ lenM: collectorLen, diamM: dColl, up: jColl, down: jCollOut, distM: 0.6, kind: 'collector' });
     addPipe({ lenM: 1.1 * (1 + 0.08 * si), diamM: dTail, up: jCollOut, down: jMid, distM: 1.4, kind: 'mid' });
-    addPipe({ lenM: 0.42, diamM: dTail * (1.4 - 0.15 * sporty), up: jMid, down: jMuf, distM: 2.2, kind: 'muffler', absorb: 0.55 - 0.35 * sporty });
+    // Muffler shell: expansion chamber, area ratio ≈4 stock / ≈2 straight-through.
+    // A single larger chamber gives deep TL notches (level swings with rpm); real
+    // perforated multi-chamber cans are smoother, so the packing does the HF work.
+    addPipe({ lenM: 0.38, diamM: dTail * (2.0 - 0.6 * sporty), up: jMid, down: jMuf, distM: 2.2, kind: 'muffler', absorb: 0.55 - 0.35 * sporty });
     const nTails = dualExit ? 2 : 1;
     for (let t = 0; t < nTails; t++) {
       const o = outlets.length;
@@ -383,8 +387,10 @@ export function deriveSoundParams(cfg: EngineConfig, result: SimResult | null): 
         }
         if (grp.length === 1) addPipe({ lenM: 0.05, diamM: dColl, up: node, down: jColl, distM: 0.25, kind: 'log' });
       }
-    } else if (exType === 'tuned-equal' && k >= 4 && k % 2 === 0) {
+    } else if ((exType === 'tuned-equal' || ((exType === 'long-tube' || exType === 'shorty') && !isV && k >= 6)) && k >= 4 && k % 2 === 0) {
       // 4-2-1 / tri-Y: two evenly-firing secondaries, then the collector.
+      // Inline 6/8 headers are split this way too (front/rear 3-into-1 → 2-into-1,
+      // research §3 "I6 silk"): each branch carries a 240° (I6) / 180° (I8) train.
       for (const g of splitEven(sys.cyls)) {
         const jSec = addNode('junction');
         addPipe({
@@ -410,7 +416,13 @@ export function deriveSoundParams(cfg: EngineConfig, result: SimResult | null): 
   // ── forced induction ──
   const inducerM = clamp(cfg.turbo.compressorInducerMm, 25, 110) / 1000;
   const exducerM = inducerM / 0.72;
-  const spoolTauS = clamp(0.35 * Math.pow(inducerM / 0.05, 2.2) * Math.sqrt(cfg.turbo.turbineAR / 0.7) * (cfg.turbo.twinScroll ? 0.8 : 1), 0.12, 2.5);
+  // Research §5.1: τ ≈ 0.3–0.6 s small / twin-scroll, 0.8–2 s large singles (at full exhaust
+  // energy; the synth stretches it at low exhaust flow). Twins are smaller per unit → quicker.
+  const spoolTauS = clamp(
+    0.55 * Math.pow(inducerM / 0.05, 2) * Math.sqrt(cfg.turbo.turbineAR / 0.7) * (cfg.turbo.twinScroll ? 0.8 : 1) * (turboCount === 2 ? 0.8 : 1),
+    0.25,
+    2.5,
+  );
   const scType = cfg.supercharger.type;
   const scBoost = Math.max(0, cfg.supercharger.targetBoostBar);
   // Research §5.4: roots/screw rotor at ~90 % of max speed at redline; centrifugal 8–14× crank.
@@ -429,7 +441,9 @@ export function deriveSoundParams(cfg: EngineConfig, result: SimResult | null): 
   // Output gain: total radiated source strength scales roughly with the
   // per-cylinder swept volume × firing rate; normalise towards a common level
   // but keep some size dependence (bigger engines are louder).
-  const gain = 5.5 / Math.pow(displacementL, 0.3) / Math.pow(n / 4, 0.1);
+  // (Network transmission is normalised separately in deriveSoundParams.)
+  // Bigger engines move more gas per second → mildly louder (+0.6 dB per doubling).
+  const gain = 4.95 * Math.pow(displacementL / 2, 0.1);
 
   return {
     name: cfg.name,
@@ -487,4 +501,58 @@ export function deriveSoundParams(cfg: EngineConfig, result: SimResult | null): 
     gain,
     curve: resampleCurve(result, cfg),
   };
+}
+
+/**
+ * Pulse energy the exhaust network passes to the outlets (d/dt radiation proxy),
+ * per cylinder, dB. Probed with a 0.5 ms Hann pulse at the first cylinder of each
+ * exhaust system (≈1–3 ms of CPU even for a V12), turbine treated as open.
+ */
+export function networkTransmissionDb(p: EngineSoundParams, fs = 48000): number {
+  const probes = new Set<number>();
+  const seen = new Set<number>();
+  for (let c = 0; c < p.nCyl; c++) {
+    // first cylinder per distinct pipe-tree root (bank / system)
+    const key = p.cylinders[c].bank;
+    if (!seen.has(key)) {
+      seen.add(key);
+      probes.add(c);
+    }
+  }
+  let E = 0;
+  for (const c of probes) {
+    const net = new ExhaustNetwork(p, fs);
+    // Turbine transparent: its pulse absorption is real muffling and must stay.
+    net.turbineT = 1;
+    net.turbineR = 0;
+    const prev = new Float64Array(p.outlets.length);
+    const N = Math.round(0.06 * fs);
+    const w = Math.round(0.0005 * fs);
+    for (let t = 0; t < N; t++) {
+      net.portSrc[c] = t < w ? Math.sin((Math.PI * t) / w) ** 2 : 0;
+      net.step();
+      for (let o = 0; o < p.outlets.length; o++) {
+        const d = net.out[o] - prev[o];
+        prev[o] = net.out[o];
+        E += d * d;
+      }
+    }
+  }
+  return 10 * Math.log10(E / Math.max(1, probes.size) + 1e-30);
+}
+
+/** Reference transmission (a 2.0 L I4 with long-tube headers) and the share of the difference normalised away. */
+const NET_REF_DB = -14;
+const NET_NORM = 0.6;
+
+export function deriveSoundParams(cfg: EngineConfig, result: SimResult | null): EngineSoundParams {
+  const p = deriveRaw(cfg, result);
+  // Many-primary junctions, twin systems and turbines scatter more of each pulse
+  // back up the primaries, where port/wall losses eat it. Without compensation
+  // adding cylinders made the engine quieter per pulse. Keep 40 % of the
+  // difference so restrictive (log) systems still sound muffled; turbines are
+  // excluded from the probe entirely.
+  const t = networkTransmissionDb(p);
+  p.gain *= Math.pow(10, (NET_NORM * (NET_REF_DB - t)) / 20);
+  return p;
 }

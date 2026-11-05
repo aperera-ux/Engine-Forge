@@ -98,7 +98,12 @@ export class ExhaustNetwork {
     for (let i = 0; i < n; i++) {
       const pp = p.pipes[i];
       // Viscothermal + wall loss: corner falls with length, absorptive packing darkens further.
-      const fc = Math.min(fs * 0.45, (6500 / Math.sqrt(Math.max(0.05, pp.lenM))) * (1 - 0.75 * pp.absorb));
+      // Packed muffler: fibre absorption grows with frequency, so the chamber is a
+      // strong low-pass per pass (stock ≈1.1 kHz, straight-through sport ≈2.3 kHz).
+      const fc =
+        pp.kind === 'muffler'
+          ? 600 + 2600 * (1 - pp.absorb) * (1 - pp.absorb)
+          : Math.min(fs * 0.45, (6500 / Math.sqrt(Math.max(0.05, pp.lenM))) * (1 - 0.75 * pp.absorb));
       this.lossA[i] = 1 - Math.exp((-2 * Math.PI * fc) / fs);
       this.lossG[i] = 0.985 * Math.pow(0.97, pp.lenM) * (1 - 0.3 * pp.absorb) * (pp.kind === "muffler" ? 0.85 : 1);
     }
