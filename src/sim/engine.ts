@@ -226,7 +226,7 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
 }
 
 /** Fixed-point iteration counts of the last simulate() call (diagnostics / tests). */
-export const pointSolveStats = { solves: 0, evals: 0, maxIters: 0, unconverged: 0, maxEgtResK: 0, maxPExhResRel: 0 };
+export const pointSolveStats = { solves: 0, evals: 0, maxIters: 0, unconverged: 0, maxEgtResK: 0, maxPExhResRel: 0, ecuUnconverged: 0 };
 
 /**
  * Self-consistent operating point. evalPoint takes the exhaust state x =
@@ -529,6 +529,7 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
         side = -1;
       }
     }
+    pointSolveStats.ecuUnconverged++;
     return lo;
   };
   /**

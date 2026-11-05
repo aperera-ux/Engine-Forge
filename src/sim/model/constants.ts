@@ -180,7 +180,7 @@ export const CAL = {
   /** Knock-aware boost control: max spark retard the ECU accepts before trimming boost, deg. */
   ecuMaxRetardDeg: 10,
   /** Torque management: max boost-loop re-solves per rpm point (bracketed Illinois on the boost target; normally 2–4). */
-  ecuTorqueMaxIters: 16,
+  ecuTorqueMaxIters: 40,
   /** Torque management guarantee: limited points satisfy torque ≤ limit + this, N·m (tested). */
   ecuTorqueTolNm: 0.05,
   /**
@@ -190,7 +190,7 @@ export const CAL = {
    */
   ecuTorqueSolveTolNm: 0.002,
   /** Knock-aware boost trim: stop at |retard − accepted retard| ≤ this, deg (Illinois on the boost scale). */
-  ecuKnockTolDeg: 0.001,
+  ecuKnockTolDeg: 2e-4,
   /** Knock-aware boost trim: max operating-point solves per rpm (normally 2–5). */
   ecuKnockMaxIters: 20,
   /** Component protection: stop at |excess| ≤ this (excess = (EGT − max)/100 K or (pMax − cap)/100 bar). */

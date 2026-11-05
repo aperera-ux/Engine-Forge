@@ -353,8 +353,12 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number, hin
         return up.ptc < up.pc ? 'turbine' : up.pr > compressorMaxPr(up.phi, t.compressorInducerMm) ? (up.phi > 0.9 ? 'choke' : 'speed-line') : Math.min(up.p3c, up.p3wg) > CAL.turbineInletMaxBar * 1e5 ? 'exhaust-pressure' : 'none';
       };
     }
-    if (atTarget || !spoolLimited) {
-      // Wastegate regulating: turbine only has to supply compressor power.
+    {
+      // Wastegate: the turbine only has to supply compressor power, so the gate
+      // opens until it does (hi3). When the turbine cannot even with the gate
+      // shut (spool-limited), hi3 = p3c and the gate stays shut. Formerly a
+      // switch on ptc < 1.05·pc chose p3c or the regulated value, which made
+      // p3 jump by the 5 % power margin there (EA888 gen 3 near choke).
       const hi3 = illinois(
         (p) => turbinePower(c, res.flow.mExh, res.flow.tExh, p, res.p4, res.phi) - res.pc,
         res.p4,
@@ -367,8 +371,6 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number, hin
       );
       // Wastegate port + turbine nozzle together still restrict flow.
       p3 = Math.min(res.p3c, Math.max(hi3, res.p3wg));
-    } else {
-      p3 = res.p3c;
     }
   }
   return {
