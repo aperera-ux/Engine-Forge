@@ -10,6 +10,7 @@ import { fmt, type Units } from './units';
 import { SNAP_COLORS } from './charts/common';
 import { setAudioEnabled } from './audio';
 import { buildSheet } from './buildSheet';
+import { Garage } from './Garage';
 
 const PRESETS: EngineConfig[] = PresetsModule.PRESETS;
 const PRESET_GROUPS = (PresetsModule as Record<string, unknown>).PRESET_GROUPS as Record<string, string[]> | undefined;
@@ -187,6 +188,7 @@ export function Header() {
       </div>
       <div className="divider" />
       <PresetPicker />
+      <Garage flash={flash} />
       <div className="spacer" />
       <SnapshotControls />
       <div className="divider" />

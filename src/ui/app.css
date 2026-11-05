@@ -2243,3 +2243,188 @@
     display: none;
   }
 }
+
+/* ---- Garage (saved custom engines) ---------------------------------------- */
+.garage {
+  position: relative;
+  margin-left: 8px;
+}
+.garage .btn.open {
+  border-color: var(--accent-line);
+}
+.gar-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  width: 440px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(20, 21, 25, 0.97);
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  box-shadow: 0 24px 60px -10px rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(20px);
+  animation: pop 0.16s ease-out;
+}
+.gar-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 2px 4px 4px;
+  font-weight: 600;
+}
+.gar-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+.gar-note {
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(242, 178, 51, 0.1);
+  border: 1px solid rgba(242, 178, 51, 0.35);
+  color: var(--warn);
+  font-size: 12px;
+}
+.gar-slot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--inset);
+}
+.gar-slot.on {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.gar-slot.empty {
+  border-style: dashed;
+  background: transparent;
+}
+.gar-num {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--line-2);
+  font: 600 11px var(--mono);
+  color: var(--text-2);
+}
+.gar-slot.on .gar-num {
+  border-color: var(--accent);
+  color: var(--accent-2);
+}
+.gar-body {
+  flex: 1;
+  min-width: 0;
+}
+.gar-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 0;
+  font-weight: 600;
+  color: var(--text);
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: text;
+}
+.gar-name:hover {
+  color: var(--accent-2);
+}
+.gar-rename {
+  width: 100%;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 5px;
+  border: 1px solid var(--accent-line);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+}
+.gar-badge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font: 500 10px var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent-2);
+  background: rgba(255, 122, 26, 0.16);
+}
+.gar-badge.mod {
+  color: var(--warn);
+  background: rgba(242, 178, 51, 0.14);
+}
+.gar-spec {
+  margin-top: 2px;
+  font: 11.5px var(--mono);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gar-when,
+.gar-empty-t {
+  margin-top: 1px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.gar-empty-t {
+  margin: 0;
+  font-size: 12px;
+}
+.gar-acts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: none;
+}
+.gar-act {
+  height: 24px;
+  min-width: 74px;
+  padding: 0 9px;
+  border-radius: 6px;
+  border: 1px solid var(--line-2);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+.gar-act:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.gar-act.primary {
+  color: var(--accent-2);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.gar-act.primary:hover {
+  color: #fff;
+}
+.gar-act.armed {
+  color: var(--warn);
+  border-color: rgba(242, 178, 51, 0.5);
+}
+.gar-act.danger.armed {
+  color: var(--bad);
+  border-color: rgba(255, 86, 86, 0.55);
+}
+@media (max-width: 900px) {
+  .gar-pop {
+    width: min(440px, calc(100vw - 24px));
+  }
+}

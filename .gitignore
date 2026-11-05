@@ -26,3 +26,4 @@ test-results/
 playwright-report/
 tests/audio/out/*.wav
 dist/
+tests/audio/ab/

@@ -16,7 +16,21 @@ export interface Snapshot {
 }
 
 export const MAX_SNAPSHOTS = 3;
+/** Saved custom engines ("Garage"): fixed slots that persist in this browser. */
+export const GARAGE_SLOTS = 3;
 const LS_CONFIG = 'engine-forge:config:v1';
+const LS_GARAGE = 'engine-forge:garage:v1';
+
+export interface SavedEngine {
+  name: string;
+  config: EngineConfig;
+  /** epoch ms */
+  savedAt: number;
+  peakHp: number;
+  peakTorqueNm: number;
+  displacementL: number;
+}
+export type GarageSlot = SavedEngine | null;
 const LS_PREFS = 'engine-forge:prefs:v1';
 
 export interface UIState {
@@ -31,6 +45,7 @@ export interface UIState {
   viewMode: ViewMode;
   units: Units;
   snapshots: Snapshot[];
+  garage: GarageSlot[];
   dynoActive: boolean;
   muted: boolean;
   panelCollapsed: boolean;
@@ -49,6 +64,11 @@ export interface UIState {
   addSnapshot: (name?: string) => void;
   removeSnapshot: (id: string) => void;
   renameSnapshot: (id: string, name: string) => void;
+  /** Save the current engine into a garage slot (overwrites). Returns the slot used. */
+  saveToGarage: (slot: number, name?: string) => number;
+  loadFromGarage: (slot: number) => void;
+  renameGarageSlot: (slot: number, name: string) => void;
+  clearGarageSlot: (slot: number) => void;
   setDynoActive: (b: boolean) => void;
   setMuted: (b: boolean) => void;
   togglePanel: () => void;
@@ -126,6 +146,30 @@ function configFromHash(): EngineConfig | null {
   }
 }
 
+function initialGarage(): GarageSlot[] {
+  const empty: GarageSlot[] = Array.from({ length: GARAGE_SLOTS }, () => null);
+  if (typeof window === 'undefined') return empty;
+  try {
+    const raw = JSON.parse(localStorage.getItem(LS_GARAGE) ?? 'null');
+    if (!Array.isArray(raw)) return empty;
+    return empty.map((_, i) => {
+      const e = raw[i];
+      if (!e || typeof e !== 'object' || !e.config) return null;
+      const config = mergeConfig(e.config);
+      return {
+        name: typeof e.name === 'string' && e.name.trim() ? e.name : config.name,
+        config,
+        savedAt: Number(e.savedAt) || Date.now(),
+        peakHp: Number(e.peakHp) || 0,
+        peakTorqueNm: Number(e.peakTorqueNm) || 0,
+        displacementL: Number(e.displacementL) || 0,
+      };
+    });
+  } catch {
+    return empty;
+  }
+}
+
 function initialConfig(): EngineConfig {
   if (typeof window === 'undefined') return DEFAULT_CONFIG;
   const fromHash = configFromHash();
@@ -174,6 +218,7 @@ export const useStore = create<UIState>()((set, get) => {
     viewMode: prefs0.viewMode,
     units: prefs0.units,
     snapshots: [],
+    garage: initialGarage(),
     dynoActive: false,
     muted: true,
     panelCollapsed: prefs0.panelCollapsed,
@@ -212,6 +257,42 @@ export const useStore = create<UIState>()((set, get) => {
       };
       set({ snapshots: [...next, snap].slice(-MAX_SNAPSHOTS) });
     },
+    saveToGarage: (slot, name) => {
+      const { config, result, garage } = get();
+      const i = Math.max(0, Math.min(GARAGE_SLOTS - 1, Math.floor(slot)));
+      const nm = (name ?? config.name).trim() || `Custom engine ${i + 1}`;
+      const saved: SavedEngine = {
+        name: nm,
+        config: { ...structuredClone(config), name: nm },
+        savedAt: Date.now(),
+        peakHp: result.peakHp,
+        peakTorqueNm: result.peakTorqueNm,
+        displacementL: result.displacementL,
+      };
+      const next = garage.slice();
+      next[i] = saved;
+      // The engine being edited now carries the saved name too.
+      set({ garage: next });
+      if (config.name !== nm) get().setConfig({ name: nm });
+      return i;
+    },
+    loadFromGarage: (slot) => {
+      const e = get().garage[slot];
+      if (e) get().loadConfig({ ...e.config, name: e.name });
+    },
+    renameGarageSlot: (slot, name) => {
+      const nm = name.trim();
+      const e = get().garage[slot];
+      if (!e || !nm) return;
+      const next = get().garage.slice();
+      next[slot] = { ...e, name: nm, config: { ...e.config, name: nm } };
+      set({ garage: next });
+    },
+    clearGarageSlot: (slot) => {
+      const next = get().garage.slice();
+      next[slot] = null;
+      set({ garage: next });
+    },
     removeSnapshot: (id) => set({ snapshots: get().snapshots.filter((s) => s.id !== id) }),
     renameSnapshot: (id, name) =>
       set({ snapshots: get().snapshots.map((s) => (s.id === id ? { ...s, name } : s)) }),
@@ -237,6 +318,13 @@ if (typeof window !== 'undefined') {
         // Keep the URL in sync without polluting history, but only if it is already a share link.
         if (location.hash.includes('cfg=')) history.replaceState(null, '', configToHash(s.config));
       }, 250);
+    }
+    if (s.garage !== prev.garage) {
+      try {
+        localStorage.setItem(LS_GARAGE, JSON.stringify(s.garage));
+      } catch {
+        /* quota */
+      }
     }
     if (s.units !== prev.units || s.viewMode !== prev.viewMode || s.panelCollapsed !== prev.panelCollapsed) {
       try {

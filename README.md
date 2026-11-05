@@ -22,8 +22,9 @@ npm run build      # production build in dist/
   Every change re-runs the simulation instantly.
 - **Viewport**: drag to orbit, scroll to zoom, hover a cylinder to inspect it.
   Solid / Cutaway / X-ray views.
-- **Keys**: `D` dyno pull · `Space` run/pause · `S` snapshot · `1/2/3` view mode.
-- **Snapshot** saves up to 3 builds and overlays them on the dyno chart with Δhp/Δtorque.
+- **Keys**: `D` dyno pull · `Space` run/pause · `S` snapshot · `⌘S` save to garage · `1/2/3` view mode.
+- **Garage** saves up to 3 custom engines in this browser: load, overwrite, rename, clear (`⌘S` / `Ctrl+S` quick-save).
+- **Snapshot** keeps up to 3 dyno curves (this session) and overlays them on the dyno chart with Δhp/Δtorque.
 - **Share** link encodes the full config in the URL. **Build sheet** copies a text spec.
 - Sound (speaker icon) synthesizes exhaust pulses from the real firing order.
 
