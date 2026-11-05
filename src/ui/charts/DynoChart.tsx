@@ -1,6 +1,6 @@
 import { memo, useMemo } from 'react';
-import { CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts';
-import type { SimResult } from '../../sim/types';
+import { Area, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts';
+import type { DynoPoint, SimResult } from '../../sim/types';
 import { curveAt, useStore, type Snapshot } from '../store';
 import { conv, fmt, type Units } from '../units';
 import { AXIS_TICK, C, SNAP_COLORS, niceMax, ticksFor, useSize } from './common';
@@ -11,7 +11,7 @@ const XH = 24;
 
 interface Row {
   rpm: number;
-  [k: string]: number | undefined;
+  [k: string]: number | [number, number] | undefined;
 }
 
 function sample(r: SimResult, rpm: number, key: 'powerKw' | 'torqueNm'): number | undefined {
@@ -20,7 +20,24 @@ function sample(r: SimResult, rpm: number, key: 'powerKw' | 'torqueNm'): number 
   return curveAt(r, rpm, key);
 }
 
-function buildRows(result: SimResult, snaps: Snapshot[], units: Units) {
+function sampleCurve(c: DynoPoint[], rpm: number, key: 'powerKw' | 'torqueNm'): number | undefined {
+  if (!c.length || rpm < c[0].rpm - 1 || rpm > c[c.length - 1].rpm + 1) return undefined;
+  return curveAt({ curve: c } as SimResult, rpm, key);
+}
+
+/** Linear interpolation of a per-curve-point array (same order as result.curve). */
+function pctAt(result: SimResult, arr: number[] | undefined, rpm: number): number | undefined {
+  const c = result.curve;
+  if (!arr || arr.length !== c.length || !c.length) return undefined;
+  if (rpm <= c[0].rpm) return arr[0];
+  if (rpm >= c[c.length - 1].rpm) return arr[arr.length - 1];
+  let i = 1;
+  while (i < c.length - 1 && c[i].rpm < rpm) i++;
+  const t = (rpm - c[i - 1].rpm) / (c[i].rpm - c[i - 1].rpm || 1);
+  return arr[i - 1] + (arr[i] - arr[i - 1]) * t;
+}
+
+function buildRows(result: SimResult, snaps: Snapshot[], units: Units, showUnlimited: boolean) {
   const all = [result, ...snaps.map((s) => s.result)];
   const lo = Math.min(...all.map((r) => r.curve[0]?.rpm ?? 0));
   const hi = Math.max(...all.map((r) => r.curve[r.curve.length - 1]?.rpm ?? 1));
@@ -34,6 +51,18 @@ function buildRows(result: SimResult, snaps: Snapshot[], units: Units) {
     const t = sample(result, rpm, 'torqueNm');
     row.p = p === undefined ? undefined : P(p);
     row.t = t === undefined ? undefined : T(t);
+    const pct = pctAt(result, result.uncertainty?.torquePct, rpm);
+    if (pct !== undefined && row.p !== undefined && row.t !== undefined) {
+      row.pPct = pct;
+      row.bandP = [row.p * (1 - pct / 100), row.p * (1 + pct / 100)];
+      row.bandT = [row.t * (1 - pct / 100), row.t * (1 + pct / 100)];
+    }
+    if (showUnlimited && result.unlimited) {
+      const up = sampleCurve(result.unlimited, rpm, 'powerKw');
+      const ut = sampleCurve(result.unlimited, rpm, 'torqueNm');
+      row.unP = up === undefined ? undefined : P(up);
+      row.unT = ut === undefined ? undefined : T(ut);
+    }
     snaps.forEach((s) => {
       const sp = sample(s.result, rpm, 'powerKw');
       const st = sample(s.result, rpm, 'torqueNm');
@@ -48,8 +77,11 @@ function buildRows(result: SimResult, snaps: Snapshot[], units: Units) {
   let tMax = 0;
   rows.forEach((r) => {
     for (const k in r) {
-      if (k.startsWith('p') && r[k] !== undefined) pMax = Math.max(pMax, r[k]!);
-      if (k.startsWith('t') && r[k] !== undefined) tMax = Math.max(tMax, r[k]!);
+      const v = r[k];
+      if (k === 'rpm' || k === 'pPct' || v === undefined) continue;
+      const hi = Array.isArray(v) ? v[1] : v;
+      if (k === 'bandP' || k.startsWith('p') || k === 'unP') pMax = Math.max(pMax, hi);
+      else if (k === 'bandT' || k.startsWith('t') || k === 'unT') tMax = Math.max(tMax, hi);
     }
   });
   return { rows, lo, hi, pAxis: niceMax(pMax), tAxis: niceMax(tMax) };
@@ -67,14 +99,15 @@ export function DynoChart() {
   const snapshots = useStore((s) => s.snapshots);
   const units = useStore((s) => s.units);
   const [ref, size] = useSize<HTMLDivElement>();
-  const data = useMemo(() => buildRows(result, snapshots, units), [result, snapshots, units]);
+  const showUnlimited = useStore((s) => s.showUnlimited);
+  const data = useMemo(() => buildRows(result, snapshots, units, showUnlimited), [result, snapshots, units, showUnlimited]);
   const pu = conv('power', units).label;
   const tu = conv('torque', units).label;
   return (
     <div className="dyno-chart" ref={ref} data-testid="dyno-chart">
       {size.w > 0 && size.h > 0 && (
         <>
-          <StaticChart data={data} snapshots={snapshots} w={size.w} h={size.h} pu={pu} tu={tu} />
+          <StaticChart data={data} snapshots={snapshots} w={size.w} h={size.h} pu={pu} tu={tu} showUnlimited={showUnlimited && !!result.unlimited} />
           <CursorOverlay data={data} w={size.w} h={size.h} result={result} units={units} />
         </>
       )}
@@ -84,10 +117,10 @@ export function DynoChart() {
 
 type Data = ReturnType<typeof buildRows>;
 
-const StaticChart = memo(function StaticChart({ data, snapshots, w, h, pu, tu }: { data: Data; snapshots: Snapshot[]; w: number; h: number; pu: string; tu: string }) {
+const StaticChart = memo(function StaticChart({ data, snapshots, w, h, pu, tu, showUnlimited }: { data: Data; snapshots: Snapshot[]; w: number; h: number; pu: string; tu: string; showUnlimited: boolean }) {
   const setRpm = useStore((s) => s.setRpm);
   return (
-    <LineChart
+    <ComposedChart
       width={w}
       height={h}
       data={data.rows}
@@ -135,6 +168,11 @@ const StaticChart = memo(function StaticChart({ data, snapshots, w, h, pu, tu }:
         cursor={{ stroke: 'rgba(15,23,42,0.3)', strokeWidth: 1 }}
         isAnimationActive={false}
       />
+      {/* ±1σ prediction band (behind the lines) */}
+      <Area yAxisId="t" dataKey="bandT" stroke="none" fill={C.torque} fillOpacity={0.16} dot={false} activeDot={false} isAnimationActive={false} legendType="none" tooltipType="none" />
+      <Area yAxisId="p" dataKey="bandP" stroke="none" fill={C.power} fillOpacity={0.16} dot={false} activeDot={false} isAnimationActive={false} legendType="none" tooltipType="none" />
+      {showUnlimited && <Line yAxisId="t" dataKey="unT" stroke={C.torque} strokeWidth={1.75} strokeDasharray="7 4" dot={false} activeDot={false} isAnimationActive={false} />}
+      {showUnlimited && <Line yAxisId="p" dataKey="unP" stroke={C.power} strokeWidth={1.75} strokeDasharray="7 4" dot={false} activeDot={false} isAnimationActive={false} />}
       {snapshots.map((s) => (
         <Line key={`p_${s.id}`} yAxisId="p" dataKey={`p_${s.id}`} stroke={SNAP_COLORS[s.slot]} strokeOpacity={0.75} strokeWidth={1.5} strokeDasharray="5 4" dot={false} activeDot={false} isAnimationActive={false} connectNulls={false} />
       ))}
@@ -143,14 +181,14 @@ const StaticChart = memo(function StaticChart({ data, snapshots, w, h, pu, tu }:
       ))}
       <Line yAxisId="t" dataKey="t" name="Torque" stroke={C.torque} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#ffffff' }} isAnimationActive={false} />
       <Line yAxisId="p" dataKey="p" name="Power" stroke={C.power} strokeWidth={2.25} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#ffffff' }} isAnimationActive={false} />
-    </LineChart>
+    </ComposedChart>
   );
 });
 
 interface TipProps {
   active?: boolean;
   label?: number | string;
-  payload?: { dataKey?: string | number; value?: number }[];
+  payload?: { dataKey?: string | number; value?: unknown }[];
   snapshots: Snapshot[];
   pu: string;
   tu: string;
@@ -158,7 +196,13 @@ interface TipProps {
 
 function DynoTooltip({ active, label, payload, snapshots, pu, tu }: TipProps) {
   if (!active || !payload?.length) return null;
-  const get = (k: string) => payload.find((p) => p.dataKey === k)?.value;
+  const get = (k: string) => {
+    const v = payload.find((p) => p.dataKey === k)?.value;
+    return typeof v === 'number' ? v : undefined;
+  };
+  const pct = (payload[0] as { payload?: Row } | undefined)?.payload?.pPct;
+  const unP = get('unP');
+  const unT = get('unT');
   const p = get('p');
   const t = get('t');
   return (
@@ -178,6 +222,20 @@ function DynoTooltip({ active, label, payload, snapshots, pu, tu }: TipProps) {
           {t !== undefined ? fmt(t) : '—'} <small>{tu}</small>
         </b>
       </div>
+      {typeof pct === 'number' && (
+        <div className="chart-tip-row">
+          <span>Model band (1σ)</span>
+          <b>±{pct.toFixed(0)}%</b>
+        </div>
+      )}
+      {unP !== undefined && unT !== undefined && (
+        <div className="chart-tip-row">
+          <span>Hardware-only</span>
+          <b>
+            {fmt(unP)} <small>{pu}</small> / {fmt(unT)} <small>{tu}</small>
+          </b>
+        </div>
+      )}
       {snapshots.map((s) => {
         const sp = get(`p_${s.id}`);
         const st = get(`t_${s.id}`);

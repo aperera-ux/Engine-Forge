@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import type { EngineConfig, SimResult } from '../sim/types';
 import { DEFAULT_CONFIG } from '../sim/defaults';
 import { simulate } from '../sim/engine';
+import { PRESETS } from '../sim/presets';
+import { oemLimitOptions } from '../sim/customBuild';
 import { SUPPORTED_CYLINDERS } from '../sim/layout';
 import type { Units } from './units';
 
@@ -35,6 +37,11 @@ const LS_PREFS = 'engine-forge:prefs:v1';
 
 export interface UIState {
   config: EngineConfig;
+  /** The stock preset the current build was loaded from (null if none). Used for the custom-build check. */
+  basePreset: EngineConfig | null;
+  /** Show the hardware-only (no factory ECU limit) curve as a dashed overlay. */
+  showUnlimited: boolean;
+  setShowUnlimited: (b: boolean) => void;
   result: SimResult;
   simError: string | null;
   simMs: number;
@@ -104,10 +111,17 @@ export function normalizeConfig(c: EngineConfig): EngineConfig {
   return out;
 }
 
-function runSim(config: EngineConfig, prev?: SimResult): { result: SimResult; simError: string | null; simMs: number } {
+/** Stock preset with this name, if any (the build's reference for the custom-build check). */
+export function presetByName(name: string): EngineConfig | null {
+  return PRESETS.find((p) => p.name === name) ?? null;
+}
+
+function runSim(config: EngineConfig, base: EngineConfig | null, prev?: SimResult): { result: SimResult; simError: string | null; simMs: number } {
   const t0 = performance.now();
   try {
-    const result = simulate(config);
+    const opts = oemLimitOptions(config, base ?? undefined);
+    // The hardware-only curve is only needed (and only costs a 2nd solve) when a limit is present.
+    const result = simulate(config, { ...opts, includeUnlimited: !!config.ecu?.torqueLimitNm || !!config.ecu?.powerLimitKw });
     if (!result || !Array.isArray(result.curve) || result.curve.length === 0) throw new Error('empty curve');
     return { result, simError: null, simMs: performance.now() - t0 };
   } catch (e) {
@@ -197,20 +211,24 @@ function initialPrefs(): { units: Units; viewMode: ViewMode; panelCollapsed: boo
 }
 
 const cfg0 = initialConfig();
-const sim0 = runSim(cfg0);
+const base0 = presetByName(cfg0.name);
+const sim0 = runSim(cfg0, base0);
 const prefs0 = initialPrefs();
 
 let snapCounter = 0;
 
 export const useStore = create<UIState>()((set, get) => {
-  const apply = (config: EngineConfig) => {
+  const apply = (config: EngineConfig, base: EngineConfig | null = get().basePreset) => {
     const norm = normalizeConfig(config);
-    const r = runSim(norm, get().result);
+    const r = runSim(norm, base, get().result);
     const rpm = Math.min(Math.max(get().rpm, norm.idleRpm), norm.redlineRpm);
-    set({ config: norm, ...r, rpm });
+    set({ config: norm, basePreset: base, ...r, rpm });
   };
   return {
     config: cfg0,
+    basePreset: base0,
+    showUnlimited: false,
+    setShowUnlimited: (showUnlimited) => set({ showUnlimited }),
     ...sim0,
     rpm: Math.round(Math.max(cfg0.idleRpm, cfg0.redlineRpm * 0.45)),
     load: 0.35,
@@ -229,7 +247,7 @@ export const useStore = create<UIState>()((set, get) => {
     setTurbo: (patch) => apply({ ...get().config, turbo: { ...get().config.turbo, ...patch } }),
     setSupercharger: (patch) =>
       apply({ ...get().config, supercharger: { ...get().config.supercharger, ...patch } }),
-    loadConfig: (cfg) => apply(mergeConfig(structuredClone(cfg))),
+    loadConfig: (cfg) => apply(mergeConfig(structuredClone(cfg)), presetByName(cfg.name)),
     setRpm: (rpm) => {
       const { idleRpm, redlineRpm } = get().config;
       set({ rpm: Math.min(Math.max(rpm, idleRpm), redlineRpm) });
