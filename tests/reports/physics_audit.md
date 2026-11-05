@@ -608,3 +608,84 @@ Mean |error| vs published figures, limits on / off:
 
 ### 13b. Flaky test
 `src/sim/__tests__/engine.test.ts > robustness and performance > simulate < 15 ms` is a wall-clock check. It fails intermittently under parallel load: two consecutive full runs were 46 failed and 45 failed, and this test accounts for the difference.
+
+## 14. Constants audit and triage
+
+Scope: global `CAL` constants that were tuned in v4. Sensitivities were measured at the final values. Each constant was perturbed ±10%. "dTrain" is the change in mean RMS over the 32 TRAIN dyno curves, in percentage points. "dMed" is the change in median |peak hp error| over the 21-set. The median is a kinked statistic, so ±0.5 pt is noise.
+
+**Literature caveat.** The ranges below are the engineering consensus ranges I could defend from the sources named. The citations are chapter or figure level, from memory, and have not been re-checked against the books. An engineer should verify them against the sources before external use.
+
+### 14.1 Before / after the constrained refit
+| | Before audit | After |
+|---|---|---|
+| Train mean RMS, all 32 | 5.975 | 5.92 |
+| Train NA / boosted | 6.92 / 3.15 | 6.85 / 3.14 |
+| 21-set median / mean / max \|hp err\| | 5.26 / 5.9 / 14.1 | 4.57 / 5.5 / 13.8 |
+| 21-set torque-peak rpm within ±10% | 14/21 | 12/21 |
+| Holdout RMS, all 12 (scored once, after freezing) | 7.89 | 7.79 |
+| Holdout NA / boosted | 8.16 / 7.52 | 8.24 / 7.15 |
+
+The adoption rule was met (train no more than 0.4 worse, median no more than 0.4 worse). Both improved. Torque-peak rpm placement got worse (14 → 12 of 21).
+
+### 14.2 Constants table
+In range = inside the plausible range after the refit. All values are within range now. The out-of-range ones before the refit are marked †.
+
+| Constant | Final | Plausible range and basis | Was | Sensitivity (±10%) | Note |
+|---|---|---|---|---|---|
+| valveSeriesExp | 4 | 3–8: shape of the Cd(l/d) knee in flow-bench data (Heywood §6.3, Fig. 6.15–6.19; Blair 1999 Ch. 4). No numeric literature value. | 4 | dTrain +0.07 / −0.04, dMed up to +0.8 | Needed by 2-valve long-cam heads. Capped at 5 because p = 7 made the EA888 knock and BSFC curves jagged. |
+| valveCurtainCd | 0.81 | 0.6–0.85: curtain discharge coefficient at l/d < 0.2 (Heywood §6.3) | 0.78 | dTrain +0.53 / −0.07. The most sensitive flow constant. | Sets the low-lift flow of every engine. |
+| intakeThroatCd | 0.75 † | 0.55–0.75: Cd on valve-head area for production ports, up to 0.75 for race-ported heads (Blair Ch. 4 flow-bench Cd; Heywood Fig. 6.19) | 0.785 | dTrain +0.12 | Clamped. Compensates for the missing port-shape and ram effects of ported heads. |
+| exhaustThroatCd | 0.65 † | 0.45–0.65: exhaust ≈ 80% of intake (Blair Ch. 4) | 0.665 | dTrain +0.20 | Clamped. |
+| liftShapeExp | 1.85 | 1.5–2.4: seat-minus-.050" duration offset 35–65° for production cams, which is n = 1.5–2.3 (computed with `seatDuration`) | 1.85 | tiny dTrain; dMed 0.4–0.6 | 2.15 fits the offset better but made EA888 phasing jagged, so it is held at 1.85. |
+| intakeReflect | 0.94 † | 0.6–0.95: \|R\| at a plenum or open end under flow (Blair Ch. 2) | 0.9785 | dMed +1.6 at −10% (4-valve V8/V10) | Within range but at the edge. Stands in for missing plenum coupling (Helmholtz gain) between cylinders and for the near-lossless runner. |
+| intakeReflectItb | 0.6 | 0.5–0.9: bellmouth to atmosphere | 0.75 | S85 only | Low sensitivity. |
+| runnerLoss | 0.37 | 0.2–1.0: entry and friction K (Idelchik; Blair Ch. 2) | 0.6 | none | Low sensitivity. |
+| runnerLossItb | 0.3 † | 0.04–1.0 (bellmouth 0.04–0.2, sharp edge about 0.5) | 1.2 | none | Reset to the earlier physical value. |
+| chargeHeatEff | 0.246 | 0.1–0.4, giving 10–30 K charge heating at WOT (Heywood §6.4) | 0.256 | dMed ≈ 0.5–0.7 | At 5000 rpm about 22 K. |
+| intakeWallTempK | 420 | 380–450: port and valve wall (Heywood §6.4) | 420 | dTrain +0.4 / +0.5 | Not tuned in v4. Notably sensitive. |
+| fA | 0.273 | 0.25–0.45: Chen–Flynn A ≈ 0.4 for 1960s engines (Chen and Flynn, SAE 650733); modern engines about 25% lower (Sandoval and Heywood, SAE 2003-01-0725) | 0.323 | none | Valvetrain and accessories are modelled separately. |
+| fC | 0.04 | 0.03–0.09: Chen–Flynn C ≈ 0.09 for 1960s engines | 0.04 | dMed 0.7 | At the low end. Modern roller and low-tension rings. |
+| fD | 0.0009 | 0.0003–0.001 | 0.0006 | none | Textbook-leaning. |
+| intakePortLenBore | 1.28 | 0.8–1.8 × bore (port 60–120 mm) | 1.2 | dTrain ≈ 0.07 | |
+| exhaustPortLenBore | 0.7 | 0.5–1.5 | 0.7 | none | Fixed. |
+| intakeSysZeta | 2.1 | 1–4: airbox + filter + MAF + duct, K on throttle-body-sized duct (about 3% total pressure at rated flow) | 2.5 | dTrain 0.04 | |
+| gxEvoTempFactor | 1.14 (T_EVO ≈ 1430 K) | 1.0–1.5: EVO gas temperature 1250–1850 K (Heywood Ch. 5 expansion end) | 1.2 | dTrain +0.11 | |
+| gxVeScale | 1.0 | 0.9–1.1 | 1.0 | **dTrain +4.8 / +4.5 (very high)** | The fit depends strongly on it. Held at exactly 1.0, because 1.0 is the only defensible value. |
+| compSpeedLineKnee | 0.85 | 0.7–0.9 of choke flow (turbo map; Watson and Janota) | 0.85 | tiny | Set by the regression check, not by the fit. |
+| waveRpmSpread | 0.02 | 0–0.05 | 0.02 | none | Can be removed. |
+| ecuResidualWeight, ecuImepPerVe | 2, 14 | ECU cam-phasing objective | 2, 14 | none | No effect on any metric. |
+
+**Constants the fit barely depends on** (fixed at textbook or neutral values): exhaustPortLenBore, runnerLoss, runnerLossItb, intakeReflectItb, fA, fD, waveRpmSpread, compSpeedLineKnee and the two ECU objective weights. Only the first four are physically meaningful, and each is within its literature range.
+
+### 14.3 What the former out-of-range values were compensating for
+- **intakeReflect 0.98:** missing plenum Helmholtz coupling across cylinders, which gives extra VE at the tuned speed. A single-cylinder line with a near-lossless open end approximates it.
+- **runnerLossItb 1.2:** ITB V10 and V8 engines were over-predicted at high rpm. This was absorbing the missing intake-system loss. After the production-intake pressure loss was added, 0.3 is enough.
+- **throat Cd 0.785 / 0.665:** the missing head-port effects. Ported heads and the ram effect are not in the config.
+- **fA 0.32:** the model's low friction is balancing the under-predicted breathing of the 2-valve pushrod crate engines. Chen–Flynn A ≈ 0.4 is for 1960s engines.
+- **valveSeriesExp:** not a compensation. It is the physical knee shape.
+
+### 14.4 Triage of the 27 `envelopes.test.ts` failures and the sanity-rule failures
+(a) = real model deficiency, listed as a known limitation. (b) = test premise wrong. (c) = caused by estimated config fields.
+
+| Failure | Class | Evidence |
+|---|---|---|
+| F20C peak hp −12.2%; peak-torque rpm 6000 vs 7500; ±12% aggregate; aggregate mean 5.5% | (a) | Rating is a press-kit SAE figure; cams and valves estimated, but the VTEC high-lobe is not predicted. |
+| F20C mass +17.5%; F12 mass +17% | (a) | Mass model; massKg is a known (not estimated) input for F20C. |
+| Ford 1.0 mass +27% | (c) | massKg is in estimatedFields. |
+| LS7 hp −8.9% (limit 8) | (a) | Marginal; crate dyno rating basis unknown. |
+| 1GR hp +8.6%, torque +8.0%; EJ257 torque +8.2%; Mazda torque +8.6% | (a) | Marginal over-prediction of the tolerance. |
+| Mazda hp +13.8%, 84 hp/L, 13.8 bar BMEP, power rpm 6500 vs 5700, torque rpm 4000 vs 3250 | (a)+(c) | Cams, valves, runner, headers and λ are all estimated. The published 74 hp/L and 12.7 bar are inside the envelope, so the sim overshoots. |
+| EJ257 BSFC 380 at peak power; F12 BSFC 265 | (c) | λ at WOT is estimated; BSFC follows it. |
+| EJ257 peak-torque rpm 3000 vs 4000; R8 peak-torque rpm 5250 vs 6500 | (c)/(a) | Cams estimated. |
+| 2JZ power rpm 6200 vs 5600; B58 5200 vs 6000; EA888 6250 vs 5450; EcoBoost 3.5 6000 vs 5000; EA888 and Ford 1.0 torque plateau 0.92 and 0.64 | (c) | Turbo inducer, A/R, boost and intercooler are estimated, and the published rpm depends on the ECU tune. Ford 1.0 turbineAR 0.4 is below the type-doc range (noted in the config). |
+| GT3 power rpm 9000 vs 8250 | (a) | Sim peaks at redline; no high-rpm power fall-off from friction and flow. |
+| Hypothetical drag preset BMEP 48 vs 40 bar | (b) not changed | 2.5 bar boost on E85 and 9000 rpm. The 40-bar limit is a street and alcohol limit, and real drag builds are reported above it. I have no in-repo evidence, so the check is left as is. |
+| Rule 4 intercooler +16.4% vs 8–15% | **(b), changed** | The sibling check pins the charge-temperature drop at 60–90 °C, which means T_no/T_yes − 1 ≈ 75/(393−75) = +23% density at fixed boost. The upper band is now 20%. |
+| Rules 7, 8 (three), "bigger cam" | (a) | Flat-topped torque argmax; low-rpm torque too insensitive to duration. |
+| Rule 10 undersized valves Z at peak 0.98 vs ≤ 0.7 | (a) | Valve-flow choking too weak. |
+| Rule 13 K20 ITB beats plenum | (a) | ITB top-end gain not reproduced (−0.9% instead of +). |
+| EA888 continuity (cam duration, throttle) | (a) | ECU phasing and knock-trim corners; throttle bigger gives less power. |
+| Fuzz (6) | (a) | Absurd configs (EGT clamp 1227 °C, BMEP > 30 bar, NA jumps). |
+| `simulate < 15 ms` (Ford 3.5, 16.2 ms) | flaky | Wall-clock test. Its cost rose with `ecuTorqueIters` = 6. |
+
+Only the Rule 4 premise was changed.

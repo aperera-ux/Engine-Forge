@@ -294,12 +294,16 @@ describe('Rule 4: intercooler', () => {
       expectNoKnock(p.no, p.yes);
       return p;
     };
-    it(`${k} @1 bar (knock isolated): IC 0 → 0.75 = +8–15% power, knock retard not higher`, () => {
+    it(`${k} @1 bar (knock isolated): IC 0 → 0.75 = +8–20% power, knock retard not higher`, () => {
       const { no, yes, dT } = pair();
       const row = { gainPct: r3(pct(yes.peakHp, no.peakHp)), dTchargeC: r3(dT), t2C: r3(atPeakPower(no, 'chargeTempC')), retNo: r3(maxRetard(no)), retYes: r3(maxRetard(yes)) };
       R.rec(`r4:${k}`, row);
       expect(row.gainPct).toBeGreaterThanOrEqual(8);
-      expect(row.gainPct).toBeLessThanOrEqual(15);
+      // Upper bound revised 15 -> 20 % (model audit, physics_audit.md §14): the sibling test below pins
+      // the charge-temperature drop to 60-90 degC at 1 bar, i.e. T_no/T_yes - 1 = 75/(393-75) = +23 % air
+      // density at fixed boost; the band 8-15 % was inconsistent with it. Less than 23 % is expected
+      // (higher turbine back-pressure and compressor drive at more flow).
+      expect(row.gainPct).toBeLessThanOrEqual(20);
       expect(maxRetard(yes)).toBeLessThanOrEqual(maxRetard(no) + 0.1);
     });
     // Doc band revised after audit (was −30…−50 °C, inconsistent with ε = 0.75 at 1 bar).
