@@ -53,13 +53,22 @@ function liftAt(phi: number, centre: number, ds: number, lMax: number): number {
   return lMax * Math.pow(1 - x * x, CAL.liftShapeExp);
 }
 
-/** Effective flow area of one valve (curtain in series with the port throat), m². */
+/**
+ * Effective flow area of one valve (curtain in series with the port throat), m².
+ * Measured valve flow (Cd on valve-diameter basis vs l/d) is curtain-limited at
+ * low lift and port-limited at high lift with a narrow, rounded knee near
+ * l/d ≈ 0.25–0.30. A p-norm series (p = CAL.valveSeriesExp) reproduces that:
+ * p = 2 (root-sum-square) is far too soft at the knee, p → ∞ is a hard min().
+ * The knee matters most for 2-valve heads with long-duration cams (l/d ≈ 0.24)
+ * and not at all for 4-valve heads (l/d ≈ 0.35+, port-limited).
+ */
 function valveArea(dMm: number, liftMm: number, throatCd: number): number {
   if (liftMm <= 0) return 0;
   const d = dMm / 1000;
   const aCurtain = CAL.valveCurtainCd * Math.PI * d * (liftMm / 1000);
   const aThroat = throatCd * (Math.PI / 4) * d * d;
-  return 1 / Math.sqrt(1 / (aCurtain * aCurtain) + 1 / (aThroat * aThroat));
+  const p = CAL.valveSeriesExp;
+  return Math.pow(Math.pow(aCurtain, -p) + Math.pow(aThroat, -p), -1 / p);
 }
 
 /** Per-profile, rpm-independent arrays (geometry, valve areas) on the integration grid. */
