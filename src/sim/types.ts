@@ -75,6 +75,12 @@ export interface EcuConfig {
    */
   torqueLimitNm?: number;
   /**
+   * Rated-power limit, kW (OEM power management: boost is tapered above the
+   * rpm where torque × ω would exceed it, giving the published flat power
+   * band). Boosted engines only. 0 or absent = no limit.
+   */
+  powerLimitKw?: number;
+  /**
    * Boost target schedule, bar gauge vs rpm (linear interpolation, clamped at
    * the ends). Turbo only; replaces turbo.targetBoostBar where given.
    */

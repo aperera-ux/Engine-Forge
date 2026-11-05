@@ -1331,3 +1331,22 @@ export const EXTENDED_REFERENCE_ENGINES: ReferenceEngine[] = [
     notes: 'First-gen 5.2 FSI (Lamborghini Gallardo-derived with Audi FSI heads, 90 deg bank, 18 deg crank offset for even firing); lower-revving 7000 limiter versus the 8700 R8 V10 plus (audi-52-v10-r8plus). hp = 320 kW x 1.341.',
   },
 ];
+
+/**
+ * physics agent v4 — OEM torque management, applied by one uniform rule (no
+ * per-engine tuning): a factory boosted engine whose rating is published as a
+ * torque PLATEAU (`torqueRpmRange`) is, by definition, ECU torque-limited over
+ * that range, so its config carries `ecu.torqueLimitNm` = the published
+ * plateau torque. Engines that already set an `ecu` block are left alone.
+ * Likewise a rating published as a POWER band (`hpRpmRange`) is a rated-power
+ * limit (`ecu.powerLimitKw`). The physics still has to reach the limits (spool,
+ * plateau start), hold them (turbo capacity, knock) and decide where torque
+ * falls between the two.
+ */
+for (const e of [...REFERENCE_ENGINES, ...EXTENDED_REFERENCE_ENGINES]) {
+  if (e.config.induction === 'na') continue;
+  const ecu = { ...(e.config.ecu ?? {}) };
+  if (e.published.torqueRpmRange && ecu.torqueLimitNm === undefined) ecu.torqueLimitNm = e.published.torqueNm;
+  if (e.published.hpRpmRange && ecu.powerLimitKw === undefined) ecu.powerLimitKw = (e.published.hp * 745.7) / 1000;
+  if (ecu.torqueLimitNm !== undefined || ecu.powerLimitKw !== undefined) e.config.ecu = ecu;
+}

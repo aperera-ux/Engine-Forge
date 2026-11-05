@@ -93,6 +93,7 @@ function sanitizeEcu(e: EngineConfig['ecu']): EngineConfig['ecu'] {
     : undefined;
   return {
     torqueLimitNm: typeof e.torqueLimitNm === 'number' && Number.isFinite(e.torqueLimitNm) && e.torqueLimitNm > 0 ? e.torqueLimitNm : undefined,
+    powerLimitKw: typeof e.powerLimitKw === 'number' && Number.isFinite(e.powerLimitKw) && e.powerLimitKw > 0 ? e.powerLimitKw : undefined,
     boostSchedule: sched && sched.length ? sched : undefined,
     maxKnockRetardDeg: typeof e.maxKnockRetardDeg === 'number' && Number.isFinite(e.maxKnockRetardDeg) ? clamp(e.maxKnockRetardDeg, 0, 30) : undefined,
   };

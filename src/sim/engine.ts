@@ -232,7 +232,8 @@ export function simulate(config: EngineConfig): SimResult {
   let spoolRpm: number | null = null;
   const boosted = c.induction !== 'na';
   const ecu = c.ecu ?? {};
-  const torqueLimit = boosted ? (ecu.torqueLimitNm ?? 0) : 0;
+  const torqueLimitNm = boosted ? (ecu.torqueLimitNm ?? 0) : 0;
+  const powerLimitW = boosted ? (ecu.powerLimitKw ?? 0) * 1000 : 0;
   const maxRetard = ecu.maxKnockRetardDeg ?? CAL.ecuMaxRetardDeg;
   const sched = c.induction === 'turbo' ? ecu.boostSchedule : undefined;
   const boostTargetAt = (rpm: number): number => {
@@ -269,6 +270,9 @@ export function simulate(config: EngineConfig): SimResult {
       //    limit into a required air charge, using its torque model (indicated
       //    torque ∝ air charge at the current spark efficiency, minus friction),
       //    and lowers the boost target to it.
+      // Effective limit at this rpm: torque limit and/or rated-power limit (P/ω).
+      const tqFromPower = powerLimitW > 0 ? powerLimitW / ((rpm * 2 * Math.PI) / 60) : 0;
+      const torqueLimit = torqueLimitNm > 0 && tqFromPower > 0 ? Math.min(torqueLimitNm, tqFromPower) : Math.max(torqueLimitNm, tqFromPower);
       if (torqueLimit > 0 && r.point.torqueNm > torqueLimit && r.point.boostBar > 0.01) {
         let rT = r;
         let rPrev: PointOut | null = null;
