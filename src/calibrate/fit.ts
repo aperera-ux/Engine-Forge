@@ -74,6 +74,10 @@ export interface ParamReport {
   atBound: 'low' | 'high' | null;
   /** RMS change in modelled torque (%) when this parameter sweeps its whole range, others held at the optimum. */
   sensitivityPct: number;
+  /** Approximate 1-sigma uncertainty of the fitted value, in the parameter's own unit (from the Jacobian and the larger of the residual and 0.5 % noise). 0 when not estimable. */
+  sigma: number;
+  /** sigma is more than a quarter of the parameter's allowed range: the data does not pin it down. */
+  poorlyDetermined: boolean;
   /** Too insensitive for the data to determine it. */
   weak: boolean;
 }
@@ -163,6 +167,26 @@ export function symEigenvalues(a: number[][]): number[] {
     }
   }
   return m.map((r, i) => r[i]);
+}
+
+/** Gauss-Jordan inverse of a small matrix; null when singular. */
+function invert(a: number[][]): number[][] | null {
+  const n = a.length;
+  const m = a.map((r, i) => [...r, ...Array.from({ length: n }, (_, j) => (i === j ? 1 : 0))]);
+  for (let c = 0; c < n; c++) {
+    let piv = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(m[r][c]) > Math.abs(m[piv][c])) piv = r;
+    if (Math.abs(m[piv][c]) < 1e-14) return null;
+    [m[c], m[piv]] = [m[piv], m[c]];
+    const d = m[c][c];
+    for (let j = 0; j < 2 * n; j++) m[c][j] /= d;
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue;
+      const f = m[r][c];
+      if (f) for (let j = 0; j < 2 * n; j++) m[r][j] -= f * m[c][j];
+    }
+  }
+  return m.map((r) => r.slice(n));
 }
 
 function halton(i: number, base: number): number {
@@ -369,6 +393,8 @@ export async function fitCalibration(input: FitInput, hooks: FitHooks = {}): Pro
       value: values[id] as number,
       atBound: id === 'torqueCap' && u >= 0.98 ? null : u <= 0.02 ? 'low' : u >= 0.98 ? 'high' : null,
       sensitivityPct: colRms[k],
+      sigma: 0,
+      poorlyDetermined: false,
       weak: !capInactive(k) && colRms[k] < WEAK_PCT,
     };
   });
@@ -396,7 +422,23 @@ export async function fitCalibration(input: FitInput, hooks: FitHooks = {}): Pro
       }
     }
   }
-  const illConditioned = cond > 30 || maxCorr > 0.97;
+  // Approximate parameter uncertainty: sigma_u = sigma_noise * sqrt(diag((J'J)^-1)) over the strong columns.
+  if (strong.length >= 1) {
+    const sn = Math.max(rmsAfter, 0.5);
+    const A = strong.map((a) => strong.map((b) => cols[a].reduce((sum, x, i) => sum + x * cols[b][i], 0)));
+    const tr = A.reduce((sum, r, i) => sum + r[i], 0) / A.length;
+    for (let i = 0; i < A.length; i++) A[i][i] += 1e-9 * tr;
+    const inv = invert(A);
+    if (inv) {
+      strong.forEach((k, i) => {
+        const su = sn * Math.sqrt(Math.max(inv[i][i], 0));
+        params[k].sigma = su * (PARAM_DEFS[ids[k]].max - PARAM_DEFS[ids[k]].min);
+        params[k].poorlyDetermined = su > 0.25;
+      });
+    }
+  }
+  const undetermined = params.filter((p) => p.poorlyDetermined);
+  const illConditioned = cond > 15 || maxCorr > 0.9 || undetermined.length > 0;
 
   // ---- warnings ----
   const warnings: FitWarning[] = [];
@@ -416,11 +458,13 @@ export async function fitCalibration(input: FitInput, hooks: FitHooks = {}): Pro
       message: `${bound.map((p) => `${p.label} at its ${p.atBound === 'low' ? 'lower' : 'upper'} limit (${p.atBound === 'low' ? p.min : p.max})`).join('; ')}. The fit wants to go beyond a physically plausible range, so it is absorbing error that is not really that parameter.`,
     });
   }
-  if (illConditioned && pair) {
+  if (illConditioned) {
+    const coupling = pair ? ` Strongest coupling: ${PARAM_DEFS[pair[0]].label} vs ${PARAM_DEFS[pair[1]].label} (|r| = ${maxCorr.toFixed(2)}).` : '';
+    const loose = undetermined.length ? ` Poorly determined by this data (uncertainty over a quarter of the allowed range): ${undetermined.map((p) => p.label).join(', ')}.` : '';
     warnings.push({
       severity: 'warn',
       code: 'ill-conditioned',
-      message: `Ill-conditioned fit (parameter conditioning ${cond.toFixed(0)}, strongest coupling ${PARAM_DEFS[pair[0]].label} vs ${PARAM_DEFS[pair[1]].label}, |r| = ${maxCorr.toFixed(2)}): these parameters trade off against each other, so individual values are not uniquely determined even though the curve matches. Trust the curve, not the split.`,
+      message: `Ill-conditioned fit (conditioning ${cond.toFixed(0)}).${coupling}${loose} These parameters trade off against each other, so individual values are not uniquely determined even though the curve matches. Trust the curve, not the split.`,
     });
   }
   const weak = params.filter((p) => p.weak);
