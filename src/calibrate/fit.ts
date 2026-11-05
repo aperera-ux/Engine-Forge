@@ -351,7 +351,10 @@ export async function fitCalibration(input: FitInput, hooks: FitHooks = {}): Pro
     const du = up[k] - dn[k];
     cols.push(rp.map((x, i) => (x - rm[i]) / du));
   }
-  const colRms = cols.map((c) => Math.sqrt(c.reduce((s, x) => s + x * x, 0) / c.length));
+  // A torque cap that is not active (1.0 = no limit) sits on a cliff edge: its finite-difference
+  // column measures the cost of switching a limit on, not information in the data, so it is left out.
+  const capInactive = (k: number) => ids[k] === 'torqueCap' && uStar[k] >= 0.98;
+  const colRms = cols.map((c, k) => (capInactive(k) ? 0 : Math.sqrt(c.reduce((s, x) => s + x * x, 0) / c.length)));
   const WEAK_PCT = 0.3;
   const params: ParamReport[] = ids.map((id, k) => {
     const d = PARAM_DEFS[id];
@@ -366,11 +369,11 @@ export async function fitCalibration(input: FitInput, hooks: FitHooks = {}): Pro
       value: values[id] as number,
       atBound: id === 'torqueCap' && u >= 0.98 ? null : u <= 0.02 ? 'low' : u >= 0.98 ? 'high' : null,
       sensitivityPct: colRms[k],
-      weak: colRms[k] < WEAK_PCT,
+      weak: !capInactive(k) && colRms[k] < WEAK_PCT,
     };
   });
   // Conditioning of the parameters the data can see: cosine matrix of the Jacobian columns.
-  const strong = ids.map((_, k) => k).filter((k) => !params[k].weak);
+  const strong = ids.map((_, k) => k).filter((k) => !params[k].weak && !capInactive(k));
   let cond = 1;
   let maxCorr = 0;
   let pair: [ParamId, ParamId] | null = null;

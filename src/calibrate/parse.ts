@@ -155,7 +155,6 @@ function splitLine(line: string, delim: string): string[] {
 function cellNumber(raw: string, decimalComma: boolean, thousandsComma: boolean): number | null {
   let s = raw.trim();
   if (!s) return null;
-  s = s.replace(/\s/g, '');
   if (thousandsComma) s = s.replace(/,/g, '');
   else if (decimalComma) s = s.replace(',', '.');
   if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(s)) return null;
@@ -228,7 +227,7 @@ function tokenise(text: string, forceHeader: boolean | undefined): Tokenised | D
   }
   const d = chosen.d;
   const lines = raw.map((l) => splitLine(l, d));
-  const nCols = Math.max(...lines.slice(0, 60).map((l) => l.length));
+  const nCols = chosen.mode;
 
   // Decimal comma: any non-comma-delimited cell like "12,5".
   const commaCells = lines.flat().filter((c) => /^\d*,\d+$/.test(c));
@@ -237,7 +236,7 @@ function tokenise(text: string, forceHeader: boolean | undefined): Tokenised | D
   if (d !== ',') {
     for (let c = 0; c < nCols; c++) {
       const withComma = lines.map((l) => l[c] ?? '').filter((x) => x.includes(','));
-      if (withComma.length && withComma.every((x) => /^\d{1,3}(,\d{3})+$/.test(x)) && lines.some((l) => /^\d+\.\d+$/.test(l[c] ?? ''))) thousandsCols[c] = true;
+      if (withComma.length && withComma.every((x) => /^\d{1,3}(,\d{3})+$/.test(x)) && lines.flat().some((x) => /^\d+\.\d+$/.test(x))) thousandsCols[c] = true;
     }
   }
 
@@ -247,7 +246,6 @@ function tokenise(text: string, forceHeader: boolean | undefined): Tokenised | D
   if (forceHeader !== undefined) hasHeader = forceHeader;
   const headerLine = hasHeader ? raw[0] : null;
   let headers = hasHeader ? (d === ' ' ? splitHeaderWhitespace(headerLine as string) : lines[0]) : [];
-  if (hasHeader && headers.length !== nCols && d === ' ') headers = lines[0];
   const body = hasHeader ? lines.slice(1) : lines;
   // Rows that are not numeric at all (units row, notes, footers) are dropped.
   const rows = body.map(parseRow).filter((r) => r.filter((v) => v !== null).length >= 2);
@@ -575,7 +573,7 @@ export function importDyno(text: string, opts: ImportOptions = {}): DynoImport {
   let dropped = 0;
   const pts: RawPoint[] = [];
   let tqFromPower = false;
-  t.rows.forEach((row, i) => {
+  t.rows.forEach((_row, i) => {
     const rpm = rpmRaw[i];
     if (rpm === null || !Number.isFinite(rpm) || rpm <= 0) {
       dropped++;
@@ -646,10 +644,11 @@ export function importDyno(text: string, opts: ImportOptions = {}): DynoImport {
   const yr = keep.map((p) => p.torqueNm);
   const noisePct = estimateNoisePct(xr, yr);
   let sigma = 0;
-  if (smoothing === 'auto') sigma = noisePct < 0.3 ? 0 : noisePct < 1 ? SIGMA.light : noisePct < 2.5 ? SIGMA.medium : SIGMA.heavy;
+  const spacing = (xr[xr.length - 1] - xr[0]) / (xr.length - 1);
+  // Sparse data (> 150 rpm apart) cannot separate noise from curvature, so auto never smooths it.
+  if (smoothing === 'auto') sigma = spacing > 150 || noisePct < 0.3 ? 0 : noisePct < 1 ? SIGMA.light : noisePct < 2.5 ? SIGMA.medium : SIGMA.heavy;
   else sigma = SIGMA[smoothing];
   // The kernel must not be narrower than the data spacing to be a smoother rather than an interpolator.
-  const spacing = (xr[xr.length - 1] - xr[0]) / (xr.length - 1);
   if (sigma > 0 && sigma < 0.6 * spacing) sigma = 0.6 * spacing;
   const gridLo = Math.ceil(xr[0] / stepRpm) * stepRpm;
   const gridHi = Math.floor(xr[xr.length - 1] / stepRpm) * stepRpm;
