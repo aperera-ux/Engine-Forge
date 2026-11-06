@@ -24,6 +24,8 @@ import { PARAM_DEFS, activeParams, type ParamId, type ParamValues } from './para
 export const RMS_OK_PCT = 3;
 /** Above this the fit is reported as not explaining the data. */
 export const RMS_POOR_PCT = 5;
+/** Friction vs exhaust-restriction column correlation above which the two are reported as inseparable. */
+export const FRIC_EXH_INSEPARABLE = 0.95;
 
 export interface MeasuredTorque {
   rpm: number[];
@@ -51,6 +53,7 @@ export type FitWarningCode =
   | 'poor-fit'
   | 'at-bound'
   | 'ill-conditioned'
+  | 'friction-exhaust-inseparable'
   | 'weak-parameter'
   | 'little-improvement'
   | 'partial-overlap'
@@ -103,7 +106,8 @@ export interface FitOk {
   /** Fixed context the calibration must be re-applied with. */
   capRefNm: number;
   overlap: { loRpm: number; hiRpm: number; n: number; measuredN: number };
-  conditioning: { cond: number; maxCorr: number; pair: [ParamId, ParamId] | null; illConditioned: boolean };
+  /** fricExhCorr: correlation of the friction and exhaust-restriction Jacobian columns (null if either is not fitted or weak). */
+  conditioning: { cond: number; maxCorr: number; pair: [ParamId, ParamId] | null; illConditioned: boolean; fricExhCorr: number | null };
   warnings: FitWarning[];
   /** For plotting: measured grid with model torque before / after. */
   series: { rpm: number[]; measuredNm: number[]; beforeNm: number[]; afterNm: number[] };
@@ -437,6 +441,18 @@ export async function fitCalibration(input: FitInput, hooks: FitHooks = {}): Pro
       });
     }
   }
+  // Friction vs exhaust restriction: both remove torque mostly at high rpm
+  // (FMEP grows with piston speed, back-pressure with the square of the gas
+  // flow), so on many curves they cannot be told apart. Their column
+  // correlation is reported on its own (null when either is not fitted or weak).
+  const kF = ids.indexOf('fricScale');
+  const kE = ids.indexOf('exhScale');
+  let fricExhCorr: number | null = null;
+  if (kF >= 0 && kE >= 0 && !params[kF].weak && !params[kE].weak) {
+    let sfe = 0;
+    for (let i = 0; i < rpmG.length; i++) sfe += cols[kF][i] * cols[kE][i];
+    fricExhCorr = sfe / ((colRms[kF] * colRms[kE] * rpmG.length) || 1);
+  }
   const undetermined = params.filter((p) => p.poorlyDetermined);
   const illConditioned = cond > 15 || maxCorr > 0.9 || undetermined.length > 0;
 
@@ -467,6 +483,13 @@ export async function fitCalibration(input: FitInput, hooks: FitHooks = {}): Pro
       severity: undetermined.length > 0 || cond > 100 ? 'warn' : 'info',
       code: 'ill-conditioned',
       message: `Ill-conditioned fit (conditioning ${cond.toFixed(0)}).${coupling}${loose} These parameters trade off against each other, so individual values are not uniquely determined even though the curve matches. Trust the curve, not the split.`,
+    });
+  }
+  if (fricExhCorr !== null && Math.abs(fricExhCorr) > FRIC_EXH_INSEPARABLE) {
+    warnings.push({
+      severity: 'warn',
+      code: 'friction-exhaust-inseparable',
+      message: `Friction and exhaust restriction are not separable on this curve (|r| = ${Math.abs(fricExhCorr).toFixed(2)}): both take torque away mostly at high rpm, so the data fixes their combined effect, not the split. Read the two fitted values together, not as separate measurements.`,
     });
   }
   const weak = params.filter((p) => p.weak);
@@ -514,7 +537,7 @@ export async function fitCalibration(input: FitInput, hooks: FitHooks = {}): Pro
     params,
     capRefNm: frame.capRefNm,
     overlap: { loRpm: rpmG[0], hiRpm: rpmG[rpmG.length - 1], n: idx.length, measuredN: measured.rpm.length },
-    conditioning: { cond, maxCorr, pair, illConditioned },
+    conditioning: { cond, maxCorr, pair, illConditioned, fricExhCorr },
     warnings,
     series: { rpm: rpmG, measuredNm: tqG, beforeNm, afterNm },
     peaks: { measured: pm, before: peaksOf(rpmG, beforeNm), after: pa },

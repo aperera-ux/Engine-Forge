@@ -188,7 +188,7 @@ export const CAL = {
    * solve stops, N·m. Well inside ecuTorqueTolNm, so the limited curve is flat to ~1e-5
    * relative and does not jump by the tolerance width under small input changes.
    */
-  ecuTorqueSolveTolNm: 0.002,
+  ecuTorqueSolveTolNm: 0.0005,
   /** Knock-aware boost trim: stop at |retard − accepted retard| ≤ this, deg (Illinois on the boost scale). */
   ecuKnockTolDeg: 2e-4,
   /** Knock-aware boost trim: max operating-point solves per rpm (normally 2–5). */
@@ -203,8 +203,14 @@ export const CAL = {
   pointPExhTolRel: 2e-5,
   /** Max evaluations per operating-point fixed point (normally 1–3 from a warm start). */
   pointMaxIters: 30,
-  /** Max extra retard (deg) the ECU accepts above ecuMaxRetardDeg for severe knock before trimming boost further. */
-  ecuRetardSoftCapDeg: 5,
+  /**
+   * Max extra retard (deg) the ECU accepts above ecuMaxRetardDeg for severe knock before trimming boost further.
+   * ECU strategy, range 0–8°. Train-only refit §18.2 (with the knock severity measured at the scheduled
+   * target): train RMS falls monotonically with lower values; the 21-set guard allows 1.8, but below ~3.25
+   * the sanity rules 'knock retard rises with boost / bore' fail (retard saturates and only boost is cut),
+   * so 5 → 3.5, the lowest value with margin that keeps them.
+   */
+  ecuRetardSoftCapDeg: 3.5,
   /** Fraction of the excess retard (beyond ecuMaxRetardDeg) the ECU still accepts. */
   ecuRetardSoft: 0.7,
   /** Relative reduction of the end-gas compression exponent at 1000 rpm (wall heat loss). */
@@ -243,6 +249,16 @@ export const CAL = {
   compSpeedLineKnee: 0.85,
   /** Turbine frame size exponent on inducer diameter (turbine area ∝ A/R · D^exp). */
   turbineFrameExp: 1.5,
+  /**
+   * Turbocharger bearing (mechanical) loss of one 50 mm-inducer turbo at
+   * compressor PR 2, W (∝ PR^0.286 − 1, i.e. ∝ shaft speed², and ∝ wheel size;
+   * boost.ts › bearingLoss). Measured passenger-car turbo friction losses are a
+   * few hundred W at mid speed with warm oil, up to 1–2 kW at top speed or cold
+   * oil (turbocharger gas-stand friction measurements, e.g. Serrano et al. 2013,
+   * Deligant et al. 2011; values from memory, see physics_audit §18.2).
+   * Plausible range 250–1000 W.
+   */
+  turboBearingLossW: 500,
   /** Extra low-flow turbine efficiency from twin-scroll pulse separation. */
   twinScrollPulse: 0.5,
   /** Supercharger pulley sizing: crank rpm where targetBoostBar is reached (default). */

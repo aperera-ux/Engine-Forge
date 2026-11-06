@@ -6,15 +6,16 @@
  *  - hardware shifts applied to the EngineConfig before simulate()
  *    (runner length, cam timing, boost target);
  *  - SimOptions.calibration multipliers that act inside the simulator's
- *    operating-point solve (volumetric-efficiency scale, friction scale, ECU
- *    torque cap), so the ECU, knock and turbo models respond to them.
+ *    operating-point solve (volumetric-efficiency scale, friction scale,
+ *    exhaust-restriction scale, ECU torque cap), so the gas exchange, ECU,
+ *    knock and turbo models respond to them.
  *
  * The ranges are deliberately narrow. A parameter that needs to leave its range
  * to match the data is reported as "at bound" rather than silently absorbed.
  */
 import type { EngineConfig } from '../sim/types';
 
-export type ParamId = 'veScale' | 'fricScale' | 'runnerScale' | 'camShiftDeg' | 'boostScale' | 'torqueCap';
+export type ParamId = 'veScale' | 'fricScale' | 'exhScale' | 'runnerScale' | 'camShiftDeg' | 'boostScale' | 'torqueCap';
 
 export interface ParamDef {
   id: ParamId;
@@ -59,6 +60,18 @@ export const PARAM_DEFS: Record<ParamId, ParamDef> = {
     decimals: 3,
     what: 'Multiplier on mechanical friction mean effective pressure (rings, bearings, valvetrain, accessories), applied before the ECU torque limiter. Pumping work comes from the gas-exchange model and is not scaled.',
     range: '0.7 to 1.5. Break-in state, oil viscosity and ring tension move motoring friction by about +/-30 % between otherwise identical engines (Chen-Flynn constants differ by that much between engine families).',
+    applies: () => true,
+  },
+  exhScale: {
+    id: 'exhScale',
+    label: 'Exhaust restriction scale',
+    unit: 'x',
+    nominal: 1,
+    min: 0.4,
+    max: 2,
+    decimals: 3,
+    what: 'Multiplier on the exhaust-system pressure drop the model estimates from header type and primary diameter (turbo: manifold loss and the post-turbine system). It acts inside the gas exchange: back-pressure moves trapped VE, residual gas and pumping work together, mostly at high flow. Catalyst, mufflers, collector and tail-pipe are not in the build description, and crate-engine dyno charts are run on open dyno headers.',
+    range: '0.4 to 2.0. Back-pressure at rated flow is roughly 0.1 to 0.4 bar for production systems and a fraction of that for open dyno headers (Heywood §6.6 / Blair Ch. 6 orders of magnitude, from memory); the header-only estimate is uncertain by about a factor of two either way. It is a different loss from friction: it grows with the square of the gas flow and changes VE, while friction grows with piston speed and does not.',
     applies: () => true,
   },
   runnerScale: {

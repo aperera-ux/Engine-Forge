@@ -55,11 +55,12 @@ describe('breathing-table cache', () => {
       });
 
   // SimOptions (applyOemLimits, includeUnlimited, calibration) are not part of the
-  // key: no option reaches the table (calibration.veScale multiplies the looked-up
-  // VE, the torque cap acts through the ECU). Guard: cached == uncached with them set.
+  // key: no option reaches the table (calibration.veScale multiplies the looked-up VE,
+  // exhaustRestrictionScale moves the pressure ratio the lookup is corrected to;
+  // the torque cap acts through the ECU). Guard: cached == uncached with them set.
   for (const base of BASES)
     it(`${base.induction}: SimOptions.calibration does not affect the breathing table`, () => {
-      const opts = { includeUnlimited: true, calibration: { veScale: 1.07, frictionScale: 1.2, torqueCapNm: 0.8 * simulate(base).peakTorqueNm } };
+      const opts = { includeUnlimited: true, calibration: { veScale: 1.07, frictionScale: 1.2, exhaustRestrictionScale: 0.6, torqueCapNm: 0.8 * simulate(base).peakTorqueNm } };
       setBreathingCache(false);
       const ref = simulate(base, opts);
       setBreathingCache(true);

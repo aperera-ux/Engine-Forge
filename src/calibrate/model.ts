@@ -1,7 +1,7 @@
 /**
  * The calibrated model: simulate() (public API only) with the parameter vector
- * applied. Hardware shifts go in through the EngineConfig; the VE and friction
- * scales and the torque cap go in through SimOptions.calibration, inside the
+ * applied. Hardware shifts go in through the EngineConfig; the VE, friction and
+ * exhaust-restriction scales and the torque cap go in through SimOptions.calibration, inside the
  * simulator's operating-point solve (no post-hoc rescaling of the result).
  */
 import { simulate } from '../sim/engine';
@@ -50,14 +50,17 @@ export function calibrationFor(frame: Pick<ModelFrame, 'capRefNm'>, v: ParamValu
   const out: SimCalibration = {};
   const ve = v.veScale === undefined ? 1 : clampParam('veScale', v.veScale);
   const fr = v.fricScale === undefined ? 1 : clampParam('fricScale', v.fricScale);
+  const ex = v.exhScale === undefined ? 1 : clampParam('exhScale', v.exhScale);
   const cap = v.torqueCap === undefined ? 1 : clampParam('torqueCap', v.torqueCap);
   if (ve !== 1) out.veScale = ve;
   if (fr !== 1) out.frictionScale = fr;
+  if (ex !== 1) out.exhaustRestrictionScale = ex;
   if (cap < 0.995 && frame.capRefNm > 0) out.torqueCapNm = cap * frame.capRefNm;
   return out;
 }
 
-const isIdentity = (k: SimCalibration) => k.veScale === undefined && k.frictionScale === undefined && k.torqueCapNm === undefined;
+const isIdentity = (k: SimCalibration) =>
+  k.veScale === undefined && k.frictionScale === undefined && k.exhaustRestrictionScale === undefined && k.torqueCapNm === undefined;
 
 /** simulate() for a build with a calibration applied. */
 export function simulateCalibratedConfig(config: EngineConfig, opts: SimOptions, k: SimCalibration): SimResult {

@@ -105,6 +105,59 @@ describe('frictionScale acts on mechanical FMEP before the ECU', () => {
   });
 });
 
+describe('exhaustRestrictionScale acts on the exhaust back-pressure inside the gas exchange (§18.3)', () => {
+  const LS7 = eng('gm-ls7');
+  it('identity at 1 (bit-identical), NaN ignored', () => {
+    for (const c of [LS7, B58, HELLCAT]) {
+      const ref = simulate(c, { includeUnlimited: true });
+      expect(simulate(c, { includeUnlimited: true, calibration: { exhaustRestrictionScale: 1 } })).toEqual(ref);
+      expect(simulate(c, { includeUnlimited: true, calibration: { exhaustRestrictionScale: NaN } })).toEqual(ref);
+    }
+  });
+  it('NA: a freer exhaust lowers back-pressure and pumping, raises VE; the effect grows with flow', () => {
+    const a = simulate(LS7);
+    const b = simulate(LS7, { calibration: { exhaustRestrictionScale: 0.5 } });
+    const gain: number[] = [];
+    a.curve.forEach((p, i) => {
+      const q = b.curve[i];
+      // Back-pressure above ambient halves (same flow to first order; the flow rises slightly).
+      const dp0 = (p.exhaustPressureBar ?? 0) - 1.01325;
+      const dp1 = (q.exhaustPressureBar ?? 0) - 1.01325;
+      expect(dp1 / dp0).toBeGreaterThan(0.45);
+      expect(dp1 / dp0).toBeLessThan(0.56);
+      expect(q.pmepBar!).toBeLessThan(p.pmepBar!);
+      expect(q.volumetricEfficiency).toBeGreaterThanOrEqual(p.volumetricEfficiency);
+      expect(q.imepBar).toBeGreaterThanOrEqual(p.imepBar - 1e-9);
+      expect(q.fmepBar - q.pmepBar!).toBeCloseTo(p.fmepBar - p.pmepBar!, 2); // mechanical friction untouched (to the pMax effect)
+      gain.push(q.torqueNm / p.torqueNm - 1);
+    });
+    // Back-pressure ∝ flow², so the gain at redline is several times the gain at 1000 rpm.
+    expect(gain[gain.length - 1]).toBeGreaterThan(3 * gain[0]);
+    expect(gain[gain.length - 1]).toBeGreaterThan(0.005);
+  });
+  it('turbo: a more restrictive post-turbine system raises turbine-inlet pressure and costs boost where spool-limited', () => {
+    const o = { applyOemLimits: false };
+    const a = simulate(B58, o);
+    const b = simulate(B58, { ...o, calibration: { exhaustRestrictionScale: 2 } });
+    let n = 0;
+    a.curve.forEach((p, i) => {
+      const q = b.curve[i];
+      expect(q.exhaustPressureBar!).toBeGreaterThanOrEqual(p.exhaustPressureBar! - 1e-6);
+      if (p.boostBar < 0.5 * B58.turbo.targetBoostBar) {
+        n++;
+        expect(q.boostBar).toBeLessThanOrEqual(p.boostBar + 1e-6);
+      }
+    });
+    expect(n).toBeGreaterThan(0);
+    expect(pointSolveStats.unconverged).toBe(0);
+  });
+  it('is continuous: ±1e-4 gives a near-linear torque response', () => {
+    const t = (k: number) => simulate(LS7, { calibration: { exhaustRestrictionScale: k } }).curve.map((p) => p.torqueNm);
+    const [m, z, p] = [t(1 - 1e-4), t(1), t(1 + 1e-4)];
+    z.forEach((v, i) => expect(Math.abs(p[i] + m[i] - 2 * v)).toBeLessThan(1e-6 * v + 1e-3 * Math.abs(p[i] - m[i])));
+  });
+});
+
 describe('torqueCapNm', () => {
   for (const [c, frac] of [
     [LS3, 0.8],

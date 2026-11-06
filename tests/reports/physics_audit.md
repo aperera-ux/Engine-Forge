@@ -1036,3 +1036,124 @@ It is defined in `src/sim/types.ts` (`SimCalibration`). It lives in `SimOptions`
   - The 43 are identical by name to main 9e1e9d6, checked by running main's `src` against the same suites: 28 envelopes, 6 sanity, 6 fuzz, 2 continuity, 1 "bigger cam".
   - `tsc -b` is clean.
   - The `tests/reports/data/*.json` rewrites from the runs were reverted.
+
+## 18. Spool branch, knock-severity path dependence, exhaust-restriction calibration
+
+Three issues from §17, fixed in this order (worktree `agent-aa8f39748afaeeae5`, from main 92f2a6f). Snapshot baseline (67 configs × 3 modes, every `SimResult` leaf) and `SIM_STATS=1` were written before any change.
+
+### 18.1 Spool fold: the branch is chosen on the coupled system
+**What was wrong.** `solveTurbo` picks the lowest root of the turbine/compressor balance at the *frozen* exhaust state (EGT, p3) of each fixed-point iterate. Near a fold of the coupled balance the set of roots at frozen state changes with the iterate, so the map the Broyden solve iterates on is discontinuous. On B58 at `veScale` 1.03–1.08 the solve at the scheduled target landed on the high branch (target reached, 454 N·m, above the 447 N·m limit), and the torque limiter's bracket then mixed iterates from both branches: up to 30 unconverged fixed points per call, EGT residual up to 24 K, 19–33 ms.
+- §17 read the final 354 N·m at 1000 rpm as "below the limit". It is in fact the correct **low (spool-limited) branch**: the coupled margin (below) has its lowest root at PR 1.305, boost 0.31 bar. The 450 N·m limit is not reached at 1000 rpm at any `veScale` ≤ 1.15 (the low branch disappears at `veScale` ≈ 1.085, where 1000 rpm jumps from 380 to 410 N·m: a genuine fold).
+- A second, independent cause of stalled fixed points was found on the way: the turbo exhaust-manifold loss was evaluated at the exhaust flow of the *previous* `flowAt` call. Its value depended on the call history inside `solveTurbo` (up to ~1000 Pa at B58 5800 rpm), so G(x) was not a function of x and the solve stalled at 12–20× tolerance (B58 2400 and 5800 rpm at `veScale` 0.86/0.92).
+
+**What it does now** (`engine.ts › spoolCeiling`, `boost.ts › SpoolControl`).
+- With the wastegate shut, the coupled spool margin m(PR) = (P_turbine − P_shaft)/P_shaft is evaluated with the compressor PR imposed and each point a converged exhaust-state fixed point (`prForce`). A turbo spooling up from rest at WOT accelerates while m > 0 and stops at the **lowest root**, unless the boost target, the speed line or the turbine-inlet limit stop it first. That root does not depend on the boost target (the gate is shut below it), so it is computed once per rpm and imposed on every operating point at that rpm (scheduled, torque-limited, knock-trimmed, protection) as an extra feasibility term `prCap`; the frozen-state turbine term and its lowest-root scan are then switched off.
+- Scan: PR on a fixed grid 1.08^k (independent of warm starts) from the PR established at the previous rpm (m at fixed PR rises with rpm) until m ≤ 0 (root → Illinois to 1e-9 with the fixed points at 0.01× tolerance, so the fixed-point tolerance does not become PR noise), or the target / speed line / ceiling is reached. Narrow dips between nodes: golden-section minimum of m around every sampled interior minimum below 0.12. Once an rpm shows no root and m ≥ 0.5 up to its target, the scan is switched off for the rest of the curve and the per-point turbine term is used again (it is then far from binding). A forced point that does not converge ends the scan and leaves the per-point term in charge (`pointSolveStats.spoolUnconverged`; 0 on every config and sweep tested).
+- Manifold loss: evaluated at the flow implied by the caller's flow iterate (`solveTurbo`'s φ, which converges with φ), so it is a function of the state only.
+- **Non-convergence is flagged, never silent.** `SimResult.solverUnconverged` (additive, `types.ts`) lists any curve point whose fixed point stopped at its cap (with residuals) or whose ECU solve stopped at its iteration cap, and a `solver-unconverged` warning is added. Absent in the normal case.
+
+**Results.**
+
+| B58, `veScale` | 1.04 | 1.05 | 1.06 | 1.07 | 1.08 |
+|---|---|---|---|---|---|
+| Unconverged fixed points, before → after | 11 → 0 | 30 → 0 | 8 → 0 | 11 → 0 | 3 → 0 |
+| 1000 rpm torque, N·m (before → after) | 346.3 → 346.2 | 354.3 → 354.3 | 363.3 → 361.0 | 373.7 → 367.3 | 388.6 → 380.4 |
+| Single-call time, ms (before → after) | 18 → 8 | 32 → 8 | 17 → 8 | 20 → 9 | 12 → 9 |
+
+- Before, the 1.06–1.08 values were unconverged mixtures of the two branches; after, 1000 rpm torque is monotone in `veScale` up to the fold.
+- New `src/sim/__tests__/spoolFold.test.ts` (10 tests): B58, N74, EA888 gen 3, Ford 1.0 and EJ257 × `veScale` 0.85–1.15 (31 values): zero unconverged fixed-point and ECU solves, EGT residual ≤ 2× tolerance, flags consistent with the warning, torque non-decreasing in `veScale` at non-knocking boosted points, ≤ 650 operating-point evaluations per call (deterministic; 13–18 µs each), and median wall-clock < 10 ms per `veScale` value (`SIM_TIMING=1`, run alone; < 25 ms in the parallel full suite, where other files share the CPU). All five pass the 10 ms check run alone; the binding case is EA888 gen 3 at `veScale` 1.12–1.15, at about 9.5–10 ms (it was 14.9 ms on main at 1.15; the §18.2 solve reordering and a knock-trim secant pre-step brought it down).
+- **Outputs moved > 0.1 % (defaults):** torque at 2 points only, EA888 gen 3 1300 rpm +0.11 % (coupled root instead of the frozen-state root) and 2.7T 1600 rpm −0.10 %. Other moved leaves are pmep near zero on boosted low-rpm points (relative changes up to 44 % on values of −0.004 bar: the manifold-loss fix) and knock retard on values below 0.02°. No peak or peak-rpm moved. `SIM_STATS`: train 5.8977 → 5.8975, holdout 7.8183 → 7.8188, 21-set unchanged.
+
+### 18.2 Knock severity at the scheduled target, turbo bearing loss, ECU retard refit
+**Path dependence fixed.** The accepted retard `lim = max + cap·tanh(soft·(k0 − max)/cap)` now takes `k0` from the operating point at the **scheduled** target (evaluated lazily when the torque-limit warm start skipped it). The ECU target is therefore min(torque-limited, knock-trimmed), whatever order they are solved in: the solve order is chosen for cost only (knock first when the previous rpm ended knock-limited, so the torque bracket starts below the knock target; else torque first). New `src/sim/__tests__/knockPath.test.ts` (25 tests) checks the defining property, that a torque limit only clips the curve, T(L) = min(L, T(no limit)) at every rpm to 0.05 N·m, on Ford 1.0, B58, EA888 gen 3 and Ford 3.5 (power limit removed) × `veScale` 0.95/1/1.05 × `ecuMaxRetardDeg` 9/10. The old rule fails 16 of the 25. Ford 1.0 at `veScale` 1.05 now peaks at 170.0 N·m (was 167.4).
+
+**What the fix exposed (train only).** Train RMS 5.8977 → 5.9354, from B58 1250 rpm (433 → 447 N·m, measured 406) and EA113 1250/1500 rpm (+4 / +6 N·m, already +24 % / +15 % over). Per point (train boosted curves, ≤ 1750 rpm), the remaining over-predictions are of two kinds:
+- knock-trimmed points that the model holds at a higher boost than the engine reaches (EA113 1250–1500: boost 0.64–0.74 bar at 11.6–11.8° retard, +18 / +14 %; B58 1250 at 11.2°);
+- a spool transition that is too abrupt (N63: −12 % at 1250, +11.5 % at 1500 rpm), the positive spool feedback of §18.1 (VE and EGT rise with boost).
+
+**Physics added: turbocharger bearing friction.** The turbine had to supply only the compressor's isentropic work divided by its efficiency; the rotor's journal and thrust bearings were free. Hydrodynamic bearings dissipate ∝ μN² (Petroff); along the operating line N² ∝ Δh_is ∝ PR^0.286 − 1, and for similar bearings ∝ wheel size. `CAL.turboBearingLossW` = 500 W for one 50 mm turbo at PR 2 (measured passenger-car turbo friction is a few hundred W at mid speed with warm oil and 1–2 kW at top speed or with cold oil; gas-stand measurements such as Serrano et al. 2013 and Deligant et al. 2011, values from memory and not re-checked). It is 3–5 % of the shaft power at rated flow but 10–20 % in the spool region, where the compressor absorbs a few kW. It was **set at the middle of its range, not fitted**: train 5.9354 → 5.9292 (250 W would give 5.923, 1000 W 5.942). It moves the spool-limited points, not the knock-limited ones, so it removes only a small part of the exposed error (EA113 1000 rpm +11.7 → +7.7 %, 1250 rpm +25.8 → +21.4 %), and it lowers already under-predicted points (N20 1000 rpm −2 → −9 %, N63 1000–1250). **The low-rpm knock/spool over-prediction is therefore not resolved**; it is now visible instead of masked.
+
+**Train-only refit of the ECU retard knobs** (`regression/refit.test.ts` and a grid harness; train curves and the 21-set guard only). One-at-a-time scan, with the fix and the bearing loss in place (baseline 5.9292):
+
+| Knob (range) | Values → train RMS | 21-set max \|tq\| (guard ≤ 8.886) |
+|---|---|---|
+| `ecuMaxRetardDeg` (6–15°) | 7: 5.875, 8: 5.894, 9: 5.913, 11: 5.936 | 7: 12.1, 8: 10.1, 9: 8.49 |
+| `ecuRetardSoftCapDeg` (0–8°) | 1: 5.857, 1.7: 5.878, 1.8: 5.881, 2: 5.886, 3: 5.908 | 1: 10.7, 1.7: 8.92, 1.8: 8.74, 2: 8.49 |
+| `ecuRetardSoft` (0–1) | 0.3: 5.881, 0.5: 5.911, 0.9: 5.936 | 0.3: 10.7 |
+
+- Every helpful direction lowers torque at knock-limited boosted points, so the guard that binds is the 21-set max |peak torque error| (Ford 3.5, under-predicted). Joint fits trade the three knobs off against each other (as in §17.1), so one knob was fitted.
+- **First candidate, `ecuRetardSoftCapDeg` 1.8** (the lowest value inside the 21-set guard; 1.7 breaks it): train 5.881. It was frozen and the holdout scored once (7.792), but the full suite then showed **two new failures**, sanity Rule 1 ("2.0 CR 9.5 on gas93: knock retard rises beyond ~1.5 bar") and Rule 19 ("EA888 @1.5 bar: bore 78 → 88 mm raises knock retard"). With so little accepted retard beyond 10°, the retard saturates and knock shows up only as boost cut, so the retard no longer rises with knock severity. A real ECU does trim boost, but it also keeps some retard authority, and these rules encode that; they are not mine to rewrite. Scan: 3.0 fails Rule 1 by 0.07°, 3.25 passes with no margin.
+- **Adopted: `ecuRetardSoftCapDeg` 5 → 3.5**, the lowest value with margin that keeps every sanity rule. `ecuMaxRetardDeg` (10) and `ecuRetardSoft` (0.7) are unchanged. 3.5 is inside the 0–8° range and not at a bound.
+- **The trade, stated plainly.** Train RMS ends at **5.916, worse than main's 5.898 by 0.019 pt**. The consistent knock rule costs 0.037 pt, the bearing loss gives back 0.006 and the refit 0.013. The task allowed for this outcome ("adopt the fix if physically consistent, and document it"), and it was adopted: the old 5.898 was partly a path-dependent trim pulling limited low-rpm points below their limit, and that agreed with the data only by accident.
+- **Holdout was scored twice**, once for the 1.8 candidate and once for the final 3.5 constants. Both were frozen first, and neither score was used to choose (3.5 was forced by the sanity rules). Final holdout 7.818 → **7.792**.
+- `CAL.ecuTorqueSolveTolNm` 0.002 → 0.0005 N·m. With two solve orders, a limited point can land at either end of the tolerance band, and the 1e-3 perturbation test (Ford 1.0 bore, 2950 rpm) read that as a 0.004 N·m jump. The converged operating points carry about 1e-5 relative torque noise, which can exceed the tighter band. A bracket that collapses to 1e-7 relative of the actuator with |f| still above tolerance is therefore a located root, counted in `pointSolveStats.ecuCollapsed` and not as ECU non-convergence. The iteration cap is still flagged.
+- Knock trim: a secant pre-step before the far bracket end (x = 0.02). This changes only the iteration path: ≤ 0.054 % on any output, cost −10 % at high `veScale`.
+- Warnings: a knock-limited boost shortfall below 80 % of target that never gets near target now also raises a `knock` warning, since knock can show up as boost cut instead of retard.
+
+| Statistic (`SIM_STATS=1`) | main (§17) | after §18.1 | final (§18.2–18.3) |
+|---|---|---|---|
+| Train RMS, all / NA / boosted | 5.898 / 6.845 / 3.055 | 5.898 / 6.845 / 3.054 | **5.916** / 6.845 / 3.130 |
+| Holdout RMS, all / NA / boosted (frozen constants) | 7.818 / 8.232 / 7.238 | 7.819 / 8.232 / 7.240 | **7.792** / 8.232 / 7.175 |
+| 21-set median / mean / max \|hp err\| | 4.564 / 5.509 / 13.796 | unchanged | 4.564 / **5.500** / 13.796 |
+| 21-set max \|tq err\|; tq-rpm ±10 % | 8.49 %; 12/21 | unchanged | 8.49 %; 12/21 |
+
+- 21-set torque-peak rpm: B58 1600 → 1400 (the published plateau starts at 1380), Ford 1.0 2650 → 2350.
+
+**Outputs moved > 0.1 %, final against the pre-change baseline (default mode; NA engines unchanged, Hellcat ≤ 0.1 %).**
+
+| Config | Torque points > 0.1 % (worst) | Peaks | Main cause |
+|---|---|---|---|
+| Drag build | 30/33 (−55 % @3750) | hp 749.8 → 748.3 | bearing loss moves its spool fold one grid step (3500/3750 → 3750/4000 rpm) |
+| Ford 1.0 | 13/38 (−22 % @1600) | tq-rpm 2650 → 2350 | spool region (bearing loss) and knock trim at low rpm |
+| Ford 3.5 | 35/35 (−7 % @1450) | hp 408.7 → 408.2; tq 594.5 → 591.6 | soft cap |
+| 2JZ, EJ257, hypercar, 2.7T, TT RS, N74, N63, N55, N20, EA888 gen 1/3, 1.8 TFSI, EA113, B58 | 1–13 (−2.6 … −16 %, all ≤ 2000 rpm) | B58 tq-rpm 1600 → 1400; EA113 tq-rpm 1750 → 1600 and power rpm 5500 → 5200; 2.7T tq-rpm 1800 → 2200; N55 1000 → 1200; EA888 gen 3 tq 349.5 → 350.0 (now at its limit) | spool region (bearing loss); knock-limited low rpm (knock rule + soft cap) |
+
+- Boost, MAP, EGT, retard, spark, BSFC and `uncertainty` follow at the same points.
+- Warnings changed on Ford 1.0, Ford 3.5, EA113 and the drag build (knock and boost-target wording).
+
+### 18.3 Exhaust-restriction calibration parameter
+**What.** `SimCalibration.exhaustRestrictionScale` (additive in `types.ts`; default 1; clamped to 0.1–3) multiplies the exhaust-system pressure drop above ambient:
+- for NA and supercharged engines, the header-type back-pressure;
+- for turbos, the manifold loss ahead of the turbine and the post-turbine p4 − ambient.
+
+It acts **inside the gas exchange**. Back-pressure enters the breathing lookup through the exhaust/intake pressure ratio, and the lookup's analytic correction moves trapped VE, residual fraction and pumping work together; for turbos it also moves the turbine expansion ratio. The breathing table is unchanged, so the cache key stays valid (guarded in `breathingCache.test.ts`).
+- Identity at 1 is exact, written as a branch rather than as P + 1·(p − P): `SIM_SNAPSHOT=check`, 67 configs × 3 modes, 0 differing leaves.
+- `calibrationOptions.test.ts` +4 tests: identity, NA direction and flow² growth, turbo back-pressure, ±1e-4 continuity.
+
+**`src/calibrate`.**
+- New parameter `exhScale`, range 0.4–2.0, with its justification in `params.ts`. Production systems drop roughly 0.1–0.4 bar at rated flow, and open dyno headers a fraction of that. The header-only estimate is good to about ×2 either way. The loss grows with gas flow squared and changes VE, whereas friction grows with piston speed and does not.
+- `model.ts` maps it to `exhaustRestrictionScale`; identity is omitted.
+- `fit.ts` reports `conditioning.fricExhCorr`, the correlation of the friction and exhaust Jacobian columns, and adds a `friction-exhaust-inseparable` **warn** when |r| > 0.95.
+
+**44-curve refit (`CAL_REFIT44=1`, final constants; A/B on the same sim with `CAL_REFIT44_EXCLUDE=exhScale`).**
+
+| Parameter set | Mean RMS after | Curves above 5 % |
+|---|---|---|
+| main (§17), without exhScale | 2.954 | 6 |
+| this sim, without exhScale | 2.973 | 6 |
+| **this sim, with exhScale (adopted)** | **2.929** | **6** (S85, 2.7T, L8P, HT383, ZZ572/720, ZZ632) |
+
+- **The parameter recovers only 0.044 pt of the 0.30 pt** that §17 lost by making friction mechanical-only. On the GM pushrod curves: LS7 3.87 → 3.67, LT1 4.38 → 4.30, HT383 7.26 → 7.06, ZZ632 12.76 → 12.60, L8P 5.88 → 5.78.
+  - What the old post-hoc fmep scaling reached (2.655) came from scaling the valve-flow pumping work of the gas-exchange cycle. That work is set by the 2-valve heads' valve and port restriction, not by the exhaust system.
+  - A pumping-work multiplier would recover it numerically, but it would not be a physical quantity, so I did not add one. The pushrod deficit belongs in the breathing model (§12–13).
+- **Identifiability: friction and exhaust restriction are mostly inseparable.**
+  - Column correlation |r| = 0.18–1.00, median 0.96.
+  - The fit raises `friction-exhaust-inseparable` on 23 of the 44 curves.
+  - `exhScale` ends at a bound in 20 of 44 fits, usually together with `fricScale` at its opposite or same bound.
+  - The warning tells the user to read the two values together. On most curves only their sum is determined.
+- A full 44-curve run takes 118 s, up from 103 s without the parameter.
+
+### 18.4 Cost and tests
+- **Timing** (`SIM_SNAPSHOT=time`, warm median of 31):
+  - max 8.27 ms (B58), then EA113 7.8 and Ford 3.5 7.0. Main was 7.56 ms max.
+  - Median over configs 0.66 ms.
+  - Every preset is under 10 ms.
+  - Cold (`SIM_COLD=1`, breathing cache off): max 10.36 ms (B58), against 9.15 on main. That is 0.36 ms over the budget, and only on the first call after a hardware edit.
+  - The added cost is the spool scan, at 15–90 forced points per call, plus more knock-trim solves.
+- **`veScale` sweeps 0.85–1.15:** all five engines pass the 10 ms check run alone, and ≤ 650 evaluations per call.
+- **Full `npx vitest run`** after merging main c36aa52: 961 tests, **43 failed**.
+  - These are identical by name to main's 43. I checked by running main's `src/sim` and `src/calibrate` against the same suites.
+  - `tsc -b` is clean.
+  - The `tests/reports/data/*.json` rewrites were reverted.
+  - `simulate < 15 ms` (engine.test.ts) still fails intermittently under parallel load and passes alone (§13).
+- **New tests:** `spoolFold.test.ts` (10), `knockPath.test.ts` (25), and +4 calibrationOptions, +1 fit.

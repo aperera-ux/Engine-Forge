@@ -13,7 +13,7 @@ import { computeLayout } from './layout';
 import { CAL, HP_W, LBFT_PER_NM, P_AMB_PA, R_AIR, RHO_AMB, T_AMB_K } from './model/constants';
 import { computeGeometry, maxPistonAccel, meanPistonSpeed, sanitize, type Geometry } from './model/geometry';
 import { BreathingModel, chargeWallHeating, exhaustBackPressure, solveThrottle, type VeResult } from './model/airflow';
-import { solveSupercharger, solveTurbo, type BoostState, type FlowAt, type TurboHint } from './model/boost';
+import { solveSupercharger, solveTurbo, type BoostState, type FlowAt, type SpoolControl, type TurboHint } from './model/boost';
 import {
   burnDuration,
   evapCooling,
@@ -44,12 +44,16 @@ interface PointCtx {
   /** SimOptions.calibration: scale on the gas-exchange VE and on mechanical FMEP (1 = identity). */
   veScale: number;
   fricScale: number;
+  /** SimOptions.calibration.exhaustRestrictionScale: scale on the exhaust-system pressure drop above ambient (1 = identity). */
+  exhScale: number;
   /**
    * ECU throttle torque control: manifold-pressure ceiling, Pa absolute
    * (Infinity = wide open). Used only where a torque limit cannot be met by
    * the boost target (NA engines, or boost already at zero).
    */
   pManCap: number;
+  /** Turbo spool-branch control at this rpm (spoolCeiling): PR cap, or a forced PR for the scan; null = none. */
+  spool: SpoolControl | null;
   /**
    * Warm starts shared by all evaluations of one simulate() call (knock retard,
    * compressor PR / flow fraction, fixed-point Jacobian). They change only the
@@ -75,6 +79,8 @@ interface PointOut {
   /** The EGT / exhaust-pressure guesses the point was evaluated at (= egtK / pExhCyl at a fixed point). */
   egtIn: number;
   pExhIn: number;
+  /** solvePoint: true when the exhaust-state fixed point converged (false = best residual returned). */
+  converged?: boolean;
 }
 
 function rpmGrid(c: EngineConfig): number[] {
@@ -100,10 +106,16 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   // Turbo exhaust manifold between ports and turbine: friction/dynamic-head loss
   // by manifold type (log manifolds are compact but restrictive at high flow).
   let lastMExh = 0;
-  const manifoldLoss = (mExh: number) => (turbo ? CAL.turboManifoldLossFrac * (exhaustBackPressure(c, mExh, tExhPort) - P_AMB_PA) : 0);
+  // Exhaust-system back-pressure, scaled by the calibration's restriction
+  // scale (exactly the model value at 1). It enters the gas exchange through
+  // the exhaust/intake pressure ratio of the breathing lookup (VE, residual,
+  // pumping), and the turbine through p3 / p4.
+  const kExh = ctx.exhScale;
+  const backPressure = (m: number, t: number) => (kExh === 1 ? exhaustBackPressure(c, m, t) : P_AMB_PA + kExh * (exhaustBackPressure(c, m, t) - P_AMB_PA));
+  const manifoldLoss = (mExh: number) => (turbo ? CAL.turboManifoldLossFrac * (exhaustBackPressure(c, mExh, tExhPort) - P_AMB_PA) * kExh : 0);
 
-  const flowAt = (pUp: number, tUp: number, pExhTurb: number): FlowAt => {
-    const pExhCyl = pExhTurb + manifoldLoss(lastMExh);
+  const flowAt1 = (pUp: number, tUp: number, pExhTurb: number, mLoss: number): FlowAt => {
+    const pExhCyl = pExhTurb + manifoldLoss(mLoss);
     const tFresh = Math.max(200, tUp + chargeWallHeating(rpm, c.itb, tUp) - ctx.evapVe);
     // VE depends only weakly on the throttle drop (via pe/pi): one evaluation.
     // The ECU's cam choice (VVT phase / variable lift) is made inside the lookup.
@@ -135,19 +147,27 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
     lastMExh = mAir * (1 + 1 / afrAct);
     return { mAir, mExh: lastMExh, pMan, tExh: turbo ? tExhPort - 40 : tExhPort, pCtl: pManWot };
   };
+  // The manifold loss is evaluated at the exhaust flow mAirLoss·(1 + 1/AFR)
+  // the caller passes (solveTurbo: the flow implied by its compressor
+  // flow-fraction iterate φ, which converges with φ). It was lagged by one
+  // flowAt call, which made the result depend on the call history inside
+  // solveTurbo (up to ~1e3 Pa at 5800 rpm on the B58), so the exhaust-state
+  // fixed point could stall without converging.
+  const flowAt = (pUp: number, tUp: number, pExhTurb: number, mAirLoss?: number): FlowAt =>
+    flowAt1(pUp, tUp, pExhTurb, turbo ? (mAirLoss ?? lastMExh / (1 + 1 / afrAct)) * (1 + 1 / afrAct) : 0);
 
   let boost: BoostState | null = null;
   let flow: FlowAt;
   let pExhCyl: number;
   let tCharge = T_AMB_K;
   if (turbo) {
-    boost = solveTurbo(c, flowAt, pExhGuess, ctx.hints.turbo);
+    boost = solveTurbo(c, flowAt, pExhGuess, ctx.hints.turbo, ctx.spool, kExh);
     // Re-evaluate at the converged state so lastVe matches.
-    flow = flowAt(boost.pUp, boost.tCharge, boost.pExhCyl);
+    flow = flowAt(boost.pUp, boost.tCharge, boost.pExhCyl, boost.flow.mAir);
     pExhCyl = boost.pExhCyl + manifoldLoss(flow.mExh);
     tCharge = boost.tCharge;
   } else if (c.induction === 'supercharger') {
-    boost = solveSupercharger(c, rpm, flowAt, (m, t) => exhaustBackPressure(c, m, t), pExhGuess);
+    boost = solveSupercharger(c, rpm, flowAt, backPressure, pExhGuess);
     flow = flowAt(boost.pUp, boost.tCharge, boost.pExhCyl);
     pExhCyl = boost.pExhCyl;
     tCharge = boost.tCharge;
@@ -155,7 +175,7 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
     const tUp = T_AMB_K + 3; // intake tract pickup
     pExhCyl = pExhGuess;
     flow = flowAt(P_AMB_PA, tUp, pExhCyl);
-    pExhCyl = exhaustBackPressure(c, flow.mExh, tExhPort);
+    pExhCyl = backPressure(flow.mExh, tExhPort);
     flow = flowAt(P_AMB_PA, tUp, pExhCyl);
     tCharge = tUp;
   }
@@ -240,7 +260,7 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
 }
 
 /** Fixed-point iteration counts of the last simulate() call (diagnostics / tests). */
-export const pointSolveStats = { solves: 0, evals: 0, maxIters: 0, unconverged: 0, maxEgtResK: 0, maxPExhResRel: 0, ecuUnconverged: 0 };
+export const pointSolveStats = { solves: 0, evals: 0, maxIters: 0, unconverged: 0, maxEgtResK: 0, maxPExhResRel: 0, ecuUnconverged: 0, spoolEvals: 0, spoolCapped: 0, spoolUnconverged: 0, ecuCollapsed: 0 };
 
 /**
  * Self-consistent operating point. evalPoint takes the exhaust state x =
@@ -265,9 +285,9 @@ export const pointSolveStats = { solves: 0, evals: 0, maxIters: 0, unconverged: 
  * within those tolerances, ≈ 1e-6 relative in torque.
  */
 const PEXH_SCALE = 100;
-function solvePoint(ctx: PointCtx, rpm: number, egt0: number, p0: number): PointOut {
-  const tolE = CAL.pointEgtTolK;
-  const tolP = CAL.pointPExhTolRel;
+function solvePoint(ctx: PointCtx, rpm: number, egt0: number, p0: number, tolScale = 1): PointOut {
+  const tolE = CAL.pointEgtTolK * tolScale;
+  const tolP = CAL.pointPExhTolRel * tolScale;
   // Search box: evalPoint clamps EGT to [450, 1500] K; exhaust state 0.5–30 bar.
   const pMin = (0.5 * P_AMB_PA) / PEXH_SCALE;
   const pMax = 30e5 / PEXH_SCALE;
@@ -323,12 +343,16 @@ function solvePoint(ctx: PointCtx, rpm: number, egt0: number, p0: number): Point
     const stalled = it >= 16 && bestN > 0.99 * bestHist[it - 13];
     if (conv || stalled || it >= CAL.pointMaxIters) {
       pointSolveStats.evals += it;
-      pointSolveStats.maxIters = Math.max(pointSolveStats.maxIters, it);
-      if (!conv) pointSolveStats.unconverged++;
       ctx.hints.jac = conv ? [j00, j01, j10, j11] : null;
       const out = conv ? r : best;
-      pointSolveStats.maxEgtResK = Math.max(pointSolveStats.maxEgtResK, Math.abs(out.egtK - out.egtIn));
-      pointSolveStats.maxPExhResRel = Math.max(pointSolveStats.maxPExhResRel, Math.abs(out.pExhCyl - out.pExhIn) / out.pExhIn);
+      out.converged = conv;
+      // Spool-scan points (forced PR) are not operating points: stats for those are kept by spoolCeiling.
+      if (ctx.spool?.prForce === undefined) {
+        pointSolveStats.maxIters = Math.max(pointSolveStats.maxIters, it);
+        if (!conv) pointSolveStats.unconverged++;
+        pointSolveStats.maxEgtResK = Math.max(pointSolveStats.maxEgtResK, Math.abs(out.egtK - out.egtIn));
+        pointSolveStats.maxPExhResRel = Math.max(pointSolveStats.maxPExhResRel, Math.abs(out.pExhCyl - out.pExhIn) / out.pExhIn);
+      }
       return out;
     }
     // Cap the step at 150 K / 30 % of the pressure.
@@ -385,7 +409,8 @@ function solvePoint(ctx: PointCtx, rpm: number, egt0: number, p0: number): Point
  * limits, intercooler, turbo sizing, throttle, fuel-system and bottom-end
  * edits reuse the table. Small LRU.
  * The table depends on nothing else: in particular no SimOptions field reaches
- * it (calibration.veScale multiplies the looked-up VE, the torque cap acts
+ * it (calibration.veScale multiplies the looked-up VE, exhaustRestrictionScale
+ * moves the exhaust/intake pressure ratio the lookup corrects to, the torque cap acts
  * through the ECU), so options are deliberately not in the key (guarded by
  * the same test). Anything that is ever made to affect the table must be added
  * to breathingKey.
@@ -433,14 +458,17 @@ function breathingFor(c: EngineConfig, build: () => BreathingModel): BreathingMo
  * limit ± tolerance band every limited point is solved into.
  */
 export const PEAK_PLATEAU_BAND_NM = 0.1;
+/** ECU bracket solves: relative actuator resolution at which a bracket counts as collapsed onto its root. */
+const ECU_ACT_RES = 1e-7;
 
-/** SimOptions.calibration, validated: identity (1, 1, no cap) for anything omitted or not finite. */
-function calibrationOf(o: SimCalibration | undefined): { veScale: number; fricScale: number; capNm: number } {
+/** SimOptions.calibration, validated: identity (1, 1, 1, no cap) for anything omitted or not finite. */
+function calibrationOf(o: SimCalibration | undefined): { veScale: number; fricScale: number; exhScale: number; capNm: number } {
   const num = (v: unknown, lo: number, hi: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : 1);
   const cap = o?.torqueCapNm;
   return {
     veScale: num(o?.veScale, 0.5, 1.5),
     fricScale: num(o?.frictionScale, 0.3, 3),
+    exhScale: num(o?.exhaustRestrictionScale, 0.1, 3),
     capNm: typeof cap === 'number' && Number.isFinite(cap) && cap > 0 ? cap : 0,
   };
 }
@@ -476,7 +504,9 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     octane: octaneIndex(c),
     veScale: cal.veScale,
     fricScale: cal.fricScale,
+    exhScale: cal.exhScale,
     pManCap: Infinity,
+    spool: null,
     hints: { spark: { retard: -1, slope: NaN, pSlope: 0 }, turbo: { pr: NaN, phi: 0.5, slope: NaN }, jac: null },
   };
 
@@ -561,14 +591,23 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
    * regula falsi) with bisection when a step leaves the bracket. Every
    * evaluation is a converged operating point. Needs f(lo) ≤ 0 < f(hi).
    * Stops at the first point with |f| ≤ tol; if the cap is hit returns lo
-   * (f ≤ 0: the constraint holds).
+   * (f ≤ 0: the constraint holds). A bracket narrower than ECU_ACT_RES
+   * (relative actuator resolution) with |f| still > tol means f jumps there by
+   * more than tol: the converged operating points carry their own tolerance
+   * (≈1e-5 relative in torque), which can exceed a tight tol. That is a located
+   * root, not a failed solve: lo is returned and counted in ecuCollapsed only.
    */
   type Pt = { t: number; rr: PointOut; f: number };
   const bracketRoot = (evalT: (t: number) => Pt, lo: Pt, hi: Pt, tol: number, maxIters: number): Pt => {
     let fLo = lo.f;
     let fHi = hi.f;
     let side = 0;
-    for (let it = 0; it < maxIters && hi.t - lo.t > 1e-9; it++) {
+    const res = ECU_ACT_RES * Math.max(1, Math.abs(hi.t));
+    for (let it = 0; it < maxIters; it++) {
+      if (hi.t - lo.t <= res) {
+        pointSolveStats.ecuCollapsed++;
+        return lo;
+      }
       let t = (lo.t * fHi - hi.t * fLo) / (fHi - fLo);
       if (!(t > lo.t && t < hi.t)) t = 0.5 * (lo.t + hi.t);
       const p = evalT(t);
@@ -707,12 +746,177 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     if (!lo) return hi.rr;
     return bracketRoot(evalP, lo, hi, tol, CAL.ecuTorqueMaxIters).rr;
   };
+  /**
+   * Spool branch (turbo). With the wastegate shut, turbine power and
+   * compressor power both depend on the compressor PR through the engine
+   * flow, back-pressure and EGT; their coupled balance m(PR) = (P_t − P_c)/P_c,
+   * each point a converged exhaust-state fixed point at that PR, can have
+   * several roots at low rpm (positive spool feedback through VE and EGT). A
+   * turbo spooling up from rest at WOT accelerates while m > 0 and stops at
+   * the LOWEST root, unless the boost target (wastegate opens), the speed line
+   * or the exhaust-pressure limit stops it first. That root does not depend on
+   * the boost target (the gate is shut below it), so it is found once per rpm
+   * and imposed on every operating point at that rpm as a PR cap (SpoolControl.prCap).
+   * Without it the per-point solve picks a root at the FROZEN exhaust state of
+   * each iterate, which is discontinuous in that state near a fold of m: the
+   * fixed point then fails to converge or lands on either branch depending on
+   * the warm start (B58 at 1000 rpm with VE ×1.05: 30 unconverged solves).
+   *
+   * Scan: m at PR = SPOOL_GRID^k (fixed grid, so the result does not depend on
+   * the warm start), k = 1, 2, …, until m ≤ 0 (root bracketed → Illinois), the
+   * scheduled target is reached, the speed line is passed or PR exceeds the
+   * solver's ceiling. Dips between grid nodes: at every sampled local minimum
+   * of m below SPOOL_DIP, m is minimised by golden section; a negative minimum
+   * brackets the lowest root on its left. Returns Infinity when no root exists
+   * below the target (the common case) and the minimum sampled margin, which
+   * gates the scan off for the rest of the curve once it is large.
+   */
+  const SPOOL_GRID = 1.08;
+  const SPOOL_DIP = 0.12;
+  const SPOOL_SAFE = 0.5;
+  /** PR up to which m > 0 is established at a lower rpm (m rises with rpm at fixed PR), and the scan's warm state. */
+  let spoolOk = 1;
+  let spoolWarm: [number, number] | null = null;
+  /** Lowest sampled m of the last scan that found no root. */
+  let spoolMinM = -Infinity;
+  const spoolHints: PointHints = { spark: { retard: -1, slope: NaN, pSlope: 0 }, turbo: { pr: NaN, phi: 0.5, slope: NaN }, jac: null };
+  const spoolCeiling = (rpm: number, tgt: number): number => {
+    const sctx: PointCtx = { ...ctx, c: { ...c, turbo: { ...c.turbo, targetBoostBar: tgt } }, spool: { prForce: 1 }, hints: spoolHints };
+    const pT = P_AMB_PA + tgt * 1e5;
+    const prTop = Math.max(1.0001, (pT / P_AMB_PA) * 1.35);
+    let [e, p] = spoolWarm ?? firstGuess(rpm);
+    type S = { pr: number; m: number; o: PointOut };
+    // tolScale < 1 for the root refinement: m carries the fixed-point
+    // tolerance as noise (∂m/∂EGT ≈ 1/EGT, so 0.01 K → 1e-5 in m), which the
+    // root would turn into PR noise of order 1e-5 / (∂m/∂PR).
+    const at = (pr: number, tolScale = 1): S => {
+      sctx.spool = { prForce: pr };
+      const o = solvePoint(sctx, rpm, e, p, tolScale);
+      if (o.converged) {
+        e = o.egtIn;
+        p = o.pExhIn;
+      } else pointSolveStats.spoolUnconverged++; // the scan then stops (spoolCeiling returns NaN)
+      pointSolveStats.spoolEvals++;
+      return { pr, m: o.boost?.spoolMargin ?? 1, o };
+    };
+    const rootIn = (lo: S, hi: S): number => illinois((x) => at(x, 0.01).m, lo.pr, hi.pr, 40, 1e-9, lo.m, hi.m, false, 1e-8);
+    const smp: S[] = [];
+    // Grid nodes strictly above spoolOk (a fixed grid: the result does not depend on warm starts).
+    for (let k = Math.floor(Math.log(spoolOk) / Math.log(SPOOL_GRID) + 1e-9) + 1; ; k++) {
+      const s = at(Math.min(prTop, SPOOL_GRID ** k));
+      if (!s.o.converged) return NaN; // no margin information: leave the per-point turbine term in charge
+      if (s.m <= 0) {
+        const lo = smp.length ? smp[smp.length - 1] : at(spoolOk);
+        if (lo.m <= 0 || !lo.o.converged) return spoolOk; // root at the established bound itself (or no information below)
+        return rootIn(lo, s);
+      }
+      smp.push(s);
+      spoolWarm = [e, p];
+      const pc = s.o.boost?.flow.pCtl ?? s.o.boost?.flow.pMan ?? 0;
+      if (pc >= pT || (s.o.boost?.speedMargin ?? 1) < 0 || s.pr >= prTop) break;
+    }
+    // Narrow dips between grid nodes: minimise m (golden section) around every
+    // sampled interior local minimum below SPOOL_DIP.
+    for (let i = 1; i < smp.length - 1; i++) {
+      if (!(smp[i].m < SPOOL_DIP && smp[i].m <= smp[i - 1].m && smp[i].m <= smp[i + 1].m)) continue;
+      const g = (Math.sqrt(5) - 1) / 2;
+      let a = smp[i - 1];
+      let b = smp[i + 1];
+      let x1 = at(b.pr - g * (b.pr - a.pr));
+      let x2 = at(a.pr + g * (b.pr - a.pr));
+      for (let it = 0; it < 30 && b.pr - a.pr > 1e-5 * b.pr && Math.min(x1.m, x2.m) > 0; it++) {
+        if (x1.m < x2.m) {
+          b = x2;
+          x2 = x1;
+          x1 = at(b.pr - g * (b.pr - a.pr));
+        } else {
+          a = x1;
+          x1 = x2;
+          x2 = at(a.pr + g * (b.pr - a.pr));
+        }
+      }
+      const lo = x1.m < x2.m ? x1 : x2;
+      if (lo.m <= 0) return rootIn(smp[i - 1], lo);
+    }
+    if (smp.length) spoolOk = Math.max(spoolOk, smp[smp.length - 1].pr);
+    spoolMinM = Math.min(...smp.map((x) => x.m));
+    return Infinity;
+  };
   /** Torque-limited boost targets of the previous rpm points (warm start). */
   const limT: { rpm: number; t: number }[] = [];
   let knockSens = 0.03;
+  /** The previous rpm point ended knock-limited (chooses the ECU solve order only). */
+  let knockBoundPrev = false;
+  /** Accepted retard for knock severity k0 (retard at the scheduled target): rises softly, at most ecuRetardSoftCapDeg above the limit. */
+  const acceptedRetard = (k0: number, maxR: number) => maxR + CAL.ecuRetardSoftCapDeg * Math.tanh((CAL.ecuRetardSoft * (k0 - maxR)) / CAL.ecuRetardSoftCapDeg);
+  /**
+   * Knock-aware boost trim from r0: the boost target at which the retard equals
+   * the accepted retard `lim`, by bracketed Illinois on the boost scale to
+   * |retard − lim| ≤ tolK. Returns r0 itself when it already satisfies it.
+   */
+  const knockTrim = (rpm: number, r0: PointOut, lim: number, tolK: number): PointOut => {
+    const kR = r0.point.knockRetardDeg;
+    if (!(kR - lim > tolK)) return r0;
+    const bA0 = r0.point.boostBar;
+    // Turbo: scale the achieved boost (a target above it would not bite when spool-limited).
+    const tgtA = c.induction === 'turbo' ? bA0 : boostTargetOf(r0);
+    // Boost scale x in [xMin, 1]: retard is monotone in boost but saturates at
+    // the retard limit, so the root is bracketed before Illinois.
+    const xMin = 0.02;
+    const evalX = (x: number): Pt => {
+      const rr = atBoost(rpm, tgtA * x);
+      return { t: x, rr, f: rr.point.knockRetardDeg - lim };
+    };
+    let hi: Pt = { t: 1, rr: r0, f: kR - lim };
+    let lo: Pt | null = null;
+    let res: Pt | null = null;
+    // First guess from the previous rpm's retard-per-boost sensitivity (affects the iteration count only).
+    const cur = evalX(Math.min(0.999, Math.max(0.3, 1 - (kR - lim) * knockSens)));
+    if (Math.abs(cur.f) <= tolK) res = cur;
+    else if (cur.f > 0) hi = cur;
+    else lo = cur;
+    // Still above: secant through the two highest points, aimed 20 % past the
+    // root (iteration path only), before falling back to the far end xMin.
+    let prev: Pt = { t: 1, rr: r0, f: kR - lim };
+    for (let k = 0; k < 2 && !res && !lo; k++) {
+      const h = hi;
+      if (!(prev.f > h.f && prev.t > h.t)) break;
+      const x = Math.max(xMin, h.t - (1.2 * h.f * (prev.t - h.t)) / (prev.f - h.f));
+      if (!(x < h.t)) break;
+      const q = evalX(x);
+      if (Math.abs(q.f) <= tolK) res = q;
+      else if (q.f > 0) {
+        prev = h;
+        hi = q;
+      } else lo = q;
+    }
+    if (!res && !lo) {
+      lo = evalX(xMin);
+      if (lo.f > 0) res = lo; // knock-limited even with no boost: run at minimum boost
+    }
+    if (!res) res = bracketRoot(evalX, lo as Pt, hi, tolK, CAL.ecuKnockMaxIters);
+    const rB = res.rr;
+    const kB = rB.point.knockRetardDeg;
+    if (kR - kB > 0.5) knockSens = Math.min(0.2, Math.max(0.005, (1 - rB.point.boostBar / bA0) / (kR - kB)));
+    if (rB.boost) rB.boost.limit = 'knock';
+    return rB;
+  };
   let shortfall: { ratio: number; rpm: number; reason: string; reachedAnywhere: boolean } | null = null;
+  let spoolScan = c.induction === 'turbo';
+  const unconverged: NonNullable<SimResult['solverUnconverged']> = [];
   for (const rpm of grid) {
     hist = [];
+    const ecuUnc0 = pointSolveStats.ecuUnconverged;
+    if (!spoolScan) ctx.spool = null;
+    else {
+      spoolMinM = -Infinity;
+      const cap = spoolCeiling(rpm, boostTargetAt(rpm));
+      ctx.spool = cap === cap ? { prCap: cap } : null;
+      if (cap < Infinity) {
+        pointSolveStats.spoolCapped++;
+        spoolOk = Math.max(spoolOk, cap);
+      } else if (spoolMinM >= SPOOL_SAFE) spoolScan = false;
+    }
     // Each operating point is a converged fixed point in EGT / exhaust
     // pressure (solvePoint); the previous rpm's state is only the warm start.
     const tgt0 = c.induction === 'turbo' ? boostTargetAt(rpm) : c.supercharger.targetBoostBar;
@@ -725,6 +929,8 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     // scheduled target too and the solve can start from it (one operating
     // point fewer); otherwise the scheduled target is evaluated as usual.
     let r: PointOut;
+    /** The operating point at the scheduled target, if evaluated. */
+    let rSched: PointOut | null = null;
     let limited = false;
     const nl = limT.length;
     const grid1 = grid.indexOf(rpm) - 1;
@@ -738,84 +944,75 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
       }
       if (!(tPred > 0 && tPred < tgt0 - 1e-6)) tPred = NaN;
     }
-    if (tPred === tPred) {
-      const rp = atBoost(rpm, tPred);
-      const pp: Pt = { t: tPred, rr: rp, f: rp.point.torqueNm - torqueLimit };
-      if (pp.f > 0 && rp.point.boostBar > 0.01) {
-        r = limitTorque(rpm, torqueLimit, pp, null);
-        limited = true;
-      } else {
-        r = atBoost(rpm, tgt0);
-        if (r.point.torqueNm > torqueLimit && r.point.boostBar > 0.01) {
-          const hiP: Pt = { t: tgt0, rr: r, f: r.point.torqueNm - torqueLimit };
-          r = Math.abs(pp.f) <= CAL.ecuTorqueSolveTolNm ? rp : limitTorque(rpm, torqueLimit, hiP, pp);
-          limited = true;
-        }
-      }
-    } else r = boosted ? atBoost(rpm, tgt0) : solveFirst(rpm, ctx);
     // ── ECU at WOT (boosted engines) ──
     // The ECU's boost target is the lowest of: the schedule, the torque
     // limit, the knock-aware trim and component protection. Each is solved
     // on converged operating points (one function of the target), and each
     // step can only lower the target from the previous one, so a constraint
-    // already met stays met (torque rises with boost). The torque limit
-    // therefore needs no re-application after steps 2–3.
-    if (boosted) {
-      // 1) Torque management ("torque structure"): the ECU converts the torque
-      //    limit into a required air charge, using its torque model (indicated
-      //    torque ∝ air charge at the current spark efficiency, minus friction),
-      //    and lowers the boost target to it (limitTorque: bracketed solve on the target).
-      if (!limited && torqueLimit > 0 && r.point.torqueNm > torqueLimit && r.point.boostBar > 0.01) {
+    // already met stays met (torque rises with boost).
+    //  1) Torque management ("torque structure"): the ECU converts the torque
+    //     limit into a required air charge, using its torque model (indicated
+    //     torque ∝ air charge at the current spark efficiency, minus friction),
+    //     and lowers the boost target to it (limitTorque: bracketed solve on the target).
+    //  2) Knock-aware boost control: when holding the target would need more
+    //     than the accepted retard, the boost target is lowered until the
+    //     retard is back at that limit (knockTrim). The trim is partial (a
+    //     torque-based ECU balances retard against boost): the accepted retard
+    //     still rises slowly with knock severity. The severity is measured at
+    //     the SCHEDULED target (§18.2), not at a point the torque limit already
+    //     lowered: the knock-aware target is a property of the schedule, and the
+    //     final target is the lower of it and the torque-limited one. (Measuring
+    //     it at the limited point made a lightly knocking limited point trim
+    //     itself below the torque limit: path dependence, §17.1.)
+    //  The two are solved in either order, with the same result to the solve
+    //  tolerances: knock first when the previous rpm ended knock-limited (then
+    //  the torque solve, if still needed, brackets below the knock target),
+    //  else torque first (then the knock trim, if still needed, starts at the
+    //  limited point). Only the number of operating points solved differs.
+    const tolK = CAL.ecuKnockTolDeg;
+    if (boosted && knockBoundPrev) {
+      r = rSched = atBoost(rpm, tgt0);
+      if (r.point.knockRetardDeg > maxRetard && r.point.boostBar > 0.05) r = knockTrim(rpm, r, acceptedRetard(r.point.knockRetardDeg, maxRetard), tolK);
+      if (torqueLimit > 0 && r.point.torqueNm > torqueLimit && r.point.boostBar > 0.01) {
         r = limitTorque(rpm, torqueLimit, { t: boostTargetOf(r), rr: r, f: r.point.torqueNm - torqueLimit }, null);
         limited = true;
       }
-      if (limited) {
-        if (r.boost) r.boost.limit = 'torque';
-        limT.push({ rpm, t: boostTargetOf(r) });
-      }
-      // 2) Knock-aware boost control: when holding the target would need more
-      //    than the accepted retard, the boost target is lowered until the
-      //    retard is back at that limit. The trim is partial (a torque-based
-      //    ECU balances retard against boost): the accepted retard still rises
-      //    slowly with knock severity. Solved to |retard − accepted| ≤
-      //    ecuKnockTolDeg (bracketed Illinois on the boost scale), so the trim
-      //    is a continuous function of every input (no stop-width stair-steps).
-      if (r.point.knockRetardDeg > maxRetard && r.point.boostBar > 0.05) {
-        const bA0 = r.point.boostBar;
-        // Turbo: scale the achieved boost (a target above it would not bite when spool-limited).
-        const tgtA = c.induction === 'turbo' ? bA0 : boostTargetOf(r);
-        const k0 = r.point.knockRetardDeg;
-        // Accepted retard: rises softly with knock severity, but never more than
-        // ecuRetardSoftCapDeg above the nominal limit.
-        const lim = maxRetard + CAL.ecuRetardSoftCapDeg * Math.tanh((CAL.ecuRetardSoft * (k0 - maxRetard)) / CAL.ecuRetardSoftCapDeg);
-        // Boost scale x ∈ [xMin, 1]: retard is monotone in boost but saturates at
-        // the retard limit, so the root is bracketed before Illinois.
-        const xMin = 0.02;
-        const evalX = (x: number): Pt => {
-          const rr = atBoost(rpm, tgtA * x);
-          return { t: x, rr, f: rr.point.knockRetardDeg - lim };
-        };
-        const tolK = CAL.ecuKnockTolDeg;
-        let hi: Pt = { t: 1, rr: r, f: k0 - lim };
-        let lo: Pt | null = null;
-        let res: Pt | null = null;
-        // First guess from the previous rpm's retard-per-boost sensitivity (affects the iteration count only).
-        const cur = evalX(Math.min(0.999, Math.max(0.3, 1 - (k0 - lim) * knockSens)));
-        if (Math.abs(cur.f) <= tolK) res = cur;
-        else if (cur.f > 0) hi = cur;
-        else lo = cur;
-        if (!res && !lo) {
-          lo = evalX(xMin);
-          if (lo.f > 0) res = lo; // knock-limited even with no boost: run at minimum boost
+    } else {
+      if (tPred === tPred) {
+        const rp = atBoost(rpm, tPred);
+        const pp: Pt = { t: tPred, rr: rp, f: rp.point.torqueNm - torqueLimit };
+        if (pp.f > 0 && rp.point.boostBar > 0.01) {
+          r = limitTorque(rpm, torqueLimit, pp, null);
+          limited = true;
+        } else {
+          r = rSched = atBoost(rpm, tgt0);
+          if (r.point.torqueNm > torqueLimit && r.point.boostBar > 0.01) {
+            const hiP: Pt = { t: tgt0, rr: r, f: r.point.torqueNm - torqueLimit };
+            r = Math.abs(pp.f) <= CAL.ecuTorqueSolveTolNm ? rp : limitTorque(rpm, torqueLimit, hiP, pp);
+            limited = true;
+          }
         }
-        if (!res) res = bracketRoot(evalX, lo as Pt, hi, tolK, CAL.ecuKnockMaxIters);
-        const rB = res.rr;
-        const kB = rB.point.knockRetardDeg;
-        if (k0 - kB > 0.5) knockSens = Math.min(0.2, Math.max(0.005, (1 - rB.point.boostBar / bA0) / (k0 - kB)));
-        r = rB;
-        if (r.boost) r.boost.limit = 'knock';
+      } else r = rSched = boosted ? atBoost(rpm, tgt0) : solveFirst(rpm, ctx);
+      if (boosted) {
+        if (!limited && torqueLimit > 0 && r.point.torqueNm > torqueLimit && r.point.boostBar > 0.01) {
+          r = limitTorque(rpm, torqueLimit, { t: boostTargetOf(r), rr: r, f: r.point.torqueNm - torqueLimit }, null);
+          limited = true;
+        }
+        if (r.point.knockRetardDeg > maxRetard && r.point.boostBar > 0.05) {
+          const k0 = (limited ? (rSched ?? atBoost(rpm, tgt0)) : r).point.knockRetardDeg;
+          const rK = knockTrim(rpm, r, acceptedRetard(k0, maxRetard), tolK);
+          if (rK !== r) {
+            r = rK;
+            limited = false;
+          }
+        }
       }
     }
+    if (limited) {
+      if (r.boost) r.boost.limit = 'torque';
+      limT.push({ rpm, t: boostTargetOf(r) });
+    }
+    knockBoundPrev = r.boost?.limit === 'knock';
     // 3) Component protection (boosted): even at the richest allowed mixture and the
     //    accepted retard, the ECU cuts boost when EGT would exceed the turbine /
     //    exhaust-valve limit or peak cylinder pressure the absolute ceiling.
@@ -845,6 +1042,9 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     }
     egt = r.egtK;
     pExh = r.pExhCyl;
+    // Flag, never hide, a point whose solve did not converge.
+    if (r.converged === false) unconverged.push({ rpm, kind: 'operating-point', egtResidualK: r.egtK - r.egtIn, pExhResidualRel: (r.pExhCyl - r.pExhIn) / r.pExhIn });
+    else if (pointSolveStats.ecuUnconverged > ecuUnc0) unconverged.push({ rpm, kind: 'ecu' });
     curve.push(r.point);
     limitedBy.push(thrLimited || r.boost?.limit === 'torque' ? (tqLimNm > 0 && torqueLimit === tqLimNm ? 'torque' : 'power') : null);
     const b = r.boost;
@@ -899,6 +1099,12 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
       ? { ...shortfall, reachedAnywhere: Math.max(...curve.map((p) => p.boostBar)) >= 0.8 * c.turbo.targetBoostBar }
       : null,
   });
+  if (unconverged.length)
+    warnings.push({
+      severity: 'warn',
+      code: 'solver-unconverged',
+      message: `The operating-point solve did not converge at ${unconverged.map((u) => u.rpm).join(', ')} rpm (${unconverged.some((u) => u.kind === 'operating-point') ? 'exhaust-state fixed point' : 'ECU target solve stopped at its iteration cap; the constraint holds'}). Those points are the best iterate found and are less accurate than the rest of the curve.`,
+    });
 
   return {
     config,
@@ -941,6 +1147,7 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     balance: computeBalance(c, lay),
     reliabilityScore,
     warnings,
+    ...(unconverged.length ? { solverUnconverged: unconverged } : {}),
     uncertainty: computeUncertainty(c, curve, pkRpm, tqRpm, tqRange),
   };
 }

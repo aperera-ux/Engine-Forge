@@ -283,6 +283,16 @@ export interface SimCalibration {
    */
   frictionScale?: number;
   /**
+   * Additive (physics agent, §18.3). Multiplier on the exhaust-system pressure
+   * drop above ambient: the back-pressure the model estimates from header type
+   * and diameter (NA, supercharged), and for turbos the manifold loss ahead of
+   * the turbine and the post-turbine system (cat, mufflers). It acts inside the
+   * gas exchange: the exhaust/intake pressure ratio moves trapped VE, residual
+   * fraction and pumping work together (and the turbine expansion ratio).
+   * Default 1; clamped to [0.1, 3]. Not friction: frictionScale stays mechanical.
+   */
+  exhaustRestrictionScale?: number;
+  /**
    * Brake-torque cap, N·m, enforced like an ECU torque limit: on boosted
    * engines by lowering the boost target (combined with any OEM limit in force
    * as the lower of the two), and by closing the throttle (manifold-pressure
@@ -371,6 +381,16 @@ export interface SimResult {
   /** 0–100 reliability score; 100 = stock-like margins. */
   reliabilityScore: number;
   warnings: SimWarning[];
+  /**
+   * Additive (physics agent, §18): curve points whose solve did not converge
+   * (absent when every point converged, the normal case). 'operating-point':
+   * the exhaust-state fixed point stopped at its cap and the point is the
+   * lowest-residual iterate (residuals given); 'ecu': an ECU target solve
+   * (torque limit, knock trim, protection) stopped at its iteration cap, so the
+   * point satisfies its constraint but is not tight against it. A
+   * 'solver-unconverged' warning is added as well.
+   */
+  solverUnconverged?: { rpm: number; kind: 'operating-point' | 'ecu'; egtResidualK?: number; pExhResidualRel?: number }[];
   /** Optional (physics agent, v4): prediction uncertainty band and extrapolation score. */
   uncertainty?: SimUncertainty;
 }

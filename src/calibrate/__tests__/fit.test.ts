@@ -85,6 +85,19 @@ describe('calibrated model', () => {
     expect(r.uncertainty).toBeUndefined();
   });
 
+  it('exhScale goes to the simulator as exhaustRestrictionScale and acts through back-pressure (§18.3)', () => {
+    const f = frameOf('gm-ls7');
+    expect(calibrationFor(f, { exhScale: 1 })).toEqual({});
+    expect(calibrationFor(f, { exhScale: 0.6 })).toEqual({ exhaustRestrictionScale: 0.6 });
+    expect(calibrationFor(f, { exhScale: 9 })).toEqual({ exhaustRestrictionScale: 2 }); // clamped to its range
+    const r = simulateWith(f, {});
+    const free = simulateWith(f, { exhScale: 0.5 });
+    const top = r.curve.length - 1;
+    expect(free.curve[top].torqueNm).toBeGreaterThan(r.curve[top].torqueNm);
+    expect(free.curve[top].pmepBar!).toBeLessThan(r.curve[top].pmepBar!);
+    expect(free.curve[top].volumetricEfficiency).toBeGreaterThan(r.curve[top].volumetricEfficiency);
+  });
+
   it('scales move torque the right way, through airflow and friction', () => {
     const f = frameOf('gm-ls3');
     const r = simulateWith(f, {});
