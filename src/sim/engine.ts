@@ -260,7 +260,7 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
 }
 
 /** Fixed-point iteration counts of the last simulate() call (diagnostics / tests). */
-export const pointSolveStats = { solves: 0, evals: 0, maxIters: 0, unconverged: 0, maxEgtResK: 0, maxPExhResRel: 0, ecuUnconverged: 0, spoolEvals: 0, spoolCapped: 0, spoolUnconverged: 0 };
+export const pointSolveStats = { solves: 0, evals: 0, maxIters: 0, unconverged: 0, maxEgtResK: 0, maxPExhResRel: 0, ecuUnconverged: 0, spoolEvals: 0, spoolCapped: 0, spoolUnconverged: 0, ecuCollapsed: 0 };
 
 /**
  * Self-consistent operating point. evalPoint takes the exhaust state x =
@@ -458,6 +458,8 @@ function breathingFor(c: EngineConfig, build: () => BreathingModel): BreathingMo
  * limit ± tolerance band every limited point is solved into.
  */
 export const PEAK_PLATEAU_BAND_NM = 0.1;
+/** ECU bracket solves: relative actuator resolution at which a bracket counts as collapsed onto its root. */
+const ECU_ACT_RES = 1e-7;
 
 /** SimOptions.calibration, validated: identity (1, 1, 1, no cap) for anything omitted or not finite. */
 function calibrationOf(o: SimCalibration | undefined): { veScale: number; fricScale: number; exhScale: number; capNm: number } {
@@ -589,14 +591,23 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
    * regula falsi) with bisection when a step leaves the bracket. Every
    * evaluation is a converged operating point. Needs f(lo) ≤ 0 < f(hi).
    * Stops at the first point with |f| ≤ tol; if the cap is hit returns lo
-   * (f ≤ 0: the constraint holds).
+   * (f ≤ 0: the constraint holds). A bracket narrower than ECU_ACT_RES
+   * (relative actuator resolution) with |f| still > tol means f jumps there by
+   * more than tol: the converged operating points carry their own tolerance
+   * (≈1e-5 relative in torque), which can exceed a tight tol. That is a located
+   * root, not a failed solve: lo is returned and counted in ecuCollapsed only.
    */
   type Pt = { t: number; rr: PointOut; f: number };
   const bracketRoot = (evalT: (t: number) => Pt, lo: Pt, hi: Pt, tol: number, maxIters: number): Pt => {
     let fLo = lo.f;
     let fHi = hi.f;
     let side = 0;
-    for (let it = 0; it < maxIters && hi.t - lo.t > 1e-9; it++) {
+    const res = ECU_ACT_RES * Math.max(1, Math.abs(hi.t));
+    for (let it = 0; it < maxIters; it++) {
+      if (hi.t - lo.t <= res) {
+        pointSolveStats.ecuCollapsed++;
+        return lo;
+      }
       let t = (lo.t * fHi - hi.t * fLo) / (fHi - fLo);
       if (!(t > lo.t && t < hi.t)) t = 0.5 * (lo.t + hi.t);
       const p = evalT(t);
@@ -864,6 +875,21 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     if (Math.abs(cur.f) <= tolK) res = cur;
     else if (cur.f > 0) hi = cur;
     else lo = cur;
+    // Still above: secant through the two highest points, aimed 20 % past the
+    // root (iteration path only), before falling back to the far end xMin.
+    let prev: Pt = { t: 1, rr: r0, f: kR - lim };
+    for (let k = 0; k < 2 && !res && !lo; k++) {
+      const h = hi;
+      if (!(prev.f > h.f && prev.t > h.t)) break;
+      const x = Math.max(xMin, h.t - (1.2 * h.f * (prev.t - h.t)) / (prev.f - h.f));
+      if (!(x < h.t)) break;
+      const q = evalX(x);
+      if (Math.abs(q.f) <= tolK) res = q;
+      else if (q.f > 0) {
+        prev = h;
+        hi = q;
+      } else lo = q;
+    }
     if (!res && !lo) {
       lo = evalX(xMin);
       if (lo.f > 0) res = lo; // knock-limited even with no boost: run at minimum boost

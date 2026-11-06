@@ -206,9 +206,11 @@ export const CAL = {
   /**
    * Max extra retard (deg) the ECU accepts above ecuMaxRetardDeg for severe knock before trimming boost further.
    * ECU strategy, range 0–8°. Train-only refit §18.2 (with the knock severity measured at the scheduled
-   * target): 5 → 1.8, the lowest value inside the 0.4-pt 21-set guard (max |peak torque err| binds).
+   * target): train RMS falls monotonically with lower values; the 21-set guard allows 1.8, but below ~3.25
+   * the sanity rules 'knock retard rises with boost / bore' fail (retard saturates and only boost is cut),
+   * so 5 → 3.5, the lowest value with margin that keeps them.
    */
-  ecuRetardSoftCapDeg: 1.8,
+  ecuRetardSoftCapDeg: 3.5,
   /** Fraction of the excess retard (beyond ecuMaxRetardDeg) the ECU still accepts. */
   ecuRetardSoft: 0.7,
   /** Relative reduction of the end-gas compression exponent at 1000 rpm (wall heat loss). */
