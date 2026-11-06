@@ -486,8 +486,9 @@ export async function fitCalibration(input: FitInput, hooks: FitHooks = {}): Pro
     });
   }
   if (fricExhCorr !== null && Math.abs(fricExhCorr) > FRIC_EXH_INSEPARABLE) {
+    // Expected on roughly half of real curves (23/44), so it is an explanatory note, not a warning.
     warnings.push({
-      severity: 'warn',
+      severity: 'info',
       code: 'friction-exhaust-inseparable',
       message: `Friction and exhaust restriction are not separable on this curve (|r| = ${Math.abs(fricExhCorr).toFixed(2)}): both take torque away mostly at high rpm, so the data fixes their combined effect, not the split. Read the two fitted values together, not as separate measurements.`,
     });
