@@ -44,6 +44,8 @@ interface PointCtx {
   /** SimOptions.calibration: scale on the gas-exchange VE and on mechanical FMEP (1 = identity). */
   veScale: number;
   fricScale: number;
+  /** SimOptions.calibration.exhaustRestrictionScale: scale on the exhaust-system pressure drop above ambient (1 = identity). */
+  exhScale: number;
   /**
    * ECU throttle torque control: manifold-pressure ceiling, Pa absolute
    * (Infinity = wide open). Used only where a torque limit cannot be met by
@@ -104,7 +106,13 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   // Turbo exhaust manifold between ports and turbine: friction/dynamic-head loss
   // by manifold type (log manifolds are compact but restrictive at high flow).
   let lastMExh = 0;
-  const manifoldLoss = (mExh: number) => (turbo ? CAL.turboManifoldLossFrac * (exhaustBackPressure(c, mExh, tExhPort) - P_AMB_PA) : 0);
+  // Exhaust-system back-pressure, scaled by the calibration's restriction
+  // scale (exactly the model value at 1). It enters the gas exchange through
+  // the exhaust/intake pressure ratio of the breathing lookup (VE, residual,
+  // pumping), and the turbine through p3 / p4.
+  const kExh = ctx.exhScale;
+  const backPressure = (m: number, t: number) => (kExh === 1 ? exhaustBackPressure(c, m, t) : P_AMB_PA + kExh * (exhaustBackPressure(c, m, t) - P_AMB_PA));
+  const manifoldLoss = (mExh: number) => (turbo ? CAL.turboManifoldLossFrac * (exhaustBackPressure(c, mExh, tExhPort) - P_AMB_PA) * kExh : 0);
 
   const flowAt1 = (pUp: number, tUp: number, pExhTurb: number, mLoss: number): FlowAt => {
     const pExhCyl = pExhTurb + manifoldLoss(mLoss);
@@ -153,13 +161,13 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
   let pExhCyl: number;
   let tCharge = T_AMB_K;
   if (turbo) {
-    boost = solveTurbo(c, flowAt, pExhGuess, ctx.hints.turbo, ctx.spool);
+    boost = solveTurbo(c, flowAt, pExhGuess, ctx.hints.turbo, ctx.spool, kExh);
     // Re-evaluate at the converged state so lastVe matches.
     flow = flowAt(boost.pUp, boost.tCharge, boost.pExhCyl, boost.flow.mAir);
     pExhCyl = boost.pExhCyl + manifoldLoss(flow.mExh);
     tCharge = boost.tCharge;
   } else if (c.induction === 'supercharger') {
-    boost = solveSupercharger(c, rpm, flowAt, (m, t) => exhaustBackPressure(c, m, t), pExhGuess);
+    boost = solveSupercharger(c, rpm, flowAt, backPressure, pExhGuess);
     flow = flowAt(boost.pUp, boost.tCharge, boost.pExhCyl);
     pExhCyl = boost.pExhCyl;
     tCharge = boost.tCharge;
@@ -167,7 +175,7 @@ function evalPoint(ctx: PointCtx, rpm: number, egtGuessK: number, pExhGuess: num
     const tUp = T_AMB_K + 3; // intake tract pickup
     pExhCyl = pExhGuess;
     flow = flowAt(P_AMB_PA, tUp, pExhCyl);
-    pExhCyl = exhaustBackPressure(c, flow.mExh, tExhPort);
+    pExhCyl = backPressure(flow.mExh, tExhPort);
     flow = flowAt(P_AMB_PA, tUp, pExhCyl);
     tCharge = tUp;
   }
@@ -401,7 +409,8 @@ function solvePoint(ctx: PointCtx, rpm: number, egt0: number, p0: number, tolSca
  * limits, intercooler, turbo sizing, throttle, fuel-system and bottom-end
  * edits reuse the table. Small LRU.
  * The table depends on nothing else: in particular no SimOptions field reaches
- * it (calibration.veScale multiplies the looked-up VE, the torque cap acts
+ * it (calibration.veScale multiplies the looked-up VE, exhaustRestrictionScale
+ * moves the exhaust/intake pressure ratio the lookup corrects to, the torque cap acts
  * through the ECU), so options are deliberately not in the key (guarded by
  * the same test). Anything that is ever made to affect the table must be added
  * to breathingKey.
@@ -450,13 +459,14 @@ function breathingFor(c: EngineConfig, build: () => BreathingModel): BreathingMo
  */
 export const PEAK_PLATEAU_BAND_NM = 0.1;
 
-/** SimOptions.calibration, validated: identity (1, 1, no cap) for anything omitted or not finite. */
-function calibrationOf(o: SimCalibration | undefined): { veScale: number; fricScale: number; capNm: number } {
+/** SimOptions.calibration, validated: identity (1, 1, 1, no cap) for anything omitted or not finite. */
+function calibrationOf(o: SimCalibration | undefined): { veScale: number; fricScale: number; exhScale: number; capNm: number } {
   const num = (v: unknown, lo: number, hi: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : 1);
   const cap = o?.torqueCapNm;
   return {
     veScale: num(o?.veScale, 0.5, 1.5),
     fricScale: num(o?.frictionScale, 0.3, 3),
+    exhScale: num(o?.exhaustRestrictionScale, 0.1, 3),
     capNm: typeof cap === 'number' && Number.isFinite(cap) && cap > 0 ? cap : 0,
   };
 }
@@ -492,6 +502,7 @@ export function simulate(config: EngineConfig, opts: SimOptions = {}): SimResult
     octane: octaneIndex(c),
     veScale: cal.veScale,
     fricScale: cal.fricScale,
+    exhScale: cal.exhScale,
     pManCap: Infinity,
     spool: null,
     hints: { spark: { retard: -1, slope: NaN, pSlope: 0 }, turbo: { pr: NaN, phi: 0.5, slope: NaN }, jac: null },

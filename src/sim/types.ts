@@ -283,6 +283,16 @@ export interface SimCalibration {
    */
   frictionScale?: number;
   /**
+   * Additive (physics agent, §18.3). Multiplier on the exhaust-system pressure
+   * drop above ambient: the back-pressure the model estimates from header type
+   * and diameter (NA, supercharged), and for turbos the manifold loss ahead of
+   * the turbine and the post-turbine system (cat, mufflers). It acts inside the
+   * gas exchange: the exhaust/intake pressure ratio moves trapped VE, residual
+   * fraction and pumping work together (and the turbine expansion ratio).
+   * Default 1; clamped to [0.1, 3]. Not friction: frictionScale stays mechanical.
+   */
+  exhaustRestrictionScale?: number;
+  /**
    * Brake-torque cap, N·m, enforced like an ECU torque limit: on boosted
    * engines by lowering the boost target (combined with any OEM limit in force
    * as the lower of the two), and by closing the throttle (manifold-pressure

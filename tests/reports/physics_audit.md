@@ -1036,3 +1036,75 @@ It is defined in `src/sim/types.ts` (`SimCalibration`). It lives in `SimOptions`
   - The 43 are identical by name to main 9e1e9d6, checked by running main's `src` against the same suites: 28 envelopes, 6 sanity, 6 fuzz, 2 continuity, 1 "bigger cam".
   - `tsc -b` is clean.
   - The `tests/reports/data/*.json` rewrites from the runs were reverted.
+
+## 18. Spool branch, knock-severity path dependence, exhaust-restriction calibration
+
+Three issues from §17, fixed in this order (worktree `agent-aa8f39748afaeeae5`, from main 92f2a6f). Snapshot baseline (67 configs × 3 modes, every `SimResult` leaf) and `SIM_STATS=1` were written before any change.
+
+### 18.1 Spool fold: the branch is chosen on the coupled system
+**What was wrong.** `solveTurbo` picks the lowest root of the turbine/compressor balance at the *frozen* exhaust state (EGT, p3) of each fixed-point iterate. Near a fold of the coupled balance the set of roots at frozen state changes with the iterate, so the map the Broyden solve iterates on is discontinuous. On B58 at `veScale` 1.03–1.08 the solve at the scheduled target landed on the high branch (target reached, 454 N·m, above the 447 N·m limit), and the torque limiter's bracket then mixed iterates from both branches: up to 30 unconverged fixed points per call, EGT residual up to 24 K, 19–33 ms.
+- §17 read the final 354 N·m at 1000 rpm as "below the limit". It is in fact the correct **low (spool-limited) branch**: the coupled margin (below) has its lowest root at PR 1.305, boost 0.31 bar. The 450 N·m limit is not reached at 1000 rpm at any `veScale` ≤ 1.15 (the low branch disappears at `veScale` ≈ 1.085, where 1000 rpm jumps from 380 to 410 N·m: a genuine fold).
+- A second, independent cause of stalled fixed points was found on the way: the turbo exhaust-manifold loss was evaluated at the exhaust flow of the *previous* `flowAt` call. Its value depended on the call history inside `solveTurbo` (up to ~1000 Pa at B58 5800 rpm), so G(x) was not a function of x and the solve stalled at 12–20× tolerance (B58 2400 and 5800 rpm at `veScale` 0.86/0.92).
+
+**What it does now** (`engine.ts › spoolCeiling`, `boost.ts › SpoolControl`).
+- With the wastegate shut, the coupled spool margin m(PR) = (P_turbine − P_shaft)/P_shaft is evaluated with the compressor PR imposed and each point a converged exhaust-state fixed point (`prForce`). A turbo spooling up from rest at WOT accelerates while m > 0 and stops at the **lowest root**, unless the boost target, the speed line or the turbine-inlet limit stop it first. That root does not depend on the boost target (the gate is shut below it), so it is computed once per rpm and imposed on every operating point at that rpm (scheduled, torque-limited, knock-trimmed, protection) as an extra feasibility term `prCap`; the frozen-state turbine term and its lowest-root scan are then switched off.
+- Scan: PR on a fixed grid 1.08^k (independent of warm starts) from the PR established at the previous rpm (m at fixed PR rises with rpm) until m ≤ 0 (root → Illinois to 1e-9 with the fixed points at 0.01× tolerance, so the fixed-point tolerance does not become PR noise), or the target / speed line / ceiling is reached. Narrow dips between nodes: golden-section minimum of m around every sampled interior minimum below 0.12. Once an rpm shows no root and m ≥ 0.5 up to its target, the scan is switched off for the rest of the curve and the per-point turbine term is used again (it is then far from binding). A forced point that does not converge ends the scan and leaves the per-point term in charge (`pointSolveStats.spoolUnconverged`; 0 on every config and sweep tested).
+- Manifold loss: evaluated at the flow implied by the caller's flow iterate (`solveTurbo`'s φ, which converges with φ), so it is a function of the state only.
+- **Non-convergence is flagged, never silent.** `SimResult.solverUnconverged` (additive, `types.ts`) lists any curve point whose fixed point stopped at its cap (with residuals) or whose ECU solve stopped at its iteration cap, and a `solver-unconverged` warning is added. Absent in the normal case.
+
+**Results.**
+
+| B58, `veScale` | 1.04 | 1.05 | 1.06 | 1.07 | 1.08 |
+|---|---|---|---|---|---|
+| Unconverged fixed points, before → after | 11 → 0 | 30 → 0 | 8 → 0 | 11 → 0 | 3 → 0 |
+| 1000 rpm torque, N·m (before → after) | 346.3 → 346.2 | 354.3 → 354.3 | 363.3 → 361.0 | 373.7 → 367.3 | 388.6 → 380.4 |
+| Single-call time, ms (before → after) | 18 → 8 | 32 → 8 | 17 → 8 | 20 → 9 | 12 → 9 |
+
+- Before, the 1.06–1.08 values were unconverged mixtures of the two branches; after, 1000 rpm torque is monotone in `veScale` up to the fold.
+- New `src/sim/__tests__/spoolFold.test.ts` (10 tests): B58, N74, EA888 gen 3, Ford 1.0 and EJ257 × `veScale` 0.85–1.15 (31 values): zero unconverged fixed-point and ECU solves, EGT residual ≤ 2× tolerance, flags consistent with the warning, torque non-decreasing in `veScale` at non-knocking boosted points, ≤ 650 operating-point evaluations per call (deterministic; 13–18 µs each), and median wall-clock < 10 ms per `veScale` value (`SIM_TIMING=1`, run alone; < 25 ms in the parallel full suite, where other files share the CPU). Worst medians alone: B58 ≈ 9, EA888 gen 3 ≈ 9.5, Ford 1.0 ≈ 9.5 ms at `veScale` 1.1–1.15 (after the §18.2 reordering; EA888 at 1.15 was 14.9 ms on main).
+- **Outputs moved > 0.1 % (defaults):** torque at 2 points only, EA888 gen 3 1300 rpm +0.11 % (coupled root instead of the frozen-state root) and 2.7T 1600 rpm −0.10 %. Other moved leaves are pmep near zero on boosted low-rpm points (relative changes up to 44 % on values of −0.004 bar: the manifold-loss fix) and knock retard on values below 0.02°. No peak or peak-rpm moved. `SIM_STATS`: train 5.8977 → 5.8975, holdout 7.8183 → 7.8188, 21-set unchanged.
+
+### 18.2 Knock severity at the scheduled target, turbo bearing loss, ECU retard refit
+**Path dependence fixed.** The accepted retard `lim = max + cap·tanh(soft·(k0 − max)/cap)` now takes `k0` from the operating point at the **scheduled** target (evaluated lazily when the torque-limit warm start skipped it). The ECU target is therefore min(torque-limited, knock-trimmed), whatever order they are solved in: the solve order is chosen for cost only (knock first when the previous rpm ended knock-limited, so the torque bracket starts below the knock target; else torque first). New `src/sim/__tests__/knockPath.test.ts` (25 tests) checks the defining property, that a torque limit only clips the curve, T(L) = min(L, T(no limit)) at every rpm to 0.05 N·m, on Ford 1.0, B58, EA888 gen 3 and Ford 3.5 (power limit removed) × `veScale` 0.95/1/1.05 × `ecuMaxRetardDeg` 9/10. The old rule fails 16 of the 25. Ford 1.0 at `veScale` 1.05 now peaks at 170.0 N·m (was 167.4).
+
+**What the fix exposed (train only).** Train RMS 5.8977 → 5.9354, from B58 1250 rpm (433 → 447 N·m, measured 406) and EA113 1250/1500 rpm (+4 / +6 N·m, already +24 % / +15 % over). Per point (train boosted curves, ≤ 1750 rpm), the remaining over-predictions are of two kinds:
+- knock-trimmed points that the model holds at a higher boost than the engine reaches (EA113 1250–1500: boost 0.64–0.74 bar at 11.6–11.8° retard, +18 / +14 %; B58 1250 at 11.2°);
+- a spool transition that is too abrupt (N63: −12 % at 1250, +11.5 % at 1500 rpm), the positive spool feedback of §18.1 (VE and EGT rise with boost).
+
+**Physics added: turbocharger bearing friction.** The turbine had to supply only the compressor's isentropic work divided by its efficiency; the rotor's journal and thrust bearings were free. Hydrodynamic bearings dissipate ∝ μN² (Petroff); along the operating line N² ∝ Δh_is ∝ PR^0.286 − 1, and for similar bearings ∝ wheel size. `CAL.turboBearingLossW` = 500 W for one 50 mm turbo at PR 2 (measured passenger-car turbo friction is a few hundred W at mid speed with warm oil and 1–2 kW at top speed or with cold oil; gas-stand measurements such as Serrano et al. 2013 and Deligant et al. 2011, values from memory and not re-checked). It is 3–5 % of the shaft power at rated flow but 10–20 % in the spool region, where the compressor absorbs a few kW. It was **set at the middle of its range, not fitted**: train 5.9354 → 5.9292 (250 W would give 5.923, 1000 W 5.942). It moves the spool-limited points, not the knock-limited ones, so it removes only a small part of the exposed error (EA113 1000 rpm +11.7 → +7.7 %, 1250 rpm +25.8 → +21.4 %), and it lowers already under-predicted points (N20 1000 rpm −2 → −9 %, N63 1000–1250). **The low-rpm knock/spool over-prediction is therefore not resolved**; it is now visible instead of masked.
+
+**Train-only refit of the ECU retard knobs** (`regression/refit.test.ts` and a grid harness; train curves and the 21-set guard only). One-at-a-time scan, with the fix and the bearing loss in place (baseline 5.9292):
+
+| Knob (range) | Values → train RMS | 21-set max \|tq\| (guard ≤ 8.886) |
+|---|---|---|
+| `ecuMaxRetardDeg` (6–15°) | 7: 5.875, 8: 5.894, 9: 5.913, 11: 5.936 | 7: 12.1, 8: 10.1, 9: 8.49 |
+| `ecuRetardSoftCapDeg` (0–8°) | 1: 5.857, 1.7: 5.878, 1.8: 5.881, 2: 5.886, 3: 5.908 | 1: 10.7, 1.7: 8.92, 1.8: 8.74, 2: 8.49 |
+| `ecuRetardSoft` (0–1) | 0.3: 5.881, 0.5: 5.911, 0.9: 5.936 | 0.3: 10.7 |
+
+- Every helpful direction lowers torque at knock-limited boosted points, so the guard that binds is the 21-set max |peak torque error| (Ford 3.5, under-predicted). Joint fits trade the three knobs off against each other (as in §17.1), so one knob was fitted.
+- **Adopted: `ecuRetardSoftCapDeg` 5 → 1.8**, the lowest value inside the guard (1.7 breaks it). The ECU then accepts at most 1.8° beyond its 10° nominal authority before trimming boost. `ecuMaxRetardDeg` and `ecuRetardSoft` are unchanged. Inside its range and not at a bound; the value is set by the guard, so it should be read as "the strongest knock boost trim the peak-torque data allow".
+- `CAL.ecuTorqueSolveTolNm` 0.002 → 0.0005 N·m: with two solve orders the limited point can land at either end of the tolerance band, which the 1e-3 perturbation test (Ford 1.0 bore, 2950 rpm) resolved as a 0.004 N·m jump.
+- Warnings: with less accepted retard, heavy knock shows up as boost cut instead of retard, so a knock-limited boost shortfall below 80 % of target that never gets near target now raises a `knock` warning (the abused CR 11.5 / gas87 / 1.6 bar test engine keeps its warning).
+
+| Statistic (`SIM_STATS=1`) | main (§17) | after §18.1 | after §18.2 (frozen) |
+|---|---|---|---|
+| Train RMS, all / NA / boosted | 5.898 / 6.845 / 3.055 | 5.898 / 6.845 / 3.054 | **5.881** / 6.845 / 2.987 |
+| Holdout RMS, all / NA / boosted (scored once, after freezing) | 7.818 / 8.232 / 7.238 | 7.819 / 8.232 / 7.240 | **7.792** / 8.232 / 7.176 |
+| 21-set median / mean / max \|hp err\| | 4.564 / 5.509 / 13.796 | unchanged | 4.564 / 5.466 / 13.796 |
+| 21-set max \|tq err\|; tq-rpm ±10 % | 8.49 %; 12/21 | unchanged | 8.74 %; 12/21 |
+
+- Train ends better than main (5.881 < 5.898), so the trade the task allowed for (adopting a consistent but worse model) was not needed. The improvement comes from the refit, not from the fix: the fix alone costs 0.037 pt.
+- Holdout per curve (> 0.05 pt): N74 5.15 → 3.59, TT RS 9.75 → 10.73, 2.7T 10.25 → 10.52. Train: B58 1.65 → 1.48, EA113 6.36 → 5.08, EA888 gen 1 0.98 → 0.47, N20 3.10 → 3.64, N63 3.90 → 4.78.
+- 21-set torque-peak rpm: B58 1600 → 1400 (published plateau from 1380), Ford 1.0 2650 → 2500.
+
+**Outputs moved > 0.1 % (§18.2 against §18.1; NA engines unchanged).**
+
+| Config | Torque points > 0.1 % (worst) | Peaks | Main cause |
+|---|---|---|---|
+| Ford 1.0 | 35/38 (−22 % @1600) | hp 127.69 → 127.41; tq-rpm 2650 → 2500 | soft cap (knock trim at low rpm), bearing loss |
+| Ford 3.5 | 35/35 (−11 % @1600) | hp 408.7 → 406.4; tq 594.5 → 581.3 | soft cap |
+| Drag build | 30/33 (−55 % @3750) | hp 749.8 → 748.3 | bearing loss moves its spool fold one grid step (3500/3750 → 3750/4000) |
+| 2JZ, EJ257, hypercar, 2.7T, TT RS, N74, N63, EA888 gen 1/3, 1.8 TFSI, EA113, N20, B58 | 3–13 (−5 … −16 %, all ≤ 2000 rpm) | B58 tq-rpm 1600 → 1400; EA113 tq-rpm 1750 → 1600, power rpm 5500 → 5350; 2.7T tq-rpm 1800 → 2200; N55 1000 → 1200; EA888 gen 3 tq 349.5 → 350.0 (now at its limit) | spool region: bearing loss; knock-limited low rpm: soft cap |
+| Hellcat | 1/36 (−0.4 % @1000) | — | bearing-loss-free; knock trim at 1000 rpm |
+
+- Boost, MAP, EGT, retard, spark, BSFC and `uncertainty` follow at the same points. Warnings changed on Ford 1.0, Ford 3.5, B58 (limits off), EA113 and the drag build (knock / boost-target wording and the new knock-boost-cut warning).

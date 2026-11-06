@@ -164,7 +164,11 @@ export interface TurboHint {
  * changes the iteration path (bracketing the PR root from the previous
  * solution); the result is the same root to the solve tolerance.
  */
-export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number, hint?: TurboHint, spool?: SpoolControl | null): BoostState {
+/**
+ * `exhScale`: SimCalibration.exhaustRestrictionScale on the post-turbine
+ * system's pressure drop (p4 − ambient); 1 = the model value.
+ */
+export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number, hint?: TurboHint, spool?: SpoolControl | null, exhScale = 1): BoostState {
   const t = c.turbo;
   const n = t.count;
   const mChokeEach = compressorChokeFlow(c);
@@ -233,7 +237,7 @@ export function solveTurbo(c: EngineConfig, flowAt: FlowFn, p3Guess: number, hin
     // Shaft power the turbine must supply: compressor work plus the turbo's
     // bearing (journal + thrust) friction loss.
     const pc = compressPower(flow.mAir, T_AMB_K, pr, eta) + bearingLoss(pr);
-    const p4 = P_AMB_PA + 0.05e5 * Math.min(2, phi) ** 2;
+    const p4 = P_AMB_PA + 0.05e5 * Math.min(2, phi) ** 2 * exhScale;
     const p3c = turbineInletPressure(at, flow.mExh, flow.tExh, p4);
     const ptc = turbinePower(c, flow.mExh, flow.tExh, p3c, p4, phi);
     // Exhaust pressure with the wastegate open (lower bound on the operating p3).
