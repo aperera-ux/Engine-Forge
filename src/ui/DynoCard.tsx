@@ -33,6 +33,7 @@ function DynoNotes() {
   const bandPct = u ? (u.peakHpPct ?? 0) : 0;
   const cal = useStore((s) => s.calibration);
   const calStale = !!cal && isCalibrationStale(config, cal);
+  const linkNote = useStore((s) => s.calibrationLinkNote);
   const rangeTxt = (r: [number, number] | undefined, rpm: number) => (r && r[1] - r[0] > 1 ? `${fmt(r[0])}–${fmt(r[1])}` : fmt(rpm));
   const tPlateau = !!result.peakTorqueRpmRange && result.peakTorqueRpmRange[1] - result.peakTorqueRpmRange[0] > 1;
   const pPlateau = !!result.peakPowerRpmRange && result.peakPowerRpmRange[1] - result.peakPowerRpmRange[0] > 1;
@@ -48,6 +49,11 @@ function DynoNotes() {
           <small>
             RMS {cal.rmsBeforePct.toFixed(1)} → {cal.rmsAfterPct.toFixed(1)} %{calStale ? ' · build edited since fit' : ''}
           </small>
+        </span>
+      )}
+      {cal && linkNote && (
+        <span className="dn-chip lim" data-testid="calibrated-link-note" title={linkNote}>
+          {cal.measured.rpm.length < 2 ? 'Opened from link: no measured overlay' : 'Opened from link: overlay downsampled'}
         </span>
       )}
       {(tPlateau || pPlateau) && (
@@ -143,7 +149,7 @@ export function DynoCard() {
   const units = useStore((s) => s.units);
   const dyno = useStore((s) => s.dynoActive);
   const measured = useCalib((s) => s.imported?.ok ?? false);
-  const calName = useStore((s) => s.calibration?.sourceName);
+  const calName = useStore((s) => (s.calibration && s.calibration.measured.rpm.length >= 2 ? s.calibration.sourceName : undefined));
   const P = conv('power', units);
   const T = conv('torque', units);
   return (
@@ -172,7 +178,7 @@ export function DynoCard() {
             const dp = P.to(result.peakPowerKw) - P.to(s.result.peakPowerKw);
             const dt = T.to(result.peakTorqueNm) - T.to(s.result.peakTorqueNm);
             return (
-              <span className="lg snap" key={s.id} title={`Current vs ${s.name} (peak)`} data-testid="snapshot-delta">
+              <span className="lg snap" key={s.id} title={`Current vs ${s.name} (peak): power ${dp >= 0 ? '+' : ''}${dp.toFixed(1)} ${P.label}, torque ${dt >= 0 ? '+' : ''}${dt.toFixed(1)} ${T.label}`} data-testid="snapshot-delta">
                 <i className="dash" style={{ color: SNAP_COLORS[s.slot] }} />
                 <span className="ellipsis">{s.name}</span>
                 <span className="lg-d">

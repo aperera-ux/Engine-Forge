@@ -30,13 +30,14 @@ export const useVehicleSim = create<VehicleSimState>()((set) => ({
   optError: null,
   clearOpt: () => set({ opt: null, optError: null }),
   runOptimize: async ({ objective, finalDrive, gearRatios }) => {
-    const { result, vehicle } = useStore.getState();
+    const { result, vehicle, config, calibration } = useStore.getState();
     set({ optBusy: true, optError: null, opt: null });
     const res = await runVehicleJob({
       kind: 'optimize',
       spec: vehicle.spec,
       curve: curveFromSimResult(result),
       cond: conditions(vehicle),
+      ...(calibration ? { engine: { config, calibration } } : {}),
       objective,
       finalDrive,
       gearRatios,
@@ -58,6 +59,8 @@ export const DEBOUNCE_MS = 120;
 /** Mount once in Vehicle mode: recomputes (debounced, in the worker) whenever the engine result or the design changes. */
 export function useVehicleSimDriver() {
   const result = useStore((s) => s.result);
+  const config = useStore((s) => s.config);
+  const calibration = useStore((s) => s.calibration);
   const vehicle = useStore((s) => s.vehicle);
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +72,7 @@ export function useVehicleSimDriver() {
         curve: curveFromSimResult(result),
         idleRpm: result.config.idleRpm,
         cond: conditions(vehicle),
+        ...(calibration ? { engine: { config, calibration } } : {}),
       });
       if (cancelled) return; // a newer input superseded this run
       if (res.kind === 'sim') useVehicleSim.setState({ out: res, stale: false, error: null });
@@ -78,5 +82,5 @@ export function useVehicleSimDriver() {
       cancelled = true;
       window.clearTimeout(t);
     };
-  }, [result, vehicle]);
+  }, [result, config, calibration, vehicle]);
 }

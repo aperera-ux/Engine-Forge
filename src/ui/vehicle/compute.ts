@@ -2,7 +2,19 @@
  * Pure vehicle jobs. Runs identically inside the Web Worker and (fallback) on the main thread.
  * Everything in/out is structured-cloneable.
  */
-import { msToKph, optimizeGearing, resistance, resolve, rpmFromSpeed, runAcceleration, speedFromRpm, topSpeed, torqueAt, tractionCap, type AccelResult, type Objective, type RunOptions, type TopSpeed, type TorqueCurve, type VehicleSpec } from '../../vehicle';
+import type { EngineConfig } from '../../sim/types';
+import { simulateCalibrated, type Calibration } from '../../calibrate/types';
+import { curveFromSimResult, msToKph, optimizeGearing, resistance, resolve, rpmFromSpeed, runAcceleration, speedFromRpm, topSpeed, torqueAt, tractionCap, type AccelResult, type Objective, type RunOptions, type TopSpeed, type TorqueCurve, type VehicleSpec } from '../../vehicle';
+
+/**
+ * A calibrated engine, passed through the worker messages. When present the worker derives the
+ * torque curve itself with simulateCalibrated (same options as Engine mode: SimOptions.calibration
+ * plus the OEM-limit policy fixed at fit time), instead of trusting `curve`.
+ */
+export interface CalibratedEngine {
+  config: EngineConfig;
+  calibration: Calibration;
+}
 
 export interface RunConditions {
   ambient: { tempC: number; pressureKPa: number };
@@ -17,12 +29,14 @@ export interface SimRequest {
   curve: TorqueCurve;
   idleRpm: number;
   cond: RunConditions;
+  engine?: CalibratedEngine;
 }
 export interface OptimizeRequest {
   kind: 'optimize';
   spec: VehicleSpec;
   curve: TorqueCurve;
   cond: RunConditions;
+  engine?: CalibratedEngine;
   objective: Objective;
   finalDrive: boolean;
   gearRatios: boolean;
@@ -69,6 +83,11 @@ export interface OptimizeOutput {
 }
 export type VehicleResponse = SimOutput | OptimizeOutput | { kind: 'error'; message: string };
 
+/** The torque curve a job runs on: from the calibrated engine when one is given, else the supplied curve. */
+export function curveFor(req: { curve: TorqueCurve; engine?: CalibratedEngine }): TorqueCurve {
+  return req.engine ? curveFromSimResult(simulateCalibrated(req.engine.config, req.engine.calibration)) : req.curve;
+}
+
 const runOpts = (c: RunConditions): RunOptions => ({
   ambient: { tempC: c.ambient.tempC, pressureKPa: c.ambient.pressureKPa, humidity: 0 },
   shiftStrategy: c.shiftStrategy,
@@ -102,8 +121,9 @@ function trimSeries(a: AccelResult): AccelResult {
   };
 }
 
-export function simulateVehicle(req: SimRequest): SimOutput {
+export function simulateVehicle(request: SimRequest): SimOutput {
   const t0 = performance.now();
+  const req = { ...request, curve: curveFor(request) };
   const o = runOpts(req.cond);
   // Long enough for 60-130 on a quick car; the series is trimmed once acceleration dies out.
   const accel = trimSeries(runAcceleration(req.spec, req.curve, { ...o, stopSpeedMph: 130, maxTimeS: 40, sampleDt: 0.02 }));
@@ -162,8 +182,9 @@ export function simulateVehicle(req: SimRequest): SimOutput {
   };
 }
 
-export function optimizeVehicle(req: OptimizeRequest): OptimizeOutput {
+export function optimizeVehicle(request: OptimizeRequest): OptimizeOutput {
   const t0 = performance.now();
+  const req = { ...request, curve: curveFor(request) };
   // Through the public API only: whatever launch/traction model src/vehicle has is what gets optimised.
   const r = optimizeGearing(req.spec, req.curve, {
     objective: req.objective,

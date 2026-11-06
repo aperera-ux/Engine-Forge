@@ -10,6 +10,8 @@ import { fmt, type Units } from './units';
 import { SNAP_COLORS } from './charts/common';
 import { setAudioEnabled } from './audio';
 import { buildSheet } from './buildSheet';
+import { calibrationNote } from './shareLink';
+import { isCalibrationStale } from '../calibrate';
 import { Garage } from './Garage';
 import type { AppMode } from './store';
 
@@ -181,14 +183,14 @@ export function Header() {
     }
   };
   const share = async () => {
-    const url = shareUrl(config);
+    const url = shareUrl(config, useStore.getState().calibration);
     history.replaceState(null, '', url);
     flash((await copy(url)) ? 'Share link copied' : 'Share link is in the address bar');
   };
   const copySheet = async () => {
     const cal = useStore.getState().calibration;
-    const note = cal ? `fitted to ${cal.sourceName}, RMS torque error ${cal.rmsBeforePct.toFixed(1)} % to ${cal.rmsAfterPct.toFixed(1)} %${cal.verdict === 'poor' ? ' (poor fit, above 5 %)' : ''}` : undefined;
-    const text = buildSheet(useStore.getState().result, shareUrl(config), note);
+    const note = cal ? calibrationNote(cal, isCalibrationStale(useStore.getState().config, cal)) : undefined;
+    const text = buildSheet(useStore.getState().result, shareUrl(config, cal), note);
     (window as unknown as { __efLastSheet?: string }).__efLastSheet = text;
     flash((await copy(text)) ? 'Build sheet copied to clipboard' : 'Clipboard unavailable');
   };
