@@ -1110,3 +1110,50 @@ Three issues from §17, fixed in this order (worktree `agent-aa8f39748afaeeae5`,
 
 - Boost, MAP, EGT, retard, spark, BSFC and `uncertainty` follow at the same points.
 - Warnings changed on Ford 1.0, Ford 3.5, EA113 and the drag build (knock and boost-target wording).
+
+### 18.3 Exhaust-restriction calibration parameter
+**What.** `SimCalibration.exhaustRestrictionScale` (additive in `types.ts`; default 1; clamped to 0.1–3) multiplies the exhaust-system pressure drop above ambient:
+- for NA and supercharged engines, the header-type back-pressure;
+- for turbos, the manifold loss ahead of the turbine and the post-turbine p4 − ambient.
+
+It acts **inside the gas exchange**. Back-pressure enters the breathing lookup through the exhaust/intake pressure ratio, and the lookup's analytic correction moves trapped VE, residual fraction and pumping work together; for turbos it also moves the turbine expansion ratio. The breathing table is unchanged, so the cache key stays valid (guarded in `breathingCache.test.ts`).
+- Identity at 1 is exact, written as a branch rather than as P + 1·(p − P): `SIM_SNAPSHOT=check`, 67 configs × 3 modes, 0 differing leaves.
+- `calibrationOptions.test.ts` +4 tests: identity, NA direction and flow² growth, turbo back-pressure, ±1e-4 continuity.
+
+**`src/calibrate`.**
+- New parameter `exhScale`, range 0.4–2.0, with its justification in `params.ts`. Production systems drop roughly 0.1–0.4 bar at rated flow, and open dyno headers a fraction of that. The header-only estimate is good to about ×2 either way. The loss grows with gas flow squared and changes VE, whereas friction grows with piston speed and does not.
+- `model.ts` maps it to `exhaustRestrictionScale`; identity is omitted.
+- `fit.ts` reports `conditioning.fricExhCorr`, the correlation of the friction and exhaust Jacobian columns, and adds a `friction-exhaust-inseparable` **warn** when |r| > 0.95.
+
+**44-curve refit (`CAL_REFIT44=1`, final constants; A/B on the same sim with `CAL_REFIT44_EXCLUDE=exhScale`).**
+
+| Parameter set | Mean RMS after | Curves above 5 % |
+|---|---|---|
+| main (§17), without exhScale | 2.954 | 6 |
+| this sim, without exhScale | 2.973 | 6 |
+| **this sim, with exhScale (adopted)** | **2.929** | **6** (S85, 2.7T, L8P, HT383, ZZ572/720, ZZ632) |
+
+- **The parameter recovers only 0.044 pt of the 0.30 pt** that §17 lost by making friction mechanical-only. On the GM pushrod curves: LS7 3.87 → 3.67, LT1 4.38 → 4.30, HT383 7.26 → 7.06, ZZ632 12.76 → 12.60, L8P 5.88 → 5.78.
+  - What the old post-hoc fmep scaling reached (2.655) came from scaling the valve-flow pumping work of the gas-exchange cycle. That work is set by the 2-valve heads' valve and port restriction, not by the exhaust system.
+  - A pumping-work multiplier would recover it numerically, but it would not be a physical quantity, so I did not add one. The pushrod deficit belongs in the breathing model (§12–13).
+- **Identifiability: friction and exhaust restriction are mostly inseparable.**
+  - Column correlation |r| = 0.18–1.00, median 0.96.
+  - The fit raises `friction-exhaust-inseparable` on 23 of the 44 curves.
+  - `exhScale` ends at a bound in 20 of 44 fits, usually together with `fricScale` at its opposite or same bound.
+  - The warning tells the user to read the two values together. On most curves only their sum is determined.
+- A full 44-curve run takes 118 s, up from 103 s without the parameter.
+
+### 18.4 Cost and tests
+- **Timing** (`SIM_SNAPSHOT=time`, warm median of 31):
+  - max 8.27 ms (B58), then EA113 7.8 and Ford 3.5 7.0. Main was 7.56 ms max.
+  - Median over configs 0.66 ms.
+  - Every preset is under 10 ms.
+  - Cold (`SIM_COLD=1`, breathing cache off): max 10.36 ms (B58), against 9.15 on main. That is 0.36 ms over the budget, and only on the first call after a hardware edit.
+  - The added cost is the spool scan, at 15–90 forced points per call, plus more knock-trim solves.
+- **`veScale` sweeps 0.85–1.15:** all five engines pass the 10 ms check run alone, and ≤ 650 evaluations per call.
+- **Full `npx vitest run`** after merging main c36aa52: 961 tests, **43 failed**.
+  - These are identical by name to main's 43. I checked by running main's `src/sim` and `src/calibrate` against the same suites.
+  - `tsc -b` is clean.
+  - The `tests/reports/data/*.json` rewrites were reverted.
+  - `simulate < 15 ms` (engine.test.ts) still fails intermittently under parallel load and passes alone (§13).
+- **New tests:** `spoolFold.test.ts` (10), `knockPath.test.ts` (25), and +4 calibrationOptions, +1 fit.

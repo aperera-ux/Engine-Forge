@@ -67,16 +67,21 @@ A 0-D cycle-resolved wide-open-throttle engine model. It evaluates one cylinder 
   - Boosted engines at the 10% level.
 
 ## Per-build calibration (`SimOptions.calibration`, §17.2–17.3)
-- `simulate(cfg, { calibration: { veScale, frictionScale, torqueCapNm } })` applies three multipliers inside every operating-point solve, not to the result:
+- `simulate(cfg, { calibration: { veScale, frictionScale, exhaustRestrictionScale, torqueCapNm } })` applies four calibration terms inside every operating-point solve, not to the result:
   - `veScale` acts on the trapped air, so airflow, boost, knock and EGT respond;
   - `frictionScale` acts on mechanical FMEP before the ECU torque limiter (pumping and supercharger drive are not scaled);
+  - `exhaustRestrictionScale` scales the exhaust-system back-pressure above ambient. It acts through the gas exchange, so VE, residual and pumping all respond (§18.3);
   - `torqueCapNm` is an ECU torque limit, enforced through the boost target and, on NA engines or at zero boost, by throttle (MAP) control.
 - Omitted means identity, and the outputs are bit-identical.
 - The dyno-file calibration tool (`src/calibrate`) uses these instead of its former post-hoc scaling of IMEP and FMEP.
-- **Fit quality, 44 reference curves:** mean RMS 6.42 → 2.95 %, with 6 curves still above 5 %. The old post-hoc version reached 6.42 → 2.81 % with 5 above 5 %, partly by scaling the modelled pumping work. Moving the scales into the solve alone gives 2.66 %.
+- **Fit quality, 44 reference curves:**
+  - With the `exhScale` parameter (§18.3), mean RMS goes from 6.43 to 2.93 %, and 6 curves stay above 5 %.
+  - Without it, on the same simulator, the result is 2.97 %.
+  - Friction and exhaust restriction are mostly inseparable (median |r| 0.96). The fit flags this on 23 of 44 curves.
+  - Before §18 the result was 2.95 % with 6 curves above 5 %. The old post-hoc version reached 6.42 → 2.81 % with 5 above 5 %, partly by scaling the modelled pumping work. Moving the scales into the solve alone gives 2.66 %.
 - **Known issues in calibrated fits:**
   - Pushrod NA fits often hit the friction bound: their deficit is breathing, not friction.
-  - A turbo spool fold can make B58 fits at VE ≈ 1.05 slow and jumpy.
+  - Turbo spool folds no longer cause non-convergence (§18.1). The curve can still jump where a low spool equilibrium vanishes.
   - A cam-timing table discontinuity can leave the fitter in a neighbouring minimum. The fit reports these cases as ill-conditioned or at a bound.
 
 ## Calibrated constants and plausibility
