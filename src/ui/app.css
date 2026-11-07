@@ -2726,10 +2726,26 @@ input[type='search'] {
   position: absolute !important;
   inset: 0;
 }
+.veh-card .panel-title {
+  flex: none;
+  white-space: nowrap;
+  letter-spacing: 0.1em;
+}
+.veh-card .panel-h {
+  gap: 6px;
+  padding-right: 10px;
+}
 .veh-card .legend {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
-  row-gap: 2px;
+  gap: 4px 7px;
+}
+.veh-card .legend .lg i:not(.dash) {
+  width: 8px;
+}
+.veh-card .legend .lg {
+  gap: 3px;
+  font-size: 11px;
 }
 .veh-card .lg.muted {
   color: var(--text-3);

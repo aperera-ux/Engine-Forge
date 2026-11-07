@@ -13,6 +13,7 @@ import {
   type FitJob,
   type FitOk,
   type ImportOptions,
+  measuredCurveOf,
 } from '../calibrate';
 import { useStore } from './store';
 
@@ -112,9 +113,10 @@ export const useCalib = create<CalibState>()((set, get) => ({
 /** The measured curve to draw: the imported file, else the one stored in the applied calibration. */
 export function measuredForChart(
   imported: DynoImport | null,
-  cal: { measured: { rpm: number[]; torqueNm: number[] }; sourceName: string } | null,
+  cal: { measured?: { rpm: number[]; torqueNm: number[] }; sourceName: string } | null,
 ): { name: string; rpm: number[]; torqueNm: number[]; powerKw: number[] } | null {
   if (imported && imported.ok) return { name: 'measured', rpm: imported.curve.rpm, torqueNm: imported.curve.torqueNm, powerKw: imported.curve.powerKw };
-  if (cal) return { name: cal.sourceName, rpm: cal.measured.rpm, torqueNm: cal.measured.torqueNm, powerKw: cal.measured.torqueNm.map((t, i) => (t * cal.measured.rpm[i]) / 9549.297) };
+  const m = measuredCurveOf(cal);
+  if (cal && m) return { name: cal.sourceName, rpm: m.rpm, torqueNm: m.torqueNm, powerKw: m.torqueNm.map((t, i) => (t * m.rpm[i]) / 9549.297) };
   return null;
 }

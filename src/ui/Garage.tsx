@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { GARAGE_SLOTS, useStore, type SavedEngine } from './store';
 import { Icon } from './icons';
+import { fmtRmsPct } from '../calibrate';
 import { engineCode } from './format';
 import { fmt, show } from './units';
 
@@ -112,7 +113,7 @@ function SlotCard({ i, e, onDone, flash }: { i: number; e: SavedEngine | null; o
         </div>
         {e.calibration && (
           <div className="gar-spec gar-cal" data-testid={`garage-calibrated-${i}`}>
-            Calibrated: {e.calibration.sourceName} · RMS {e.calibration.rmsBeforePct.toFixed(1)} → {e.calibration.rmsAfterPct.toFixed(1)} %
+            Calibrated: {e.calibration.sourceName} · RMS {fmtRmsPct(e.calibration.rmsBeforePct)} → {fmtRmsPct(e.calibration.rmsAfterPct)}
           </div>
         )}
         {e.vehicle && (

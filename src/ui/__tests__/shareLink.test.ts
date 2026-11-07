@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PRESETS } from '../../sim/presets';
-import { configFor, isCalibrationStale, buildCalibration, type FitOk, type Calibration } from '../../calibrate';
+import { configFor, isCalibrationStale, buildCalibration, parseCalibration, measuredCurveOf, fmtRmsPct, type FitOk, type Calibration } from '../../calibrate';
 import { mergeConfig } from '../store';
 import {
   MAX_CAL_CHARS,
@@ -13,7 +13,6 @@ import {
   downsampleCurve,
   encodeCalibration,
   parseHash,
-  parseStoredCalibration,
 } from '../shareLink';
 
 const base = mergeConfig(PRESETS[0]);
@@ -53,15 +52,15 @@ describe('share link: calibration round trip', () => {
     expect(d.baseConfig.name).toBe(base.name);
     // fitted config is re-derived, so an unedited link is not stale
     expect(isCalibrationStale(h.config, d)).toBe(false);
-    expect(d.measured.rpm.length).toBe(MAX_LINK_POINTS);
-    expect(d.measured.rpm[0]).toBe(1000);
-    expect(d.measured.rpm.at(-1)).toBe(7000);
+    expect(d.measured!.rpm.length).toBe(MAX_LINK_POINTS);
+    expect(d.measured!.rpm[0]).toBe(1000);
+    expect(d.measured!.rpm.at(-1)).toBe(7000);
     expect(h.cal!.note).toContain('downsampled to 40 of 120');
   });
   it('a small curve is carried whole, with no note', () => {
     const cal = makeCal(12);
     const d = decodeCalibration(encodeCalibration(cal), mergeConfig)!;
-    expect(d.calibration.measured.rpm).toHaveLength(12);
+    expect(d.calibration.measured!.rpm).toHaveLength(12);
     expect(d.note).toBeNull();
   });
   it('full-precision fitted values: an unedited link is never reported stale', () => {
@@ -86,19 +85,45 @@ describe('share link: calibration round trip', () => {
   it('payload stays small', () => {
     const s = encodeCalibration(makeCal(5000));
     expect(s.length).toBeLessThanOrEqual(MAX_CAL_CHARS);
-    expect(decodeCalibration(s, mergeConfig)!.calibration.measured.rpm.length).toBeLessThanOrEqual(MAX_LINK_POINTS);
+    expect(decodeCalibration(s, mergeConfig)!.calibration.measured!.rpm.length).toBeLessThanOrEqual(MAX_LINK_POINTS);
   });
   it('without a measured curve it opens calibrated, no overlay, with a note', () => {
     const cal = makeCal(20);
-    cal.measured = { rpm: [], torqueNm: [] };
+    delete cal.measured;
     const d = decodeCalibration(encodeCalibration(cal), mergeConfig)!;
-    expect(d.calibration.measured.rpm).toHaveLength(0);
+    expect(d.calibration.measured).toBeUndefined();
+    expect(measuredCurveOf(d.calibration)).toBeNull();
     expect(d.calibration.values.veScale).toBeCloseTo(0.93, 4);
     expect(d.note).toMatch(/did not include the measured curve/);
     // and such a calibration survives storage / garage parsing
-    const stored = parseStoredCalibration(JSON.parse(JSON.stringify(d.calibration)), mergeConfig);
-    expect(stored?.measured.rpm).toHaveLength(0);
+    const stored = parseCalibration(JSON.parse(JSON.stringify(d.calibration)), mergeConfig);
+    expect(stored?.measured).toBeUndefined();
     expect(stored?.values.fricScale).toBeCloseTo(1.12, 4);
+  });
+  it('old stored data with an empty measured curve still loads (no overlay)', () => {
+    const raw = JSON.parse(JSON.stringify(makeCal(10)));
+    raw.measured = { rpm: [], torqueNm: [] };
+    const c = parseCalibration(raw, mergeConfig)!;
+    expect(c).not.toBeNull();
+    expect(c.measured).toBeUndefined();
+    delete raw.measured;
+    expect(parseCalibration(raw, mergeConfig)!.measured).toBeUndefined();
+    raw.measured = null;
+    expect(parseCalibration(raw, mergeConfig)).not.toBeNull();
+  });
+  it('old stored data with a real curve keeps it; a malformed one is rejected', () => {
+    const raw = JSON.parse(JSON.stringify(makeCal(10)));
+    expect(parseCalibration(raw, mergeConfig)!.measured!.rpm).toHaveLength(10);
+    raw.measured = { rpm: [1000, 2000], torqueNm: [1] };
+    expect(parseCalibration(raw, mergeConfig)).toBeNull();
+  });
+  it('a calibration without a measured curve has a re-encodable link, a note and a blank RMS fallback', () => {
+    const cal = makeCal(10);
+    delete cal.measured;
+    const again = decodeCalibration(encodeCalibration(cal), mergeConfig)!.calibration;
+    expect(calibrationNote(again, false)).toContain('fitted to my_dyno.csv');
+    expect(fmtRmsPct(NaN)).toBe('n/a');
+    expect(fmtRmsPct(2.04)).toBe('2.0 %');
   });
   it('garbage cal payloads degrade to uncalibrated, never throw', () => {
     for (const bad of ['!!!', b64urlEncode('{}'), b64urlEncode('{"v":1,"val":{},"b":"no such preset"}'), b64urlEncode('not json')]) {

@@ -4,7 +4,7 @@
  * revert the result. The measured curve is overlaid on the dyno chart.
  */
 import { useRef, useState } from 'react';
-import { PARAM_DEFS, STANDARD_NOTES, formatParam, type DynoImportOk, type FitOk, type ParamReport } from '../calibrate';
+import { fmtRmsPct, PARAM_DEFS, STANDARD_NOTES, formatParam, type DynoImportOk, type FitOk, type ParamReport } from '../calibrate';
 import { findPreset } from '../sim/presets';
 import { Section, Segmented, Select } from './controls';
 import { useCalib } from './calibrateStore';
@@ -497,9 +497,9 @@ function AppliedSection() {
           <div>
             <span className="cal-k">Calibrated to {cal.sourceName}</span>
             <span className="cal-big">
-              <span className="cal-from">{cal.rmsBeforePct.toFixed(1)} %</span>
+              <span className="cal-from">{fmtRmsPct(cal.rmsBeforePct)}</span>
               <span className="cal-arrow">→</span>
-              <b className={cls}>{cal.rmsAfterPct.toFixed(1)} %</b>
+              <b className={cls}>{fmtRmsPct(cal.rmsAfterPct)}</b>
             </span>
           </div>
           <span className={`cal-verdict ${cls}`}>{cal.verdict === 'poor' ? 'Poor fit' : cal.verdict === 'fair' ? 'Fair fit' : 'Good fit'}</span>
