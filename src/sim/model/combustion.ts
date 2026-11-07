@@ -298,12 +298,19 @@ export interface SparkResult {
 
 /** Knock-limited spark search: stop at |ln KI| below this (≈ 1e-4° of retard)… */
 const KNOCK_LNKI_TOL = 2e-5;
-/** …or when the bracket on retard is narrower than this, deg. The retard is then interpolated linearly in ln KI across the bracket; ln KI is nearly linear in retard, so the interpolation error is ~1e-5° at this width. */
-const KNOCK_BRACKET_DEG = 0.05;
+/**
+ * …or when the bracket on retard is narrower than this, deg. The retard is then
+ * interpolated linearly in ln KI across the bracket; ln KI is nearly linear in
+ * retard, so the interpolation error is ~1e-5° at 0.05° and grows with the
+ * width squared (≲ 2e-4° at 0.2°, ≈ 2e-6 relative in torque at 13° retard).
+ * 0.05 → 0.2 (§19): −18 % knock cycles per call, max output change 0.002 % in
+ * torque (snapshot, 67 configs × 3 modes).
+ */
+const KNOCK_BRACKET_DEG = 0.2;
 /** First step from a retard hint when bracketing the root, deg. */
 const KNOCK_HINT_STEP_DEG = 0.03;
-/** A Newton step from the hint is accepted without bracketing when shorter than this, deg. */
-const KNOCK_NEWTON_DEG = 0.01;
+/** A Newton step from the hint is accepted without bracketing when shorter than this, deg (error ≈ slope error × step, ≲ 3e-4°; was 0.01, §19). */
+const KNOCK_NEWTON_DEG = 0.03;
 
 /**
  * Knock-limited spark: start at MBT, retard until the end-gas auto-ignition
@@ -361,7 +368,7 @@ function knockLimitedSparkImpl(base: Omit<CycleInputs, 'thetaStart' | 'wantKnock
       const d = -f / hint.slope;
       if (Math.abs(d) <= KNOCK_NEWTON_DEG && f > -3 && r + d > 0 && r + d < maxRetard) {
         // The root is within KNOCK_NEWTON_DEG of the hint: one Newton step with the
-        // last bracket's slopes. Error ≈ (slope error) × d + O(d²) ≲ 1e-4°.
+        // last bracket's slopes. Error ≈ (slope error) × d + O(d²) ≲ 3e-4°.
         const rr = r + d;
         const pm = out.pMaxPa + hint.pSlope * d;
         return { sparkBtdc: mbt - rr, retard: rr, workRatio: sparkWorkRatio(rr), pMaxBar: pm / 1e5, knockIntegralMbt: kiMbt };
