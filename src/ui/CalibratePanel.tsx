@@ -416,6 +416,9 @@ function ResultSection({ fit }: { fit: FitOk }) {
   const apply = useCalib((s) => s.applyFit);
   const discard = useCalib((s) => s.discardFit);
   const pk = fit.peaks;
+  const shown = fit.warnings.filter((w) => w.code !== 'poor-fit');
+  const alerts = shown.filter((w) => w.severity !== 'info').sort((x, y) => Number(y.severity === 'critical') - Number(x.severity === 'critical'));
+  const notes = shown.filter((w) => w.severity === 'info');
   return (
     <Section title="Result">
       <RmsBlock fit={fit} />
@@ -425,13 +428,23 @@ function ResultSection({ fit }: { fit: FitOk }) {
           values as unreliable and check the data (units, wheel vs crank, standard).
         </div>
       )}
-      {fit.warnings
-        .filter((w) => w.code !== 'poor-fit')
-        .map((w) => (
-          <div className={`cal-msg ${w.severity === 'info' ? '' : 'warn'}`} key={w.code} data-testid={`calibrate-warning-${w.code}`}>
-            {w.message}
-          </div>
-        ))}
+      {alerts.map((w) => (
+        <div className={`cal-msg ${w.severity === 'critical' ? 'bad' : 'warn'}`} key={w.code} data-testid={`calibrate-warning-${w.code}`} data-severity={w.severity}>
+          {w.message}
+        </div>
+      ))}
+      {notes.length > 0 && (
+        <div className="cal-notes" data-testid="calibrate-notes">
+          <div className="cal-notes-h">Notes</div>
+          <ul>
+            {notes.map((w) => (
+              <li key={w.code} data-testid={`calibrate-warning-${w.code}`} data-severity="info">
+                {w.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="cal-params">
         {fit.params.map((p) => (
           <ParamRow key={p.id} p={p} />
