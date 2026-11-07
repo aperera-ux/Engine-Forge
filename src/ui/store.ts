@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import type { EngineConfig, SimResult } from '../sim/types';
 import { DEFAULT_CONFIG } from '../sim/defaults';
 import { simulateCalibrated, type Calibration } from '../calibrate/types';
-import { configToHash, parseHash, parseStoredCalibration } from './shareLink';
+import { parseCalibration } from '../calibrate';
+import { configToHash, parseHash } from './shareLink';
 import { simulate } from '../sim/engine';
 import { PRESETS } from '../sim/presets';
 import { oemLimitOptions } from '../sim/customBuild';
@@ -190,7 +191,7 @@ export function parseSavedEngine(e: unknown): SavedEngine | null {
     displacementL: Number(r.displacementL) || 0,
   };
   if (r.vehicle && typeof r.vehicle === 'object') out.vehicle = mergeDesign(r.vehicle);
-  const cal = parseStoredCalibration(r.calibration, mergeConfig);
+  const cal = parseCalibration(r.calibration, mergeConfig);
   if (cal) out.calibration = cal;
   return out;
 }
@@ -253,7 +254,7 @@ function initialCalibration(): Calibration | null {
   try {
     const raw = localStorage.getItem(LS_CALIBRATION);
     if (!raw) return null;
-    const cal = parseStoredCalibration(JSON.parse(raw), mergeConfig);
+    const cal = parseCalibration(JSON.parse(raw), mergeConfig);
     return cal;
   } catch {
     return null;

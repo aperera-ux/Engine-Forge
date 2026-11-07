@@ -11,7 +11,7 @@ import { SNAP_COLORS } from './charts/common';
 import { setAudioEnabled } from './audio';
 import { buildSheet } from './buildSheet';
 import { calibrationNote } from './shareLink';
-import { isCalibrationStale } from '../calibrate';
+import { isCalibrationStale, fmtRmsPct } from '../calibrate';
 import { Garage } from './Garage';
 import type { AppMode } from './store';
 
@@ -37,7 +37,7 @@ function CalibratedBadge() {
   const cal = useStore((s) => s.calibration);
   if (!cal) return null;
   return (
-    <span className={`hdr-cal ${cal.verdict === 'poor' ? 'poor' : ''}`} data-testid="header-calibrated" title={`Calibrated to ${cal.sourceName}: RMS ${cal.rmsBeforePct.toFixed(1)} % to ${cal.rmsAfterPct.toFixed(1)} %`}>
+    <span className={`hdr-cal ${cal.verdict === 'poor' ? 'poor' : ''}`} data-testid="header-calibrated" title={`Calibrated to ${cal.sourceName}: RMS ${fmtRmsPct(cal.rmsBeforePct)} to ${fmtRmsPct(cal.rmsAfterPct)}`}>
       <i />
       Calibrated
     </span>

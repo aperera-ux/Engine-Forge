@@ -58,6 +58,15 @@ for (const width of [1440, 1280]) {
   await p.waitForTimeout(1200);
   await shot('05_vehicle_calibrated');
   await noHScroll('vehicle');
+  const heads = await p.evaluate(() =>
+    [...document.querySelectorAll('[data-testid="vehicle-charts"] .veh-card .panel-h')].map((h) => {
+      const t = h.querySelector('.panel-title').getBoundingClientRect();
+      const l = [...h.querySelectorAll('.lg')].map((e) => e.getBoundingClientRect());
+      const tops = [t.top, ...l.map((r) => r.top)];
+      const lg = h.querySelector('.legend'); return { oneLine: Math.max(...tops) - Math.min(...tops) < 8 && t.height < 20, clipped: !!lg && (lg.scrollWidth > lg.clientWidth + 1 || l.some((r) => r.right > lg.getBoundingClientRect().right + 0.5)) || h.scrollHeight > h.clientHeight + 1 };
+    }),
+  );
+  ok(heads.length > 0 && heads.every((h) => h.oneLine && !h.clipped), `${width} vehicle chart titles and legends on one line ${JSON.stringify(heads)}`);
   ok(!(await p.isVisible('[data-testid="vehicle-engine-stale"]')), `${width} vehicle: no stale warning right after apply`);
   // Edit the build in Engine mode, come back: stale warning
   await p.click('[data-testid="mode-switch"] >> text=Engine');

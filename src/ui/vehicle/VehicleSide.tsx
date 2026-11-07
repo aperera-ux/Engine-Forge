@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { DEFAULT_FINAL_DRIVE_RANGE, DEFAULT_RATIO_SCALE_RANGE, type Objective } from '../../vehicle';
 import { REFERENCE_CARS } from '../../vehicle/validation/referenceCars';
 import { Select, Toggle } from '../controls';
-import { isCalibrationStale } from '../../calibrate';
+import { isCalibrationStale, fmtRmsPct } from '../../calibrate';
 import { useStore } from '../store';
 import { fmt } from '../units';
 import type { OptimizeOutput } from './compute';
@@ -295,7 +295,7 @@ function EngineSource() {
   const stale = isCalibrationStale(config, cal);
   return (
     <div className="veh-eng" data-testid="vehicle-engine-calibrated">
-      <span className={`dn-chip cal ${cal.verdict === 'poor' ? 'poor' : ''}`} title={`The torque curve comes from the calibrated engine (fitted to ${cal.sourceName}, RMS ${cal.rmsBeforePct.toFixed(1)} % to ${cal.rmsAfterPct.toFixed(1)} %).`}>
+      <span className={`dn-chip cal ${cal.verdict === 'poor' ? 'poor' : ''}`} title={`The torque curve comes from the calibrated engine (fitted to ${cal.sourceName}, RMS ${fmtRmsPct(cal.rmsBeforePct)} to ${fmtRmsPct(cal.rmsAfterPct)}).`}>
         engine: calibrated
         <small>{cal.sourceName}</small>
       </span>

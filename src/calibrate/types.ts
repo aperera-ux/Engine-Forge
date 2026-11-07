@@ -30,8 +30,11 @@ export interface Calibration {
   verdict: 'good' | 'fair' | 'poor';
   /** Parameter ids that ended at a bound. */
   atBound: ParamId[];
-  /** The measured curve the fit used (crank basis, resampled). */
-  measured: { rpm: number[]; torqueNm: number[] };
+  /**
+   * The measured curve the fit used (crank basis, resampled). Absent when the calibration came from a
+   * share link or storage that did not carry it; consumers must treat that as "no overlay".
+   */
+  measured?: { rpm: number[]; torqueNm: number[] };
 }
 
 export function buildCalibration(args: {
@@ -70,6 +73,17 @@ export function simulateCalibrated(config: EngineConfig, cal: Calibration): SimR
   return simulateCalibratedConfig(config, { applyOemLimits: cal.applyOemLimits }, calibrationFor(cal, cal.values));
 }
 
+/** The stored measured curve if it is usable for an overlay (at least 2 points), else null. */
+export function measuredCurveOf(cal: Pick<Calibration, 'measured'> | null | undefined): { rpm: number[]; torqueNm: number[] } | null {
+  const m = cal?.measured;
+  return m && m.rpm.length >= 2 && m.rpm.length === m.torqueNm.length ? m : null;
+}
+
+/** "3.2 %" for a finite RMS, "n/a" when the stored value is missing (NaN). */
+export function fmtRmsPct(v: number): string {
+  return Number.isFinite(v) ? `${v.toFixed(1)} %` : 'n/a';
+}
+
 /** True when the build has been edited since the calibration was applied. */
 export function isCalibrationStale(config: EngineConfig, cal: Calibration): boolean {
   return hardwareDiff(config, cal.fittedConfig).length > 0;
@@ -83,10 +97,17 @@ export function parseCalibration(raw: unknown, mergeConfig: (r: unknown) => Engi
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
   if (r.version !== 1 || !r.baseConfig || !r.fittedConfig || !r.values || typeof r.values !== 'object') return null;
-  const mr = r.measured as { rpm?: unknown; torqueNm?: unknown } | undefined;
-  const rpm = numArr(mr?.rpm);
-  const tq = numArr(mr?.torqueNm);
-  if (!rpm || !tq || rpm.length !== tq.length || rpm.length < 2) return null;
+  // Missing, null or empty (older links stored { rpm: [], torqueNm: [] }) means "no measured curve".
+  // Anything else must be a valid curve, otherwise the whole calibration is rejected.
+  const mr = r.measured as { rpm?: unknown; torqueNm?: unknown } | null | undefined;
+  let measured: Calibration['measured'];
+  const emptyCurve = !mr || (Array.isArray(mr.rpm) && mr.rpm.length === 0 && (mr.torqueNm === undefined || (Array.isArray(mr.torqueNm) && mr.torqueNm.length === 0)));
+  if (!emptyCurve) {
+    const rpm = numArr(mr?.rpm);
+    const tq = numArr(mr?.torqueNm);
+    if (!rpm || !tq || rpm.length !== tq.length || rpm.length < 2) return null;
+    measured = { rpm, torqueNm: tq };
+  }
   const values: ParamValues = {};
   for (const id of ALL_PARAM_IDS) {
     const v = (r.values as Record<string, unknown>)[id];
@@ -109,6 +130,6 @@ export function parseCalibration(raw: unknown, mergeConfig: (r: unknown) => Engi
     rmsAfterPct: finite(r.rmsAfterPct) ? r.rmsAfterPct : NaN,
     verdict,
     atBound: Array.isArray(r.atBound) ? (r.atBound.filter((x) => ALL_PARAM_IDS.includes(x as ParamId)) as ParamId[]) : [],
-    measured: { rpm, torqueNm: tq },
+    ...(measured ? { measured } : {}),
   };
 }

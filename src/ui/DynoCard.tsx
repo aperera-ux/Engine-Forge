@@ -4,7 +4,7 @@ import { useStore } from './store';
 import { DynoChart, Delta } from './charts/DynoChart';
 import { C, SNAP_COLORS } from './charts/common';
 import { conv, fmt } from './units';
-import { isCalibrationStale } from '../calibrate';
+import { isCalibrationStale, measuredCurveOf, fmtRmsPct } from '../calibrate';
 import { useCalib } from './calibrateStore';
 
 /** Factory-limit status, hardware-only toggle and prediction-uncertainty badge. */
@@ -43,17 +43,17 @@ function DynoNotes() {
         <span
           className={`dn-chip cal ${cal.verdict === 'poor' ? 'poor' : ''}`}
           data-testid="calibrated-badge"
-          title={`Fitted to ${cal.sourceName}: RMS torque error ${cal.rmsBeforePct.toFixed(1)} % to ${cal.rmsAfterPct.toFixed(1)} %.${cal.verdict === 'poor' ? ' The fit stayed above 5 %.' : ''}${calStale ? ' The build was edited after the fit; the fitted corrections still apply.' : ''} The model's validation band does not apply to a fitted curve.`}
+          title={`Fitted to ${cal.sourceName}: RMS torque error ${fmtRmsPct(cal.rmsBeforePct)} to ${fmtRmsPct(cal.rmsAfterPct)}.${cal.verdict === 'poor' ? ' The fit stayed above 5 %.' : ''}${calStale ? ' The build was edited after the fit; the fitted corrections still apply.' : ''} The model's validation band does not apply to a fitted curve.`}
         >
           Calibrated to {cal.sourceName}
           <small>
-            RMS {cal.rmsBeforePct.toFixed(1)} → {cal.rmsAfterPct.toFixed(1)} %{calStale ? ' · build edited since fit' : ''}
+            RMS {fmtRmsPct(cal.rmsBeforePct)} → {fmtRmsPct(cal.rmsAfterPct)}{calStale ? ' · build edited since fit' : ''}
           </small>
         </span>
       )}
       {cal && linkNote && (
         <span className="dn-chip lim" data-testid="calibrated-link-note" title={linkNote}>
-          {cal.measured.rpm.length < 2 ? 'Opened from link: no measured overlay' : 'Opened from link: overlay downsampled'}
+          {!measuredCurveOf(cal) ? 'Opened from link: no measured overlay' : 'Opened from link: overlay downsampled'}
         </span>
       )}
       {(tPlateau || pPlateau) && (
@@ -149,7 +149,7 @@ export function DynoCard() {
   const units = useStore((s) => s.units);
   const dyno = useStore((s) => s.dynoActive);
   const measured = useCalib((s) => s.imported?.ok ?? false);
-  const calName = useStore((s) => (s.calibration && s.calibration.measured.rpm.length >= 2 ? s.calibration.sourceName : undefined));
+  const calName = useStore((s) => (measuredCurveOf(s.calibration) && s.calibration ? s.calibration.sourceName : undefined));
   const P = conv('power', units);
   const T = conv('torque', units);
   return (

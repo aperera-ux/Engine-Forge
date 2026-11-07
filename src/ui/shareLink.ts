@@ -11,7 +11,7 @@
 import { hardwareDiff } from '../sim/customBuild';
 import { PRESETS } from '../sim/presets';
 import type { EngineConfig } from '../sim/types';
-import { ALL_PARAM_IDS, PARAM_DEFS, configFor, parseCalibration, type Calibration, type ParamId, type ParamValues } from '../calibrate';
+import { ALL_PARAM_IDS, PARAM_DEFS, configFor, measuredCurveOf, fmtRmsPct, parseCalibration, type Calibration, type ParamId, type ParamValues } from '../calibrate';
 
 export const MAX_LINK_POINTS = 40;
 /** If the encoded `cal` payload would exceed this many characters the measured curve is left out. */
@@ -90,9 +90,10 @@ export function encodeCalibration(cal: Calibration): string {
     sd: cal.standard,
     ...(preset ? { b: preset } : { bc: cal.baseConfig }),
   };
-  if (cal.measured.rpm.length >= 2) {
-    const d = downsampleCurve(cal.measured);
-    const full = b64urlEncode(JSON.stringify({ ...payload, m: { r: d.rpm, t: d.torqueNm, n: cal.measured.rpm.length } }));
+  const meas = measuredCurveOf(cal);
+  if (meas) {
+    const d = downsampleCurve(meas);
+    const full = b64urlEncode(JSON.stringify({ ...payload, m: { r: d.rpm, t: d.torqueNm, n: meas.rpm.length } }));
     if (full.length <= MAX_CAL_CHARS) return full;
   }
   return b64urlEncode(JSON.stringify(payload));
@@ -140,12 +141,10 @@ export function decodeCalibration(text: string, merge: (raw: unknown) => EngineC
       rmsAfterPct: p.ra,
       verdict: p.vd,
       atBound: p.ab ?? [],
-      // parseCalibration wants a curve; a link without one gets a stand-in that is cleared below.
-      measured: m ? { rpm: m.r, torqueNm: m.t } : { rpm: [0, 1], torqueNm: [0, 0] },
+      ...(m ? { measured: { rpm: m.r, torqueNm: m.t } } : {}),
     };
     const cal = parseCalibration(raw, merge);
     if (!cal) return null;
-    if (!m) cal.measured = { rpm: [], torqueNm: [] };
     const note = !m
       ? 'Opened from a share link: the fitted calibration is applied, but the link did not include the measured curve, so there is no overlay.'
       : typeof p.m?.n === 'number' && p.m.n > m.r.length
@@ -155,21 +154,6 @@ export function decodeCalibration(text: string, merge: (raw: unknown) => EngineC
   } catch {
     return null;
   }
-}
-
-/**
- * parseCalibration for storage (garage, localStorage) that also accepts a calibration whose measured
- * curve is empty (opened from a link that did not carry it).
- */
-export function parseStoredCalibration(raw: unknown, merge: (r: unknown) => EngineConfig): Calibration | null {
-  const direct = parseCalibration(raw, merge);
-  if (direct) return direct;
-  if (!raw || typeof raw !== 'object') return null;
-  const r = raw as { measured?: { rpm?: unknown } };
-  if (!Array.isArray(r.measured?.rpm) || r.measured.rpm.length > 0) return null;
-  const cal = parseCalibration({ ...raw, measured: { rpm: [0, 1], torqueNm: [0, 0] } }, merge);
-  if (cal) cal.measured = { rpm: [], torqueNm: [] };
-  return cal;
 }
 
 // ---- hash ---------------------------------------------------------------------
@@ -192,6 +176,6 @@ export function parseHash(hash: string, merge: (raw: unknown) => EngineConfig): 
 
 /** One-line description of an applied calibration, shared by the build sheet and the UI. */
 export function calibrationNote(cal: Calibration, stale: boolean): string {
-  const rms = `RMS torque error ${cal.rmsBeforePct.toFixed(1)} % to ${cal.rmsAfterPct.toFixed(1)} %`;
+  const rms = `RMS torque error ${fmtRmsPct(cal.rmsBeforePct)} to ${fmtRmsPct(cal.rmsAfterPct)}`;
   return `fitted to ${cal.sourceName}, ${rms}${cal.verdict === 'poor' ? ' (poor fit, above 5 %)' : ''}${stale ? ', build edited since the fit' : ''}`;
 }
