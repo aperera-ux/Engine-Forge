@@ -6,7 +6,8 @@
  * Plausibility assertions (counted, worst offenders recorded): NA BMEP, BTE, BSFC, NA MAP,
  * EGT, adjacent-point torque jumps on NA curves.
  */
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect } from 'vitest';
+import { gapIt as it } from '../knownGaps';
 import { FUELS, r3, recorder, simulate, type DynoPoint, type EngineConfig, type SimResult } from './helpers';
 import { SUPPORTED_CYLINDERS } from '../../src/sim/layout';
 import type { ExhaustType, FuelType, InductionType, Layout, SuperchargerType, ValvetrainType } from '../../src/sim/types';

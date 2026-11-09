@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect } from 'vitest';
+import { gapIt as it } from '../../../tests/knownGaps';
 import { simulate } from '../engine';
 import { DEFAULT_CONFIG } from '../defaults';
 import type { EngineConfig, SimResult } from '../types';

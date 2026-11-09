@@ -3,7 +3,8 @@
  * "Output plausibility envelopes") and published-figure tolerances for every reference
  * engine, plus generic plausibility for the hypothetical presets.
  */
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect } from 'vitest';
+import { gapIt as it } from '../knownGaps';
 import { atPeakPower, atPeakTorque, pct, r3, recorder, REFERENCE_ENGINES, simulate, type SimResult } from './helpers';
 import { HYPOTHETICAL_PRESETS, PRESETS } from '../../src/sim/presets';
 

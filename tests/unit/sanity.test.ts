@@ -7,7 +7,8 @@
  * accepted window is widened modestly (stated inline) — never to make a test pass.
  * Failing tests are real findings: see tests/reports/physics_audit.md.
  */
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect } from 'vitest';
+import { gapIt as it } from '../knownGaps';
 import {
   at,
   atPeakPower,
