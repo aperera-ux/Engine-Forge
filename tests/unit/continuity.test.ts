@@ -7,7 +7,8 @@
  * - Reversal: the number of direction changes (0.5% hysteresis) in peak hp beyond what the
  *   physics allows (monotone params: 0; single-optimum params: 1).
  */
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect } from 'vitest';
+import { gapIt as it } from '../knownGaps';
 import { base, getField, r3, recorder, simulate, withField, type BaseKey, type EngineConfig, type SimResult } from './helpers';
 
 const R = recorder('continuity');

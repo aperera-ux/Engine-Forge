@@ -117,3 +117,5 @@ All tuned scalars sit inside literature ranges: valve Cd 0.65–0.81, port-refle
   - Anything with all-estimated geometry, as the ZZ632 holdout (26%) shows.
   - Custom builds: the hardware-only scores above apply (≥ 11% peak error on the reference set).
 - **Outside:** boost above about 2 bar, CR above 14, absurd cam/valve combinations, and rpm above the valve-float speed (the float loss is a coarse shape).
+
+Known, tracked test gaps (expected failures) are listed in [known_gaps.md](known_gaps.md).
