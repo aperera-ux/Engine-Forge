@@ -27,3 +27,9 @@ playwright-report/
 tests/audio/out/*.wav
 dist/
 tests/audio/ab/
+
+# Generated screenshots / plots (regenerate with tests/e2e-ui/*.mjs, src/render preview, tests/audio scripts)
+tests/e2e-ui/screenshots/
+tests/e2e-ui/screens/
+src/render/__screens__/
+tests/audio/out/*.png
