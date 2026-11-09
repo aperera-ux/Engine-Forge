@@ -1,4 +1,4 @@
-import { describe, expect } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import { gapIt as it } from '../../../tests/knownGaps';
 import { simulate } from '../engine';
 import { DEFAULT_CONFIG } from '../defaults';
@@ -297,7 +297,9 @@ describe('robustness and performance', () => {
     for (const e of REFERENCE_ENGINES) expect(allFinite(simulate(e.config)), e.id).toBe(true);
     for (const p of PRESETS) expect(allFinite(simulate(p)), p.name).toBe(true);
   });
-  it('simulate < 15 ms', () => {
+  // Wall-clock budget: machine- and load-dependent, so opt-in (SIM_TIMING=1) to keep default runs deterministic.
+  const timing = !!(globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.SIM_TIMING;
+  test.runIf(timing)('simulate < 15 ms (opt-in: SIM_TIMING=1)', () => {
     const cfgs = [DEFAULT_CONFIG, turboI4(), ref('ferrari-f140fc-f12'), ref('ford-35-ecoboost-gen2')];
     for (const c of cfgs) simulate(c); // warm-up
     for (const c of cfgs) {
