@@ -239,7 +239,14 @@ function Reference() {
     );
   return (
     <div className="veh-ref" data-testid="reference-check">
-      <div className="veh-ref-h">Measured vs this model: {car.spec.name}</div>
+      <div className="veh-ref-h">
+        Measured vs this model: {car.spec.name}
+        {car.refConfidence === 'low' && (
+          <span className="kpi-pill" data-testid="reference-unverified" title="The measured figures for this car are recalled or from secondary sources, not a primary test sheet.">
+            unverified data
+          </span>
+        )}
+      </div>
       <table>
         <thead>
           <tr>
@@ -287,6 +294,16 @@ function Accuracy() {
   );
 }
 
+/** Always-visible caveat: vehicle results are illustrative until the reference data is primary-sourced. */
+function DataCaveat() {
+  return (
+    <div className="veh-caveat" data-testid="vehicle-illustrative">
+      <span className="kpi-pill">illustrative</span>
+      Vehicle results are not validated to engineering grade: only 2 of 16 reference cars are checked against primary test sheets. Use for trends and comparisons, not absolute numbers.
+    </div>
+  );
+}
+
 /** Which engine curve the car runs on: shown only when a calibration is applied. */
 function EngineSource() {
   const cal = useStore((s) => s.calibration);
@@ -312,6 +329,7 @@ export function VehicleSide() {
   return (
     <aside className="panel side veh-side" data-testid="vehicle-side">
       <div className="veh-side-scroll">
+        <DataCaveat />
         <EngineSource />
         <Kpis />
         <Reference />

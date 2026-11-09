@@ -1,7 +1,7 @@
 import { it } from 'vitest';
-import { PRESETS } from '../presets';
-import { EXTENDED_REFERENCE_ENGINES } from '../validation/referenceEngines';
-import { pointSolveStats, setBreathingCache, simulate } from '../engine';
+import { PRESETS } from '../../presets';
+import { EXTENDED_REFERENCE_ENGINES } from '../../validation/referenceEngines';
+import { pointSolveStats, setBreathingCache, simulate } from '../../engine';
 it.runIf(process.env.SIM_COST)('cost (opt-in: SIM_COST=1)', () => {
   const want = (process.env.NAMES ?? 'B58,1.8 TFSI,EA113,EcoBoost,EA888 Gen 3').split(',');
   if (process.env.COLD) setBreathingCache(false);
