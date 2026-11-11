@@ -197,7 +197,7 @@ export function Header() {
   return (
     <header className="topbar">
       <div className="brand">
-        <img className="brand-logo" src="/logo.svg" alt="Engine Forge" width={146} height={26} draggable={false} onDragStart={(e) => e.preventDefault()} />
+        <img className="brand-logo" src={`${import.meta.env.BASE_URL}logo.svg`} alt="Engine Forge" width={146} height={26} draggable={false} onDragStart={(e) => e.preventDefault()} />
       </div>
       <Segmented<AppMode>
         size="sm"

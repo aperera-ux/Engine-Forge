@@ -5,6 +5,16 @@ valves, induction, exhaust, fuel, materials), watch a live procedural 3D render
 of it, and read a physically modelled dyno sheet that is calibrated against 21 real
 production engines.
 
+**▶ Live demo: https://aperera-ux.github.io/engine-forge/** (desktop browser; turn on the speaker icon for sound)
+
+## At a glance
+
+- **What it is:** a 3D engine builder with a physics-based dyno model, a vehicle acceleration model, and engine sound synthesized from the real firing order (no audio samples).
+- **How it was built:** in six days (Nov 4–9, 2026) by Alexander Perera, a Boston University business student, directing parallel [Claude Code](https://claude.com/claude-code) agents. Each agent owned one area (physics, vehicle, UI) in its own git worktree, and every change was merged back through tests. The 139 commits in this repo are that history.
+- **How it is checked:** 955 automated tests. Physics constants are tuned only on a training set of dyno curves, and a separate holdout set is scored once per round after the constants are frozen.
+- **How accurate it is:** median peak-horsepower error is 4.6% across 21 production engines, and holdout dyno-curve error is 7.8%. **Both miss their targets** (3% and 5%), and the gaps are listed in [`tests/reports/known_gaps.md`](tests/reports/known_gaps.md). Development stopped when holdout error stopped improving for four rounds, rather than tuning the model to fit the test set. Importing your own dyno curve brings the fit to about 3%.
+- **Further reading:** [`tests/reports/model_card.md`](tests/reports/model_card.md) (model card) and [`tests/reports/physics_audit.md`](tests/reports/physics_audit.md) (audit log).
+
 ## Run
 
 ```bash
@@ -60,6 +70,7 @@ tests/e2e-ui/  Playwright UI scripts and screenshots
 ## Limitations
 
 - Steady-state (wide-open throttle) only: no transient turbo lag or part-throttle maps.
-- No OEM ECU torque management, so some factory turbo torque plateaus are less flat than published.
+- OEM ECU torque limits come from published ratings, not real ECU maps, so hardware-only turbo predictions carry roughly 11–20% error.
+- Accuracy targets are not met (see "At a glance" above and `tests/reports/known_gaps.md`). Vehicle mode is illustrative: much of its reference data is unsourced.
 - Estimated inputs (cam timing at 0.050", runner/header geometry, turbo hardware) for many
   reference engines are documented in `estimatedFields`.
