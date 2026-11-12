@@ -7,7 +7,7 @@ when the physics stopped improving. You get a 3D engine builder, dyno curves che
 against 44 real dyno runs (about 8% error on engines the model never saw), synthesized
 engine sound, and a 0-60 / quarter-mile estimator. Go break it.
 
-**▶ Live demo: https://aperera-ux.github.io/engine-forge/** (desktop browser; turn on the speaker icon for sound)
+**▶ Live demo: https://aperera-ux.github.io/Engine-Forge/** (desktop browser; turn on the speaker icon for sound)
 
 ## At a glance
 
