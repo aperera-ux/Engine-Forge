@@ -1,9 +1,11 @@
 # Engine Forge
 
-Interactive engine design studio. Configure an engine (layout, bore/stroke, cams,
-valves, induction, exhaust, fuel, materials), watch a live procedural 3D render
-of it, and read a physically modelled dyno sheet that is calibrated against 21 real
-production engines.
+I'm a business major, not a mechanical engineer, so heads up: AI wrote almost all
+of this code. My job was steering. I set the goals, decided what to build next, split
+the work across parallel Claude Code agents, reviewed what came back, and called it
+when the physics stopped improving. You get a 3D engine builder, dyno curves checked
+against 44 real dyno runs (about 8% error on engines the model never saw), synthesized
+engine sound, and a 0-60 / quarter-mile estimator. Go break it.
 
 **▶ Live demo: https://aperera-ux.github.io/engine-forge/** (desktop browser; turn on the speaker icon for sound)
 
